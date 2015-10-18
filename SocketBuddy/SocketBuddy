@@ -1,0 +1,548 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+#
+# Copyright (c) 2015 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+###############################################################################
+# initialy lifted from Autobahn and twisted matrix
+###############################################################################
+import sys
+#TODO delete this
+sys.path.append("/home/fw/development/Home Automation/Buddylib")
+from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory, listenWS
+from twisted.internet import protocol,reactor,ssl
+import argparse,warnings,json,random,traceback
+from twisted.web.resource import Resource
+from buddylib import encrypt, decrypt, genid
+
+class NamedEntity(object):
+    """
+    Just defining objects wit a name
+    """
+    def __init__(self,name=None):
+        self.name=name
+        self.authtoken=None
+        
+        
+#Generating evaluable expressions from hveiga @ stackoverflow
+def expr(depth):
+    if depth==1 or random.random()<1.0/(2**depth-1): 
+        return str(int(random.random() * 1000) )
+    return '(' + expr(depth-1) + random.choice(['+','-','*','/']) + expr(depth-1) + ')'
+
+def iprint(*arg):
+    """
+        Just here to make it easy when changing to python 3
+    """
+    for x in arg:
+        print x,
+    print      
+
+class brAMQP(protocol.ProcessProtocol):
+    
+    def __init__(self,name):
+        self.name=name
+        self.buff=""
+
+    def sendMessage(self,msg):
+        #print "sending",msg,"on",self.name
+        self.transport.write(json.dumps(msg)+"\n")
+        
+    def connectionMade(self):
+        sysctl.add_child(self,self.name)
+
+    def outReceived(self, data):
+        #Receiving the output from the program
+        #pass it on
+        try:
+            msg=json.loads(self.buff+data)
+            self.buff=""
+            sysctl.sendMessage(msg,self.name)
+        except:
+            self.buff=data
+        
+    def errReceived(self, data):
+        log.msg(self.name+" error received: %s" % data )
+        
+    def inConnectionLost(self):
+        sysctl.del_child(self,self.name)
+        
+    def outConnectionLost(self):
+        """
+        The stdout of the subprocess was closed
+        """
+        log.msg(self.name+" Subprocess dies")
+    
+    def errConnectionLost(self):
+        pass
+        
+    def processExited(self, reason):
+        log.msg(self.name+" process exited with status %d" % (reason.value.exitCode,))
+        
+    def processEnded(self, reason):
+        print "processEnded, status %d" % (reason.value.exitCode,)
+        print "quitting"
+        reactor.stop()
+
+
+class BuddyProtocol(WebSocketServerProtocol,NamedEntity):
+    
+    def onConnect(self, response):
+        pass
+
+    def onOpen(self):
+        #print("WebSocket connection open.")
+        self.makeName()
+        sysctl.add_child(self)
+        
+    def onMessage(self, data, isBinary):
+        sysctl.sendMessage(json.loads(data),"websockc",self)
+
+    def onClose(self, wasClean, code, reason):
+        #print("WebSocket connection closed: {0}".format(reason))
+        try:
+            sysctl.del_child(self)
+            sysctl.adminsocket.discard(self)
+            sysctl.allowedsocket.discard(self)
+        except:
+            pass
+        
+    def sendMessage(self, payload, isBinary=False, fragmentSize=None, sync=False, doNotCompress=False):
+        newpayload=json.dumps(payload)
+        super(BuddyProtocol,self).sendMessage(newpayload, isBinary, fragmentSize, sync, doNotCompress)
+        
+    def makeName(self,length=16):
+        name = 'ws-'
+        for i in range(length):
+            name += random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
+        self.name=name
+        #print self.name
+
+
+class Broker(object):
+    
+    subject= "websocket"
+    
+    def __init__(self):
+        self.slaves = {"toamqp":[],"fromamqp":[],"websockc":[],"dropit":[]}
+        self.config={}
+        self.allowedsocket=set(["fromamqp","toamqp"])
+        self.adminsocket=set()
+        self.users={}
+        self.requestids= []
+        
+    def add_child(self,obj,protocol="websockc"):
+        self.slaves[protocol].append(obj)
+        
+    def del_child(self,obj,protocol="websockc"):
+        self.slaves[protocol].remove(obj)
+        
+    def sendMessage(self,msg,protocol="websockc",orig=None,token=None):
+        if protocol == "fromamqp":
+            #Let's filter the message we receive from AMQP
+            # Some may be for us.
+            #print msg,"vs",self.subject
+            if msg["subject"].startswith(self.subject):
+                toprotocol, msg = self.processMessage(msg)
+            else:
+                toprotocol = "websockc"
+        elif protocol == "websockc":
+            toprotocol,amsg = self.msgfromWS(msg,orig)
+            if amsg:
+                msg=amsg
+                
+        elif protocol== "internal":
+            if msg == "save users":
+                newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+                newmsg["content"]["request"]="save property"
+                newmsg["content"]["target"]= "gui"
+                newmsg["content"]["token"] = token or genid()
+                self.requestids.append(newmsg["content"]["token"])
+                newmsg["content"]["name"] = "users"
+                newmsg["content"]["value"] = encrypt(self.users,self.config["buddykey"])
+                msg=newmsg
+                toprotocol = "toamqp"
+                self.config["save user"]=False
+            elif msg == "get users":
+                newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+                newmsg["content"]["request"]="get property"
+                newmsg["content"]["target"]= self.subject
+                newmsg["content"]["token"] = genid()
+                self.requestids.append(newmsg["content"]["token"])
+                newmsg["content"]["name"]="users"
+                msg = newmsg
+                toprotocol = "toamqp"
+                self.config["save user"]=False
+            else:
+                toprotocol = "dropit"
+        else:
+            log.msg("This is not supposed to happen")
+            toprotocol = "fromamqp"
+        
+        for x in self.slaves[toprotocol]:
+            if x.name in self.allowedsocket:
+                x.sendMessage(msg)
+        if self.config["save user"]:
+            self.saveUsers()
+   
+    def msgfromWS(self,msg,orig):
+        #print "Got",msg
+        try:
+            if msg["content_type"] == "request" and msg["content"]["request"]=="login":
+                #print "Msg is",msg
+                if msg["content"]["user"] in self.users and \
+                   msg["content"]["password"] == self.users[msg["content"]["user"]][0]:
+                    newmsg={"content_type":"response","subject":msg["content"]["target"],"content":{}}
+                    newmsg["content"]["response"]="login"
+                    newmsg["content"]["status"]= "done"
+                    newmsg["content"]["zone"]= self.users[msg["content"]["user"]][1]
+                    newmsg["content"]["token"]= msg["content"]["token"]
+                    orig.user=msg["content"]["user"]
+                    self.allowedsocket.add(orig.name)
+                    if self.users[msg["content"]["user"]][1]=="admin":
+                        self.adminsocket.add(orig.name)
+                        newmsg["content"]["value"]={"list of users": dict([(x,y[1]) for x,y in self.users.items()])}
+                else:
+                    newmsg={"content_type":"response","subject":msg["content"]["target"],"content":{}}
+                    newmsg["content"]["response"]="login"
+                    newmsg["content"]["status"]= "failed"
+                    newmsg["content"]["token"]= msg["content"]["token"]
+                orig.sendMessage(newmsg)
+                #print "Replied",newmsg
+                toprotocol = "dropit"
+            elif msg["content_type"] == "request" and msg["content"]["request"]=="change password":
+                #print "Msg is",msg
+                if msg["content"]["value"]["user"] in self.users and \
+                   msg["content"]["value"]["password"] == self.users[msg["content"]["value"]["user"]][0]:
+                    self.users[msg["content"]["value"]["user"]][0]=msg["content"]["value"]["new password"]
+                toprotocol = "dropit"
+                self.saveUsers(token=msg["content"]["token"])
+            #elif msg["content_type"] == "request" and msg["content"]["request"]=="add user":
+                ##print "Msg is",msg
+                #self.users[msg["content"]["user"]][0]=msg["content"]["password"]
+                #self.users[msg["content"]["user"]][1]=msg["content"]["zone"]
+                #toprotocol = "dropit"
+                #self.saveUsers()
+            elif msg["content_type"] == "request" and msg["content"]["request"]=="system state":
+                #Make sure we request the right room
+                if orig.name in self.adminsocket:
+                    msg["content"]["value"]={"zone":""}
+                else:
+                    msg["content"]["value"]={"zone": self.users[orig.user][1]}
+                toprotocol = "toamqp"
+            elif orig.name in self.adminsocket:
+                toprotocol = "toamqp"
+                if msg["content_type"] == "request" and msg["content"]["request"]=="add user":
+                    #do something
+                    #print msg
+                    if "password" in msg["content"]["value"]:
+                        self.users[msg["content"]["value"]["user"]] = [msg["content"]["value"]["password"],msg["content"]["value"]["zone"]]
+                    else:
+                        try:
+                            self.users[msg["content"]["value"]["user"]][1]=msg["content"]["value"]["zone"]
+                        except:
+                            return "dropit",None
+                    self.saveUsers(token=msg["content"]["token"])
+                    toprotocol="dropit"
+                elif msg["content_type"] == "request" and msg["content"]["request"]=="delete user":
+                    #do something
+                    try:
+                        del(self.users[msg["content"]["value"]["user"]])
+                        self.saveUsers(token=msg["content"]["token"])
+                    except:
+                        return "dropit",None
+                    toprotocol="dropit"
+                else:
+                    msg=None
+
+            elif orig.name in self.allowedsocket:
+                toprotocol = "toamqp"
+                msg=None
+            else:
+                toprotocol = "dropit"
+                msg=None
+        except:
+            print "Something's wrong! Probably a badly formated message"
+            traceback.print_exc(file=sys.stdout)
+            toprotocol="dropit"
+            msg=None
+        return toprotocol,msg
+  
+    def processMessage(self,msg):
+        #print "Processing",msg
+        if msg["content_type"] == "response":
+            if msg["content"]["token"] in self.requestids:
+                self.requestids.remove(msg["content"]["token"])
+                if msg["content"]["response"]=="save property":
+                    if msg["content"]["status"]=="failed":
+                        #TODO send something
+                        pass
+                elif msg["content"]["response"]=="get property":
+                    if msg["content"]["status"]=="done":
+                        for x,val in msg["content"]["value"].items():
+                            theval=decrypt(val,self.config["buddykey"])
+                            #print theval
+                            cattr=getattr(self,x) 
+                            for y,v in theval.items():
+                                cattr[y]=v
+                            setattr(self,x,cattr)
+                        
+        return "dropit",""
+    
+    def configure(self):
+        import os
+        self.default={"topic":"autobuddy","tls":False,"subject":["gui"],"application":"./html/buddyctrl.html","wsport":9000,"host":"localhost","port":8080}
+        self.absolute=["tls","application"]
+        parser = argparse.ArgumentParser(description="Autobuddy Websocket bridge.")
+        #                            version="%prog " + __version__ + "/" + bl.__version__) 
+        parser.add_argument("-a", "--application", default=self.default,
+                        help="The application to serve. (default \"%s\""%self.default["application"])
+        parser.add_argument("-b", "--broker", default="",
+                        help="connect to specified BROKER")
+        parser.add_argument("-c", "--config", default="/etc/autobuddy/websocket.cfg",
+                        help="Config file to use (default \"/etc/autobuddy/websocket.cfg\")")
+        parser.add_argument("-C", "--configonly", default="",
+                            help="Exit after the the configuration has been saved")
+        parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+        parser.add_argument("-H", "--host", default=self.default,
+                        help="Host or IP address on which to listen. (default \"%s\""%self.default["host"])
+        parser.add_argument("-s", "--subject", nargs="+", default=self.default,
+                        help="List of subject content to echo to websocket. (default \"%s\""%" ".join(self.default["subject"]))
+        parser.add_argument("-T", "--tls", default=self.default, 
+                        help="Use TLS with key and cert file in directory (default \"%s\")"%self.default["tls"])
+        parser.add_argument("-t", "--topic", default=self.default,
+                        help="The AMQP-style topic we are listening to (default \"%s\")."%self.default["topic"])
+        parser.add_argument("-u", "--user",
+                        help="Create an admin user")
+        parser.add_argument("-w", "--wsport", default=self.default, type=int,
+                        help="On which port to listen to web sockets (default \"%s\")"%self.default["wsport"])
+        parser.add_argument("-p", "--port", default=self.default, type=int,
+                        help="On which port to listen to HTML requests (default \"%s\")"%self.default["port"])
+            
+        try:
+            opts=parser.parse_args()
+        except Exception as e:
+            iprint("Error: ",e)
+            parser.print_help()
+            sys.exit(-2)
+
+        try:
+        #if True:
+            try:
+                with file(opts.config,"r") as cfile:
+                    cfgdata = json.load(cfile)
+                self.config["config"] = opts.config
+            except:
+                if opts.configonly:
+                    iprint ("Warning: configuration file %s does not exist or contains garbage."%opts.config)
+                    cfgdata={}
+                else:
+                    file(opts.config,"r")
+                
+            self.config["save user"]=False    
+            self.config["debug"] = opts.debug
+            if opts.broker:
+                self.config["broker"] = opts.broker
+            else:
+                self.config["broker"] = ""
+                if "user" in cfgdata["broker"] and cfgdata["broker"]["user"]:
+                    self.config["broker"] += cfgdata["broker"]["user"]+"/" + cfgdata["broker"]["password"] + "@"
+                self.config["broker"] += cfgdata["broker"]["host"]
+                
+                if "port" in cfgdata["broker"] and cfgdata["broker"]["port"]:
+                    self.config["broker"] += ":"+ str(cfgdata["broker"]["port"])
+
+            if opts.debug:
+                iprint("The broker is",self.config["broker"]) 
+                
+            for cfg in self.default:
+                if getattr(opts,cfg,False) and  getattr(opts,cfg) != self.default:
+                    self.config[cfg] = getattr(opts,cfg)
+                elif cfg in cfgdata:
+                    self.config[cfg] = cfgdata[cfg]
+                else:
+                    self.config[cfg] = self.default[cfg]
+                if cfg in self.absolute:
+                    self.config[cfg] = os.path.abspath(self.config[cfg])
+                if opts.debug:
+                    iprint("%s is %s"%(cfg,self.config[cfg]))      
+            
+            #Let;s make sure we listen for ourself
+            if self.subject not in self.config["subject"]:
+                self.config["subject"].append(self.subject)
+            
+            if "buddykey" in cfgdata:
+                self.config["buddykey"] = cfgdata["buddykey"]
+                
+            if opts.configonly:
+                brokconfig={}
+                if "@" in self.config["broker"]:
+                    brokconfig["user"],brokconfig["password"]=self.config["broker"].split("@")[0].split("/")
+                if ":" in self.config["broker"]:
+                    brokconfig["host"],brokconfig["port"] =  self.config["broker"].split("@")[-1].split(":")
+                else:
+                    brokconfig["host"] =  self.config["broker"].split("@")[-1]
+                newconfig={"broker":brokconfig}
+                for cfg in self.default:
+                    if cfg in self.config and self.config[cfg]:
+                        newconfig[cfg]=self.config[cfg]
+                if "buddykey" in self.config:
+                    newconfig["buddykey"] = self.config["buddykey"]
+                else:
+                    from buddylib import keygen
+                    if opts.debug:
+                        iprint("Generating random key")   
+                    self.config["buddykey"] = keygen()
+                    
+                with file(opts.configonly,"w") as cfile:
+                    json.dump(newconfig,cfile)
+                os.chmod(opts.configonly,0600)
+                iprint("Config was saved")
+                sys.exit(1)
+                
+            if opts.user:
+                from getpass import getpass
+                nbtry=3
+                done=False
+                while nbtry:
+                    nbtry-=1
+                    password = getpass("Enter password for %s "%opts.user)
+                    verify = getpass("Verify password ")
+                    if password == verify :
+                        done = True
+                        self.users={opts.user:[password,"admin"]}
+                        self.config["save user"]=True
+                        break
+                    else:
+                        print "Passwords do not match."
+        
+        except Exception as e:
+            iprint("Error:",e)
+            sys.exit(-2)
+            
+    def saveUsers(self,token=None):
+        self.sendMessage("save users","internal",token=token)
+
+    def getUsers(self):
+        self.sendMessage("get users","internal")
+
+        
+
+class BuddyApp(Resource):
+    isLeaf = True
+    directory = None
+    application = None
+    tochange=[]
+    def getChild(self, name, request):
+        return self
+
+    def render_GET(self, request):
+        lopref=["js","css","images","favicon.ico","fonts"]
+        ct={"js":"text/javascript","css":"text/css","favicon.ico":"image/x-icon"}
+        imgct=[[["jpg","jpeg"],"image/jpeg"],[["png"],"image/png"],[["svg"],"image/svg+xml"]]
+        fontct=[[["woff"],"application/font-woff"],[["woff2"],"application/font-woff2"],[["ttf"],"application/x-font-ttf"],[["svg"],"image/svg+xml"]]
+        serveme=False
+        if request.uri[-1] != "/":
+            for x in lopref:
+                loelt=request.uri.split("?")[0]
+                loelt=loelt.split("/")
+                if x in loelt:
+                    serveme=("/".join(loelt[loelt.index(x):])).strip().strip("/")
+                    if x == "images":
+                        suff=serveme.split(".")[-1]
+                        request.responseHeaders.setRawHeaders("content-type",["image/unknown"])
+                        for slist,ctype in imgct:
+                            if suff in slist:
+                                request.responseHeaders.setRawHeaders("content-type",[ctype])
+                    elif x == "fonts":
+                        suff=serveme.split(".")[-1]
+                        request.responseHeaders.setRawHeaders("content-type",["application/unknown"])
+                        for slist,ctype in fontct:
+                            if suff in slist:
+                                request.responseHeaders.setRawHeaders("content-type",[ctype])
+                    else:
+                        request.responseHeaders.setRawHeaders("content-type",[ct[x]])
+                    break
+        if serveme:
+            try:
+                with open(self.directory+"/"+serveme) as source:
+                    return source.read()
+            except:
+                request.setResponseCode(404)
+                return ""
+        else:
+            try:
+                with open(self.application) as source:
+                    msg=source.read()
+                    for x,y in self.tochange:
+                        msg=msg.replace(x,str(y))
+                    return msg
+            except:
+                request.setResponseCode(404)
+                return ""
+            
+
+if __name__ == '__main__':
+
+    import sys,os
+    mypath=os.path.dirname(os.path.abspath(__file__))+"/"
+    from twisted.python import log
+    from twisted.web.server import Site
+    from twisted.web.static import File
+    
+    sysctl=Broker()
+    sysctl.configure()
+    if sysctl.config["debug"]:
+        log.startLogging(sys.stdout)
+        
+    toamqp = brAMQP("toamqp")
+    fromamqp = brAMQP("fromamqp")
+    reactor.spawnProcess(toamqp, mypath+"wsock-echo.py", ["wsock-echo.py","-c",sysctl.config["config"]], {})
+    reactor.spawnProcess(fromamqp, mypath+"amqp-echo.py", ["amqp-echo.py","-c",sysctl.config["config"]], {})
+    
+    if "tls" in sysctl.config and sysctl.config["tls"]:
+        contextFactory = ssl.DefaultOpenSSLContextFactory(sysctl.config["tls"]+'/server.key',
+                                                        sysctl.config["tls"]+'/server.crt')
+        sockprot="wss"
+    else:
+        contextFactory = None
+        sockprot="ws"
+        
+    #factory = WebSocketServerFactory(sockprot+"://"+sysctl.config["host"]+":%d"%sysctl.config["wsport"], debug=False)
+    factory = WebSocketServerFactory(sockprot+"://[::]:%d"%sysctl.config["wsport"], debug=False)
+    factory.setProtocolOptions(requireMaskedClientFrames = False, applyMask = True)
+    factory.protocol = BuddyProtocol
+    listenWS(factory,contextFactory)
+    thisApp=BuddyApp()
+    #if "tls" in sysctl.config and sysctl.config["tls"]:
+        #thisApp.contentTypes={'.crt': 'application/x-x509-ca-cert'}
+    thisApp.directory=os.path.dirname(sysctl.config["application"])
+    thisApp.application=sysctl.config["application"]
+    thisApp.tochange.append(["<BUDDYWSPROTOCOL/>",sockprot])
+    thisApp.tochange.append(["<BUDDYWSHOST/>",sysctl.config["host"]])
+    thisApp.tochange.append(["<BUDDYWSPORT/>",sysctl.config["wsport"]])
+    web=Site(thisApp)
+    if "tls" in sysctl.config and sysctl.config["tls"]:
+        reactor.listenSSL(sysctl.config["port"], web, contextFactory)
+    else:
+        reactor.listenTCP(sysctl.config["port"], web,contextFactory)
+    if not sysctl.config["save user"]:
+        reactor.callWhenRunning(sysctl.getUsers)
+    reactor.run()

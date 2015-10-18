@@ -1,0 +1,503 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for Lifx bulbs.
+# 
+# Copyright (c) 2015 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse, sys, traceback,json
+import buddylib as bl
+import lifxlan as lifx
+import qpid.messaging as qm
+from qpid.log import enable, DEBUG, WARN
+from time import sleep
+SUBTYPE="Lifx"
+__version__="0.1"
+
+def intround(x):
+    return int(round(x))
+
+iprint=bl.iprint  
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+lifx_functions="""
+<buddyui version="0.1">
+<control type="switch" name="power" label="Power">
+    <value label="On">on</value>
+    <value label="Off">off</value>
+</control>
+<controlgroup name="colour" label="Colour" widget="colourpicker">
+    <control type="slider" name="hue" label="Hue">
+        <start>0</start>
+        <end>360</end>
+        <increment>1</increment>
+    </control>
+    <control type="slider" name="saturation" label="Saturation">
+        <start>0</start>
+        <end>100</end>
+        <increment>1</increment>
+    </control>
+    <control type="slider" name="value" label="Brightness">
+        <start>0</start>
+        <end>100</end>
+        <increment>1</increment>
+    </control>
+    <option type="spinner" name="delay" label="Delay" min="0" default="0" />
+</controlgroup>
+<controlgroup name="white" label="White">
+    <control type="slider" name="value" label="Brightness">
+        <start>0</start>
+        <end>100</end>
+        <increment>1</increment>
+    </control>
+    <control type="slider" name="temperature" label="Kelvin">
+        <start>2500</start>
+        <end>9000</end>
+        <increment>100</increment>
+    </control>
+    <option type="spinner" name="delay" label="Delay" min="0" />
+</controlgroup>
+</buddyui>
+"""
+
+def lifx_process(self,msg):
+    if not self.present:
+        return None
+    if msg.content_type == "command":
+        try:
+            if msg.content["command"] == "power":
+                current=self.conn.get_power()
+                if (current and msg.content["value"] == "off") or (not current and msg.content["value"] == "on") :
+                    if "delay" in msg.content:
+                        print "Delay",msg.content["delay"]
+                        self.conn.set_power((msg.content["value"]=="on" and 1) or 0,duration=int(msg.content["delay"]),rapid=True)
+                    else:
+                        self.conn.set_power((msg.content["value"]=="on" and 1) or 0,rapid=True)
+                    bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+                                    "content_type":"event",
+                                    "content": {"event":"state change","target":"power","value":current and "off" or "on"}})
+            elif msg.content["command"] == "colour":
+                if "delay" in msg.content:
+                    self.conn.set_color([intround((float(msg.content["value"]["hue"])*65535.0)/360.0),
+                                        intround((float(msg.content["value"]["saturation"])*65535.0)/100.0),
+                                        intround((float(msg.content["value"]["value"])*65535.0)/100.0),3500], duration=int(msg.content["delay"] or 0)*1000, rapid=True)
+                else:    
+                    self.conn.set_color([intround((float(msg.content["value"]["hue"])*65535.0)/360.0),
+                                        intround((float(msg.content["value"]["saturation"])*65535.0)/100.0),
+                                        intround((float(msg.content["value"]["value"])*65535.0)/100.0),3500], rapid=True)
+                bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+                                "content_type":"event",
+                                "content": {"event":"state change","target":"colour","value":msg.content["value"]}})
+            elif msg.content["command"] == "white":
+                if "delay" in msg.content:
+                    self.conn.set_color([58275,0,
+                                        intround((float(msg.content["value"]["value"])*65365.0)/100.0),
+                                        intround(float(msg.content["value"]["temperature"]))], duration=int(msg.content["delay"] or 0)*1000, rapid=True)
+                else:
+                    self.conn.set_color([58275,0,
+                                        intround((float(msg.content["value"]["value"])*65365.0)/100.0),
+                                        intround(float(msg.content["value"]["temperature"]))], rapid=True)
+                bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+                                "content_type":"event",
+                                "content": {"event":"state change","target":"white","value":msg.content["value"]}})
+            elif msg.content["command"] == "status":
+                current=(self.conn.get_power() and "on" ) or "off"
+                if current:
+                    #Not gone the way of the dodo
+                    colour=self.conn.get_color()
+                  
+                    try:
+                        bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+                                        "content_type":"event",
+                                        "content": {"event":"status","value":{"power":current,
+                                                                            "colour":{"hue": (360.0*colour[0])/65365.0,
+                                                                                        "saturation":(100.0*colour[1])/65365.0,
+                                                                                        "value": (100.0*colour[2])/65365.0},
+                                                                            "white":{ "value": (100.0*colour[2])/65365.0,
+                                                                                    "temperature":colour[3]}}}})
+                    except:
+                        self.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:]) + "." + self.name,
+                                    "content_type": "event",
+                                    "content":{"event":"presence", 
+                                    "value":"offline"}})
+                else:
+                    self.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:]) + "." + self.name,
+                                "content_type": "event",
+                                "content":{"event":"presence", 
+                                "value":"offline"}})
+                                
+            elif msg.content["command"] == "nickname":
+                #print msg
+                self.conn.set_label(msg.content["value"])
+                bridgectl.sending({"subject":"control" + "." + self.name,
+                        "content_type": "request",
+                        "content":{"request":"nickname", 
+                                    "target":"light",
+                                    "token": bridgectl.mysubject,
+                                    "value":{"name":self.name,"nickname": msg.content["value"]}}})
+                
+        except:
+            print "Bloody process problem"
+            traceback.print_exc(file=sys.stdout)
+            #TODO log a messaage
+        
+    return None
+
+#Hop we go....
+bl.light._process=lifx_process
+        
+
+class LifxBridge(bl.BuddyBridge):
+    """
+    This is the bridge application. It will check for the current list  of lifx bulb.
+    It will report any new bulb
+    """
+    def __init__(self, name):
+        super(LifxBridge, self).__init__(name)
+        self.lifx = None
+
+    def configure(self):
+        self.default["heartbeat"] = 60      #Only the element specified here should be saved to config
+        parser = argparse.ArgumentParser(description="Track Lifx light bulbs.")
+        #                            version="%prog " + __version__ + "/" + bl.__version__) 
+        parser.add_argument("-a", "--address", default="autobuddy/light",
+                        help="The AMQP-style address we are listening to (default \"autobuddy/light\"). Format should be <topic>/<subject>")
+        parser.add_argument("-b", "--broker", default="",
+                        help="connect to specified BROKER")
+        parser.add_argument("-c", "--config", default="/etc/autobuddy/lifx.cfg", type=file,
+                        help="Config file to use (default \"/etc/autobuddy/lifx.cfg\")")
+        parser.add_argument("-H", "--heartbeat", type=int, default=self.default,
+                        help="number of seconds to wait for messages. (default "+str(self.default["heartbeat"])+")"),
+        parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+        parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+        parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+        
+        try:
+            opts=parser.parse_args()
+        except Exception as e:
+            parser.error("Error: "+str(e))
+        self.config = {"debug":opts.debug}
+        if opts.debug >= 2:
+            enable("qpid", DEBUG)
+        elif opts.verbose:
+            enable("qpid", WARN)
+
+        lifxcfg=self.config
+        try:
+        #if True:
+            
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+            if opts.broker:
+                lifxcfg["broker"] = opts.broker
+            else:
+                lifxcfg["broker"] = ""
+                if "user" in cfgdata["broker"] and cfgdata["broker"]["user"]:
+                    lifxcfg["broker"] += cfgdata["broker"]["user"]+"/" + cfgdata["broker"]["password"] + "@"
+                lifxcfg["broker"] += cfgdata["broker"]["host"]
+                
+                if "port" in cfgdata["broker"] and cfgdata["broker"]["port"]:
+                    lifxcfg["broker"] += ":"+ str(cfgdata["broker"]["port"])
+
+            if opts.debug:
+                iprint("The broker is",lifxcfg["broker"])   
+            if "address" in cfgdata:
+                lifxcfg["address"] = cfgdata["address"]
+                
+            if opts.debug:
+                iprint("The topic is",self.topic,"and the subject is",self.subject)      
+            else:
+                lifxcfg["address"] = opts.address
+            
+            if "buddykey" in cfgdata:
+                lifxcfg["buddykey"] = cfgdata["buddykey"]
+
+            lifxcfg["heartbeat"] = opts.heartbeat
+            lifxcfg["hb"] ="5"   #initially check every 5 second until we get the DB config
+                        
+            if opts.configonly:
+                import os
+                brokconfig={}
+                if "@" in lifxcfg["broker"]:
+                    brokconfig["user"],brokconfig["password"]=lifxcfg["broker"].split("@")[0].split("/")
+                if ":" in lifxcfg["broker"]:
+                    brokconfig["host"],brokconfig["port"] =  lifxcfg["broker"].split("@")[-1].split(":")
+                else:
+                    brokconfig["host"] =  lifxcfg["broker"].split("@")[-1]
+                newconfig={"broker":brokconfig,"address": lifxcfg["address"]}
+                if "buddykey" in lifxcfg:
+                    newconfig["buddykey"] = lifxcfg["buddykey"]
+                else:
+                    if opts.debug:
+                        iprint("Generating random key")   
+                    lifxcfg["buddykey"] = keygen()
+                    
+                with file(opts.configonly,"w") as cfile:
+                    json.dump(newconfig,cfile)
+                os.chmod(opts.configonly,0600)
+                self.config["configonly"]=True
+            else:
+                self.config["configonly"]=False
+        
+        except Exception as e:
+            iprint("Error:",e)
+            sys.exit(-2)
+
+    def process_response(self,msg):
+        if msg.content["token"] != self.mysubject:
+            print "Token not matching",msg.content["token"],"vs",self.mysubject
+        if self.state == "init" and msg.content["response"] == "configuration" and msg.subject == self.mysubject:
+            #Getting the config
+            newconfig={}
+            savenew=False
+            fromconfig=[]
+            if msg.content["configuration"]:
+                try:
+                    storedconfig=bl.decrypt(msg.content["configuration"],self.config["buddykey"])
+                    if self.config["debug"]:
+                        iprint("The config stored is",storedconfig)
+                except:
+                    storedconfig={}
+                    savenew=True
+                    #TODO log
+                    iprint("Config is mangled")
+                if not isinstance(storedconfig,dict):
+                    savenew=True
+                else:
+                    for x in storedconfig:
+                        newconfig[x]=storedconfig[x]
+                        if x in self.config and (self.config[x] == self.default or self.config[x] == storedconfig[x]):
+                            self.config[x]=storedconfig[x]
+                            fromconfig.append(x)
+            for x in self.default:
+                if self.config[x] == self.default:
+                    self.config[x] = self.default[x]
+                elif x not in fromconfig:
+                    newconfig[x] = self.config[x]
+                    savenew=True
+
+            self.config["database"]= msg.content["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+            self.config["hb"]=self.config["heartbeat"]
+            if savenew or self.config["configonly"]:
+                self.sending({"subject":"control" + "." + self.name,
+                                "content_type": "request",
+                                "content": {"request":"save configuration",
+                                            "target":self.subject,
+                                            "token": self.mysubject,
+                                            "value":bl.encrypt(newconfig,self.config["buddykey"])}})
+                                
+        elif msg.content["response"] == "save configuration" and msg.subject == self.mysubject:
+            if self.state == "active" and  msg.content["status"] != "done":
+                #TODO log
+                iprint("Warning: Configuration was not saved.")
+            elif self.state == "wait config save":
+                if msg.content["status"] == "done":
+                    raise bl.Exit(0,"Configuration was saved")
+                else:
+                    raise bl.Exit(2,"Error: Configuration was not saved")
+
+        elif self.state == "active":
+            if msg.content["response"] == "creation" and msg.content["status"] == "done":
+                sess=bl.getSession(self.config["database"])
+                light=sess.query(bl.light).filter_by(name=msg.subject.split(".")[-1]).one()
+                self.sending({"subject":self.subject + "." + light.name,
+                            "content_type": "event",
+                            "content":{"event":"new device", 
+                            "value":{"type":self.subject,"subtype":SUBTYPE,
+                                     "name":light.name,"nickname":light.nickname}}})
+                bidx=0
+                for b in  self.pending:
+                    if b.name == light.name:
+                        light.conn = b 
+                        light.present=True
+                        self.devices.append(light)
+                        self.pending = self.pending[:bidx] + self.pending[bidx+1:]
+                        self.sending({"subject":self.subject + "." + light.name,
+                                    "content_type": "event",
+                                    "content":{"event":"presence", 
+                                    "value":"online"}})
+                        break
+                    bidx+=1
+                sess.close()
+            elif msg.content["response"] == "nickname" :
+                if msg.content["status"] == "done":
+                    print msg
+                    for light in self.devices:
+                        if light.name==msg.subject.split(".")[-1]:
+                            light.nickname=msg.content["value"] 
+                            self.sending({"subject":self.subject + "." + light.name,
+                                    "content_type": "event",
+                                    "content":{"event":"nickname", 
+                                    "value":light.nickname}})
+                            break
+        else:
+            iprint("Unknown response",msg.subject ,msg.content_type ,msg.content) 
+
+
+                                    
+    def build(self):
+        sess=bl.getSession(self.config["database"])
+        self.sending({"subject":"control" + ".light."+SUBTYPE  ,
+                "content_type": "request",
+                "content":{"request":"functions", 
+                            "target":self.subject,
+                            "subtype": SUBTYPE,
+                            "token": self.mysubject,
+                            "value":{"functions":lifx_functions}}})
+        self.lifx=lifx.LifxLAN()
+        self.pending=self.lifx.get_lights()
+        for b in self.pending:
+            b.name=self.name+"-"+b.get_mac_addr().replace(":","")
+            b.nickname=b.get_label()
+            if b.nickname:
+                b.nickname=b.nickname.strip("\x00")
+        self.devices=sess.query(bl.light).filter_by(subtype=self.name).all()
+        for light in self.devices:
+            light.present=False 
+            bidx=0
+            while bidx < len(self.pending):
+                b = self.pending[bidx]
+                if b.name == light.name:
+                    light.conn=b
+                    light.present=True
+                    self.pending = self.pending[:bidx] + self.pending[bidx+1:]
+                    self.sending({"subject":self.subject + "." + light.name,
+                        "content_type": "event",
+                        "content":{"event":"presence", 
+                                   "value":"online"}})
+                    break
+                bidx+=1
+            if not light.present:
+                self.sending({"subject":self.subject + "." + light.name,
+                    "content_type": "event",
+                    "content":{"event":"presence", 
+                                "value":"offline"}})
+                
+        for b in self.pending:
+            self.sending({"subject":"control" + "." + b.name,
+                      "content_type": "request",
+                      "content":{"request":"creation", 
+                                 "target":self.subject,
+                                 "token": self.mysubject,
+                                 "value":{"name":b.name, "nickname":b.nickname or b.name,"subtype":self.name}}})
+
+    def newbulbs(self):
+        self.lifx=lifx.LifxLAN()
+        self.pending=self.lifx.get_lights()
+        for b in self.pending:
+            b.name=self.name+"-"+b.get_mac_addr().replace(":","")
+            b.nickname=b.get_label()
+            if b.nickname:
+                b.nickname=b.nickname.strip("\x00")
+
+        for light in self.devices:
+            ispresent=False 
+            bidx=0
+            while bidx < len(self.pending):
+                b = self.pending[bidx]
+                if b.name == light.name:
+                    light.conn=b
+                    ispresent=True
+                    self.pending = self.pending[:bidx] + self.pending[bidx+1:]
+                    break
+                bidx+=1
+            if ispresent != light.present:
+                light.present = ispresent
+                self.sending({"subject":self.subject + "." + light.name,
+                      "content_type": "event",
+                      "content":{"event":"presence", 
+                                 "value":ispresent and "online" or "offline"}})
+        for b in self.pending:
+            self.sending({"subject":"control" + "." + b.name,
+                      "content_type": "request",
+                      "content":{"request":"creation", 
+                                 "target":self.subject,
+                                 "token": self.mysubject,
+                                 "value":{"name":b.name, "nickname":b.nickname or b.name,"subtype":self.name}}})
+
+aboutstr="""<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. It makes extensive use 
+of <a href="https://github.com/mclarkk/lifxlan">lifxlan</a> to communicate with the actual device.</p>
+<p>The icon used to represent Lifx devices has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>
+<i class=\"fa fa-flag-o \">These guys rock!</i></p>
+<p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr="""
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
+     <path class="bu-shape" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5 
+                               22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90 
+                               101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79
+                               68-180zM1400 576q0 155-103 268-45 49-74.5 87t-59.5 95.5-34 107.5q47 28 47 82 0 37-25 64 25 27 25 64 0 52-45 
+                               81 13 23 13 47 0 46-31.5 71t-77.5 25q-20 44-60 70t-87 26-87-26-60-70q-46 0-77.5-25t-31.5-71q0-24 13-47-45-29-45-81
+                               0-37 25-64-25-27-25-64 0-54 47-82-4-50-34-107.5t-59.5-95.5-74.5-87q-103-113-103-268 0-99 44.5-184.5t117-142 
+                               164-89 186.5-32.5 186.5 32.5 164 89 117 142 44.5 184.5z"/>
+     <path class="bu-fill" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5 
+                              22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90 
+                              101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79 
+                              68-180z" fill="transparent"/>
+    <path class="bu-not-present" fill="#a94442" 
+           d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
+              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
+              163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
+   </svg>
+"""
+              
+if __name__ == "__main__":
+    bridgectl=LifxBridge(SUBTYPE)
+    bridgectl.configure()
+    bridgectl.connect()
+    bridgectl.configrequest({"about":{"LifxBuddy":aboutstr},"display":{"Lifx":iconstr}})
+    sleep(1)   #Jus t to let the first message go through
+    while True:
+        try:
+            bridgectl.receiving()
+        except  KeyboardInterrupt:
+            iprint("\n","Exiting at user's request")
+            bridgectl.disconnect()
+            sys.exit(0)
+        except bl.Exit as e:
+            iprint(e.msg)
+            try:
+                bridgectl.disconnect()
+            except:
+                pass
+            sys.exit(e.value)
+        except Exception, e:
+            if bridgectl.state == "init":
+                #Ask again
+                bridgectl.configrequest({"about":{"LifxBuddy":aboutstr}})
+            elif bridgectl.state == "active":
+                bridgectl.newbulbs()
+            else:
+                iprint("State is",bridgectl.state,"we waited long enough,. bailing out")
+                try:
+                    bridgectl.disconnect()
+                except:
+                    pass
+                sys.exit(3)
+            
+    

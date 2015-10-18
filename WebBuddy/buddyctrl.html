@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+   <head>
+        <title>AutoBuddy</title>
+        <meta content="text/html; charset=utf-8" http-equiv="content-type">
+        <meta name="description" content="AutoBuddy Web Application" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <meta name="keywords" content="autobuddy, home automation, lifx, nest, flic"/>
+        <!-- <link rel="icon" href="favicon.ico" type="image/x-icon" /> -->
+        <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+        <link rel="stylesheet" type="text/css" href="css/font-awesome.min.css">
+        <link rel="stylesheet" type="text/css" href="css/webbuddy.css" />
+        <link rel="stylesheet" type="text/css" href="css/bootstrap-switch.min.css">
+        <script type="text/javascript" src="js/jquery.js"></script>
+        <script type="text/javascript" src="js/jquery-ui.min.js"></script>
+        <script type="text/javascript" src="js/d3.min.js"></script>
+        <script type="text/javascript" src="js/jclass.js"></script>
+        <script type="text/javascript" src="js/bootstrap.min.js"></script>
+        <script type="text/javascript" src="js/bootbox.min.js"></script>
+        <script type="text/javascript" src="js/Colour.js"></script>
+        <script type="text/javascript" src="js/bootstrap-switch.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="css/bootstrap-slider.min.css">
+        <script type="text/javascript" src="js/bootstrap-slider.min.js"></script>
+        <script type="text/ecmascript" src="js/BuddyWheel.js"></script>
+        <script type="text/ecmascript" src="js/buddy.js"></script>
+
+      <script type="text/javascript">
+         var socket = null;
+         var isopen = false;
+         var tokens = [];
+         window.onload = function() {
+            socket = new WebSocket("<BUDDYWSPROTOCOL/>://<BUDDYWSHOST/>:<BUDDYWSPORT/>");
+            buddy = new BuddyApp("gui",socket);
+            
+         };
+
+         function sendBinary() {
+            if (isopen) {
+                var buf = new ArrayBuffer(32);
+                var arr = new Uint8Array(buf);
+                for (i = 0; i < arr.length; ++i) arr[i] = i;
+                socket.send(buf);
+                console.log("Binary message sent.");
+            } else {
+                console.log("Connection not opened.")
+            }
+         };
+        generateBGClass();
+        $("#ex4").slider({
+            reversed : true
+        });
+      </script>
+   </head>
+   <body>
+   <nav class="navbar navbar-default navbar-static-top">
+        <div class="container-fluid">
+            <div class="navbar-header">
+                <a class="navbar-brand" href="#">
+                        <img src="/images/AutoBuddy-logo.svg" width="50" height="50" style="position: relative; top: -20px;" />
+                </a>
+            </div>
+            <div class="collapse navbar-collapse">
+                <ul  class="nav navbar-nav navbar-left" id="bu-navbar">
+                </ul>
+                <ul class="nav navbar-nav navbar-right">
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Menu <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="#" onclick="logout()"><i class="fa fa-sign-out fa-fw"></i>&nbsp; Logout</a></li>
+                        <li><a href="#" onclick="changePassword()"><i class="fa fa-pencil fa-fw"></i>&nbsp; Change Password</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li><a href="#" onclick="webConfig()"><i class="fa fa-cog fa-fw"></i>&nbsp; Configure</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li><a href="#" onclick="showAbout()" id="bu-about"><i class="fa fa-home fa-fw"></i>&nbsp; About AutoBuddy</a></li>
+                    </ul>
+                </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+       <div class="container-fluid no-gutter" id="top-container">
+       </div> <!-- /container -->
+   </body>
+</html>
+<script type="text/javascript">
+var abouttext ={};
+abouttext["AutoBuddy"]="<p><img src=\"/images/AutoBuddy-logo.svg\" width=\"100\" height=\"100\" style=\"float: left;\"/> AutoBuddy is a home automation system badly designed by Fran&ccedil;ois Wautier. At its core, it mis-uses ";
+abouttext["AutoBuddy"]+="<a href=\"https://qpid.apache.org/\">Apache Qpid</a>. It was conceived after purchasing a bunch of ";
+abouttext["AutoBuddy"]+="<a href=\"http://www.lifx.com\">Lifx light</a> and not liking their software.</p>";
+abouttext["AutoBuddy"]+="<p>Logo designed by Khan Wautier.&copy; 2015 Khan Wautier</p>";
+abouttext["AutoBuddy"]+="<p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>";
+abouttext["WebBuddy"]="<p>WebBuddy is the Web Frontend of AutoBuddy. It was written by Fran&ccedil;ois Wautier and is distributed under the ";
+abouttext["WebBuddy"]+="MIT License</p>";
+abouttext["WebBuddy"]+="<p>This software would not be if it wasn't for the tools other people made available. Amongst them:</p>";
+abouttext["WebBuddy"]+="<ul><li><a href\"\">JQuery</a></li><li><a href\"http://getbootstrap.com/\">Bootstrap</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"http://bootboxjs.com/\">Bootbox.js</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"https://github.com/seiyria/bootstrap-slider\">bootstrap-slider</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"http://www.bootstrap-switch.org/\">Bootstrap-Switch</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"https://fortawesome.github.io/Font-Awesome/\">Font Awesome</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"http://jweir.github.io/colorwheel/\">Colourwheel</a></li>";
+abouttext["WebBuddy"]+="<li>...</li></ul><p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>";
+abouttext["License"]="<p> Copyright (c) 2015 François Wautier</p>"
+abouttext["License"]+="<p></p>"
+abouttext["License"]+="<p> Permission is hereby granted, free of charge, to any person obtaining a copy "
+abouttext["License"]+=" of this software and associated documentation files (the \"Software\"), to deal"
+abouttext["License"]+=" in the Software without restriction, including without limitation the rights"
+abouttext["License"]+=" to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies"
+abouttext["License"]+=" of the Software, and to permit persons to whom the Software is furnished to do so,"
+abouttext["License"]+=" subject to the following conditions:</p>"
+abouttext["License"]+="<p></p>"
+abouttext["License"]+="<p> The above copyright notice and this permission notice shall be included in all copies"
+abouttext["License"]+=" or substantial portions of the Software.</p>"
+abouttext["License"]+="<p></p>"
+abouttext["License"]+="<p> THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR "
+abouttext["License"]+=" IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, "
+abouttext["License"]+=" FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE "
+abouttext["License"]+=" AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,"
+abouttext["License"]+=" WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR "
+abouttext["License"]+=" IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE</p>"
+</script>
+
