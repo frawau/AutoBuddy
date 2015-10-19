@@ -38,8 +38,6 @@
 # Buddy can also persist information for other applications
 
 import argparse, sys, traceback,json
-#TODO delete this
-sys.path.append("/home/fw/development/Home Automation/Buddylib")
 import qpid.messaging as qm
 import buddylib as bl
 from qpid.log import enable, DEBUG, WARN
