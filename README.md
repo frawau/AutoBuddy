@@ -2,7 +2,7 @@
 
 AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.io/AutoBuddy/ for some description and a screenshot.
 
-# Instalation
+# Installation
 
 This is the begining. Installation is not for the faint of heart. I plan to soon have
 an appliance image that will be easy to boot and configue using, for instance, KVM.
@@ -22,7 +22,7 @@ For WebBuddy you also need:
  - jquery.js
  - jquery-ui.min.js
  - d3.min.js  (Should be remove soon)
- - bootstrap.min.js"
+ - bootstrap.min.js
  - bootbox.min.js
  - Colour.js
  - bootstrap-switch.min.js
@@ -31,7 +31,7 @@ For WebBuddy you also need:
  
 and their associated CSS files. You also need Awesome Font.
 
-After this you need to configure all 5 components with the "-C" option
+After this you need to configure all 3 components with the "-C" option
 followed by the config file you want to create. For instance
 
     `./ControlBuddy -C /etc/autobuddy/ControlBuddy.cfg -a "autobuddy/#" \
@@ -49,7 +49,7 @@ The Read/Write database is postgres://me:mypass@localhost/autobuddy
 The read-only database access is postgres://ro-me:passwd@localhost/autobuddy. Note that these credentials
 may be send to all client in case they want to access the DB directly.
 
-The top zone nickname is "Home" and we ask the system to create if (-i)
+The top zone nickname is "Home" and we ask the system to create it (-i)
 
 Once this is done, you can start the ControlBuddy with
 
@@ -61,7 +61,7 @@ Try the "-h" option for help.
 
 At this time, only Google Chrome seems to work fully.
 
-Firefox can not access Secure WebSocket with a signed certificate.
+Firefox can not access Secure WebSocket with a self-signed certificate.
 
 Safari and IE, status unknown, but they cannot display the colour gradient in BuddyWheel
 
