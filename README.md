@@ -11,7 +11,7 @@ an appliance image that will be easy to boot and configue using, for instance, K
 
 You need
  - Apache Qpid configured with SSL
- - Install SQLAlchemy, 
+ - SQLAlchemy, 
  - qpid python library, 
  - Twisted, 
  - Autobahn WS python library
@@ -21,7 +21,7 @@ For WebBuddy you also need:
     
  - jquery.js
  - jquery-ui.min.js
- - d3.min.js  (Should be remove soon)
+ - d3.min.js  (Should be removed soon)
  - bootstrap.min.js
  - bootbox.min.js
  - Colour.js
