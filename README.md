@@ -11,6 +11,7 @@ an appliance image that will be easy to boot and configue using, for instance, K
 
 You need
  - Apache Qpid configured with SSL
+ - Postgres
  - SQLAlchemy, 
  - qpid python library, 
  - Twisted, 
