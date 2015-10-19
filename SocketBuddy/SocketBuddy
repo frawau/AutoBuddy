@@ -23,8 +23,6 @@
 # initialy lifted from Autobahn and twisted matrix
 ###############################################################################
 import sys
-#TODO delete this
-sys.path.append("/home/fw/development/Home Automation/Buddylib")
 from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory, listenWS
 from twisted.internet import protocol,reactor,ssl
 import argparse,warnings,json,random,traceback
