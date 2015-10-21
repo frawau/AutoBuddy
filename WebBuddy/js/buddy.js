@@ -1,17 +1,13 @@
 /*!
  * AutoBuddy JavaScript Library v0.1
- * http://jquery.com/
+ * 
 
  * Copyright 2015 François Wautier
  * Released under the MIT license
  *
  * Date: 2015-08-16
 */
-/* 
-* I do Python
-*/
-var False = false;
-var True = true;
+
 
 var colourSchemes = [["hsl(180,100%,90%)", "hsl(260,30%,40%)"],["hsl(270,100%,90%)", "hsl(350,30%,40%)"],["hsl(0,100%,90%)", "hsl(80,30%,40%)"],["hsl(90,100%,90%)", "hsl(170,30%,40%)"]]
 var nbScheme = colourSchemes.length;
@@ -550,9 +546,9 @@ var BuddyDevice = Class.extend({
                     msg+="<li role=\"presentation\" class=\"bu-commandtab"+active+"\"><a href=\"#"+oname+"-"+cmdname+"\"  data-toggle=\"tab\">"+lbl+"</a></li>";
                     tabmsg+="<div class=\"tab-pane bu-commandpanel"+ active+"\" id=\""+oname+"-"+cmdname+"\">";
                     if ( part.is("controlgroup") ) {
-                        var domodal=False
+                        var domodal=false;
                         if (part.attr("modal") && part.attr("modal") == '1') {
-                            domodal=True;
+                            domodal=true;
                         } 
                         if (part.attr("widget")) {
                            var resu = deviceById[oname].create_widget(part.attr("widget") ,cmdname,"bu-modal-colourpick")
