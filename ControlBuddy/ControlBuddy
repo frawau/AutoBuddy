@@ -643,9 +643,9 @@ class Controller():
                                                         "value" : {"parent":pzone.name}}})
 
                     elif msg.content["request"] == "system state":
-                        print msg
+                        #print msg
                         pzone=self.getZone(msg.content["value"]["zone"] or self.Zone.name)
-                        print "Building for ",pzone,msg.content["value"]["zone"] or self.Zone.name
+                        #print "Building for ",pzone,msg.content["value"]["zone"] or self.Zone.name
                         resu={"name":".","devices":{},"sub_zone":[],"functions":{}}
 
                         for ftype in self.allFunctions:
