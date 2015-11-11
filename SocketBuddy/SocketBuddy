@@ -512,8 +512,8 @@ if __name__ == '__main__':
         
     toamqp = brAMQP("toamqp")
     fromamqp = brAMQP("fromamqp")
-    reactor.spawnProcess(toamqp, mypath+"wsock-echo.py", ["wsock-echo.py","-c",sysctl.config["config"]], {})
     reactor.spawnProcess(fromamqp, mypath+"amqp-echo.py", ["amqp-echo.py","-c",sysctl.config["config"]], {})
+    reactor.spawnProcess(toamqp, mypath+"wsock-echo.py", ["wsock-echo.py","-c",sysctl.config["config"]], {})
     
     if "tls" in sysctl.config and sysctl.config["tls"]:
         contextFactory = ssl.DefaultOpenSSLContextFactory(sysctl.config["tls"]+'/server.key',
