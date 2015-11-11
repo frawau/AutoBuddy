@@ -1,0 +1,339 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
+#
+# This application is used to configure an AutoBuddy appliance
+# 
+# Copyright (c) 2015 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+import subprocess,os,json
+from collections import defaultdict
+from getpass import getpass
+import buddylib as bl
+
+debug=False
+
+def passgen():
+    from random import shuffle,randrange
+    lolet=list("0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ-_*.?")
+    for i in range(5):
+        shuffle(lolet)
+    lolet *= 100
+    for i in range(20):
+        shuffle(lolet)
+    startidx=randrange(len(lolet)-16)
+    return "".join(lolet[startidx:startidx+16])
+
+def keygen():
+    from random import shuffle,randrange
+    lolet=list("0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ`~!@#$%^&*()_+-|\[{]}?/.,<:;")
+    for i in range(5):
+        shuffle(lolet)
+    lolet *= 1000
+    for i in range(20):
+        shuffle(lolet)
+    startidx=randrange(len(lolet)-32)
+    return "".join(lolet[startidx:startidx+32])
+
+
+#This is basically a linear walk-through the needed settings...
+
+#Starting with time zone
+lotz=subprocess.check_output(["timedatectl", "--no-pager","list-timezones"])
+tzlist=defaultdict(list)
+for rawzone in lotz.split("\n"):
+    if not rawzone:
+        continue
+    zone=rawzone.split("/")
+    if len(zone) == 1:
+        tzlist[zone[0]]=None
+    else:
+        tzlist[zone[0]].append("/".join(zone[1:]))
+        
+lotopz=tzlist.keys()
+lotopz.sort()
+os.system('clear')
+gotit=False
+mode="init"
+weredone=False
+while not weredone:
+    if mode=="init":
+        while not gotit:
+            idx=0
+            print "\n\n\nWe will start by updating your time zone."
+            print "\n\nPlease do select the number corresponding to your time zone"
+            for x in lotopz:
+                print "   ",idx,"\t %s"%x
+                idx+=1
+            print
+            choice = raw_input(" Your choice: ")
+            try:
+                choice=int(choice)
+                if choice < 0 or choice >= len(lotopz):
+                    raise Exception
+                gotit=True
+            except:
+                os.system('clear')
+                print "\n\nInput not recognized. Please pay attention."
+                
+    mode="sub"
+    os.system('clear')
+    topzone=lotopz[choice]    
+    if tzlist[topzone]:
+        #Find more
+        sidx=0
+        maxidx=10
+        gotit=False
+        while not gotit:
+            print "\n\n\nPlease do select the number corresponding to your time zone"
+            idx=0
+            while idx< min(maxidx,len(tzlist[topzone])-sidx):
+                print "   ",idx,"\t %s/%s"%(topzone,tzlist[topzone][sidx+idx])
+                idx+=1
+            print 
+            print "\nUse 'b' to go back to the previous screen. 'n' to go to the next one.\n"
+            choice = raw_input(" Your choice: ")
+            try:
+                if choice.strip().lower()=='b':
+                    if sidx == 0:
+                        mode="init"
+                        os.system('clear')
+                        break
+                    else:
+                        sidx-=maxidx
+                        os.system('clear')
+                elif choice.strip().lower()=='n':
+                    if sidx+maxidx < len(tzlist[topzone]):
+                        sidx+=maxidx
+                    os.system('clear')
+                else:
+                    choice=int(choice)
+                    if choice < 0 or choice >= min(maxidx,len(tzlist[topzone])-sidx):
+                        raise Exception
+                    gotit=True
+                    weredone=True
+                    choice=topzone+"/"+tzlist[topzone][choice+sidx]
+            except:
+                os.system('clear')
+                print "Input not recognized. Please pay attention."
+                    
+                    
+if debug:
+    print "We got",choice
+else:
+    lotz=subprocess.check_output(["timedatectl", "set-timezone",choice])    
+
+os.system('clear')
+print "\n\n\n\n Time zone was set to",choice
+choice = raw_input(" Press '<enter>' to continue")
+
+os.system('clear')
+weredone=False
+newpasswd=""
+while not weredone:
+    print "\n\n\n We will now set a new password for the default user 'autobuddy'.\n\n"
+    passwd = getpass(" Password: ")
+    confirm = getpass(" Confirm Password: ")
+    if passwd == confirm :
+        weredone = True
+        newpasswd=passwd
+    else:
+        os.system('clear')
+        print "\n\n The passwords did not match."
+
+if debug:
+    print "New password is",newpasswd
+else:
+    chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    d_out=chpass.communicate(input="autobuddy:%s"%newpasswd)[0]
+    
+    
+os.system('clear')
+print "\n\n\n\n Password was set.\n\n"
+choice = raw_input(" Press '<enter>' to continue")
+
+os.system('clear')
+weredone=False
+newpasswd=""
+while not weredone:
+    print "\n\n\n We will now set a new password for the default QPID user 'admin'.\n This will be used to connect to the exchange.\n\n"
+    passwd = getpass(" Password: ")
+    confirm = getpass(" Confirm Password: ")
+    if passwd == confirm :
+        weredone = True
+        newpasswd=passwd
+        qpidpasswd=newpasswd
+    else:
+        os.system('clear')
+        print "\n\n The passwords did not match."
+
+if debug:
+    print "New password is",newpasswd
+else:
+    chpass=subprocess.Popen(["saslpasswd2","-p","-f","/etc/qpid/qpidd.sasldb","-u","QPID","admin"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    d_out=chpass.communicate(input="%s"%newpasswd)[0]
+    
+    
+os.system('clear')
+print "\n\n\n\n QPID admin password was set.\n\n"
+choice = raw_input(" Press '<enter>' to continue")
+
+os.system('clear')
+weredone=False
+newpasswd=""
+while not weredone:
+    print "\n\n\n We will now set a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n"
+    print " If you leave the password empty, I will generate the password automatically.\n\n"
+    passwd = getpass(" Password: ")
+    if passwd:
+        confirm = getpass(" Confirm Password: ")
+        if passwd == confirm :
+            weredone = True
+            dbpasswd=passwd
+        else:
+            os.system('clear')
+            print "\n\n The passwords did not match."
+    else:
+        dbpasswd=passgen()
+        weredone = True
+    
+    
+os.system('clear')    
+weredone=False
+newpasswd=""
+while not weredone:
+    print "\n\n\n We will now set a password for the \"readbuddy\"  user in PostgreSQL.\n This user has read-only access to the \"autobuddy\" database.\n\n"
+    print " If you leave the password empty, I will generate the password automatically.\n\n"
+    passwd = getpass(" Password: ")
+    if passwd:
+        confirm = getpass(" Confirm Password: ")
+        if passwd == confirm :
+            weredone = True
+            ropasswd=passwd
+        else:
+            os.system('clear')
+            print "\n\n The passwords did not match."
+    else:
+        ropasswd=passgen()
+        weredone = True
+          
+#of=file("/tmp/cmd.sql","w")
+#of.write("ALTER USER autobuddy PASSWORD '%s';\n"%dbpasswd)
+#of.write("ALTER USER readbuddy PASSWORD '%s';\n"%ropasswd)
+newpasswd="ALTER USER autobuddy PASSWORD '%s'; ALTER USER readbuddy PASSWORD '%s';\q\n"%(dbpasswd,ropasswd)
+if debug:
+    print "New passwords are",dbpasswd,"and",ropasswd
+else:
+    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    d_out=chpass.communicate(input=newpasswd)
+    
+os.system('clear')
+print "\n\n\n\n Postgres passwords were set.\n\n"
+choice = raw_input(" Press '<enter>' to continue")
+    
+os.system('clear')
+print "\n\n\n\n Last but not least, I need to know the name of the top zone.\n\n"
+choice = raw_input(" Top Zone Name [Home]: ")
+if not choice:
+    topzone="Home"
+else:
+    topzone=choice
+    
+    
+os.system('clear')
+print "\n\n\n\n Thank you, I will now proceed and finalize the configuration.\n\n"
+choice = raw_input(" Press '<enter>' to continue")
+
+mycfg={}
+mycfg["zone"]=topzone
+mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
+mycfg["dbronly"] = {"user": "autobuddy","password":ropasswd}
+mycfg["broker"] = {"host": "localhost", "password": qpidpasswd, "user": "admin", "port": "5672"}
+mycfg["address"] = "autobuddy/#"
+mycfg["buddykey"] = keygen()
+
+fn="/etc/autobuddy/config.cfg"
+with file(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0600)
+
+mycfg={}
+mycfg["zone"]=topzone
+mycfg["broker"] = {"host": "localhost", "password": qpidpasswd, "user": "admin", "port": "5672"}
+mycfg["address"] = "autobuddy/light"
+mycfg["buddykey"] = keygen()
+
+fn="/etc/autobuddy/lifx.cfg"
+with file(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0600)
+
+mycfg={}
+mycfg["tls"]="/etc/autobuddy/certs"
+mycfg["broker"] = {"host": "localhost", "password": qpidpasswd, "user": "admin", "port": "5672"}
+mycfg["topic"] = "autobuddy"
+mycfg["buddykey"] = keygen()
+mycfg["application"] = "/usr/local/AutoBuddy/WebBuddy/buddyctrl.html"
+mycfg["host"] = "autobuddy.local"
+mycfg["wsport"] = 9000
+mycfg["port"] = 8090
+mycfg["subject"] = ["gui",  "websocket"]
+
+
+fn="/etc/autobuddy/websocket.cfg"
+with file(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0600)
+
+mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
+
+bdb = mycfg["database"]["driver"] + "://"
+if "user" in mycfg["database"] and mycfg["database"]["user"]:
+    bdb += mycfg["database"]["user"] + ":" + mycfg["database"]["password"] + "@"
+bdb += mycfg["database"]["host"]
+
+if "port" in mycfg["database"] and mycfg["database"]["port"]:
+    bdb += ":"+ str(mycfg["database"]["port"])
+bdb += "/" + mycfg["database"]["db"]
+
+#print "Connecting with",bdb
+sess=bl.getSession(bdb)
+bl.initialize(sess)
+nzone=bl.Zone()
+nzone.name="zone-BuddyRoot"
+nzone.nickname=topzone
+sess.add(nzone)
+nprop=bl.BuddyProperty()
+nprop.entity="websocket"
+nprop.name="users"
+nprop.value=bl.encrypt({"admin":["password","admin"]},mycfg["buddykey"])
+sess.add(nprop)
+sess.commit()
+os.unlink("/etc/autobuddy/.configme")
+
+myfile=file("/etc/rc.local","r")
+mydata=myfile.read()
+myfile.close()
+mydata=mydata.replace("<QPIDPASSWD>",qpidpasswd)
+myfile=file("/etc/rc.local","w")
+myfile.write(mydata)
+
+os.system('clear')
+print "\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\"."
+choice = raw_input(" Press '<enter>' to reboot")
+os.system("reboot")
