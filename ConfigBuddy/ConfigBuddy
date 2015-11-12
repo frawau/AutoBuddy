@@ -321,7 +321,7 @@ sess.add(nzone)
 nprop=bl.BuddyProperty()
 nprop.entity="websocket"
 nprop.name="users"
-nprop.value=bl.encrypt({"admin":["password","admin"]},mycfg["buddykey"])
+nprop.values=bl.encrypt({"admin":["password","admin"]},mycfg["buddykey"])
 sess.add(nprop)
 sess.commit()
 os.unlink("/etc/autobuddy/.configme")

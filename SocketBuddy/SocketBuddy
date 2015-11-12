@@ -25,7 +25,7 @@
 import sys
 from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory, listenWS
 from twisted.internet import protocol,reactor,ssl
-import argparse,warnings,json,random,traceback
+import argparse,warnings,json,random,traceback,time
 from twisted.web.resource import Resource
 from buddylib import encrypt, decrypt, genid
 
@@ -514,7 +514,7 @@ if __name__ == '__main__':
     fromamqp = brAMQP("fromamqp")
     reactor.spawnProcess(fromamqp, mypath+"amqp-echo.py", ["amqp-echo.py","-c",sysctl.config["config"]], {})
     reactor.spawnProcess(toamqp, mypath+"wsock-echo.py", ["wsock-echo.py","-c",sysctl.config["config"]], {})
-    
+    time.sleep(3)
     if "tls" in sysctl.config and sysctl.config["tls"]:
         contextFactory = ssl.DefaultOpenSSLContextFactory(sysctl.config["tls"]+'/server.key',
                                                         sysctl.config["tls"]+'/server.crt')
