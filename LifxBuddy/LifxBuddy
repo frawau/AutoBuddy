@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
 # This application is simply a bridge application for Lifx bulbs.
 # 
-# Copyright (c) 2015 François Wautier
+# Copyright (c) 2016 François Wautier
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy 
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,19 +22,22 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse, sys, traceback,json
+import argparse, sys, traceback,json,logging,functools,random,os,ssl
 import buddylib as bl
-import lifxlan as lifx
-import qpid.messaging as qm
-from qpid.log import enable, DEBUG, WARN
-from time import sleep
+import asyncio as aio
+from aiolifx import LifxDiscovery
+from functools import partial
+
 SUBTYPE="Lifx"
+CERTFILE="autobuddy.crt"
 __version__="0.1"
+
+UDP_BROADCAST_PORT = 56700
+LIFX_HEARTBEAT=60
 
 def intround(x):
     return int(round(x))
 
-iprint=bl.iprint  
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 lifx_functions="""
 <buddyui version="0.1">
@@ -79,88 +82,133 @@ lifx_functions="""
 def lifx_process(self,msg):
     if not self.present:
         return None
-    if msg.content_type == "command":
-        try:
-            if msg.content["command"] == "power":
-                current=self.conn.get_power()
-                if (current and msg.content["value"] == "off") or (not current and msg.content["value"] == "on") :
-                    if "delay" in msg.content:
-                        print "Delay",msg.content["delay"]
-                        self.conn.set_power((msg.content["value"]=="on" and 1) or 0,duration=int(msg.content["delay"]),rapid=True)
-                    else:
-                        self.conn.set_power((msg.content["value"]=="on" and 1) or 0,rapid=True)
-                    bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
-                                    "content_type":"event",
-                                    "content": {"event":"state change","target":"power","value":current and "off" or "on"}})
-            elif msg.content["command"] == "colour":
-                if "delay" in msg.content:
-                    self.conn.set_color([intround((float(msg.content["value"]["hue"])*65535.0)/360.0),
-                                        intround((float(msg.content["value"]["saturation"])*65535.0)/100.0),
-                                        intround((float(msg.content["value"]["value"])*65535.0)/100.0),3500], duration=int(msg.content["delay"] or 0)*1000, rapid=True)
-                else:    
-                    self.conn.set_color([intround((float(msg.content["value"]["hue"])*65535.0)/360.0),
-                                        intround((float(msg.content["value"]["saturation"])*65535.0)/100.0),
-                                        intround((float(msg.content["value"]["value"])*65535.0)/100.0),3500], rapid=True)
-                bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+    try:
+        if msg["content_type"] == "command":
+            if msg["content"]["command"] == "power":                
+                mypartial=partial(self.controller.sending,
+                                {"subject":self.controller.subject,
                                 "content_type":"event",
-                                "content": {"event":"state change","target":"colour","value":msg.content["value"]}})
-            elif msg.content["command"] == "white":
-                if "delay" in msg.content:
+                                "content": {"event":"state change",
+                                            "target": self.controller.subject + "." + self.name,
+                                            "subject":"power",
+                                            "value":msg["content"]["value"]}})
+                if "delay" in msg["content"]:
+                    self.conn.set_power((msg["content"]["value"]=="on" and 1) or 0,duration=int(msg["content"]["delay"]),
+                                        callb=lambda x,y: mypartial())
+                else:
+                    self.conn.set_power((msg["content"]["value"]=="on" and 1) or 0,callb=lambda x,y: mypartial())
+                    
+            elif msg["content"]["command"] == "colour":
+                mypartial=partial(self.controller.sending,{"subject":self.controller.subject,
+                                "content_type":"event",
+                                "content": {"event":"state change",
+                                            "target": self.controller.subject + "." + self.name,
+                                            "subject":"colour",
+                                            "value":msg["content"]["value"]}})
+                if "delay" in msg["content"]:
+                    self.conn.set_color([intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
+                                        intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
+                                        intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], 
+                                        duration=int(msg["content"]["delay"] or 0)*1000, callb=lambda x,y: mypartial())
+                else:    
+                    self.conn.set_color([intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
+                                        intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
+                                        intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], callb=lambda x,y: mypartial())
+
+            elif msg["content"]["command"] == "white":
+                mypartial=partial(self.controller.sending,{"subject":"",
+                                "content_type":"event",
+                                "content": {"event":"state change",
+                                            "target": self.controller.subject + "." + self.name,
+                                            "subject":"white",
+                                            "value":msg["content"]["value"]}})
+                if "delay" in msg["content"]:
                     self.conn.set_color([58275,0,
-                                        intround((float(msg.content["value"]["value"])*65365.0)/100.0),
-                                        intround(float(msg.content["value"]["temperature"]))], duration=int(msg.content["delay"] or 0)*1000, rapid=True)
+                                        intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
+                                        intround(float(msg["content"]["value"]["temperature"]))], duration=int(msg["content"]["delay"] or 0)*1000,
+                                        callb=lambda x,y: mypartial())
                 else:
                     self.conn.set_color([58275,0,
-                                        intround((float(msg.content["value"]["value"])*65365.0)/100.0),
-                                        intround(float(msg.content["value"]["temperature"]))], rapid=True)
-                bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
-                                "content_type":"event",
-                                "content": {"event":"state change","target":"white","value":msg.content["value"]}})
-            elif msg.content["command"] == "status":
-                current=(self.conn.get_power() and "on" ) or "off"
+                                        intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
+                                        intround(float(msg["content"]["value"]["temperature"]))], callb=lambda x,y: mypartial())
+                
+            elif msg["content"]["command"] == "status":
+                current=self.conn and ((self.conn.power_level and "on" ) or "off")
                 if current:
                     #Not gone the way of the dodo
-                    colour=self.conn.get_color()
-                  
+                    colour=self.conn.color
+                
                     try:
-                        bridgectl.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:])+"."+self.name,
+                        self.controller.sending({"subject":self.controller.subject,
                                         "content_type":"event",
-                                        "content": {"event":"status","value":{"power":current,
-                                                                            "colour":{"hue": (360.0*colour[0])/65365.0,
-                                                                                        "saturation":(100.0*colour[1])/65365.0,
-                                                                                        "value": (100.0*colour[2])/65365.0},
-                                                                            "white":{ "value": (100.0*colour[2])/65365.0,
-                                                                                    "temperature":colour[3]}}}})
+                                        "content": {"event":"status",
+                                                    "target": self.controller.subject + "." + self.name,
+                                                    "value":{"power":current,
+                                                            "colour":{"hue": (360.0*colour[0])/65365.0,
+                                                                    "saturation":(100.0*colour[1])/65365.0,
+                                                                    "value": (100.0*colour[2])/65365.0},
+                                                            "white":{ "value": (100.0*colour[2])/65365.0,
+                                                                    "temperature":colour[3]}}}})
                     except:
-                        self.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:]) + "." + self.name,
+                        self.sending({"subject":self.controller.subject,
                                     "content_type": "event",
                                     "content":{"event":"presence", 
-                                    "value":"offline"}})
+                                                "target": self.controller.subject + "." + self.name,
+                                                "value":"offline"}})
                 else:
-                    self.sending({"subject":".".join(bridgectl.config["address"].split("/")[1:]) + "." + self.name,
+                    self.sending({"subject":self.controller.subject,
                                 "content_type": "event",
                                 "content":{"event":"presence", 
-                                "value":"offline"}})
+                                        "target": self.controller.subject + "." + self.name,
+                                        "value":"offline"}})
                                 
-            elif msg.content["command"] == "nickname":
+            elif msg["content"]["command"] == "nickname":
                 #print msg
-                self.conn.set_label(msg.content["value"])
-                bridgectl.sending({"subject":"control" + "." + self.name,
+                mypartial=partial(self.controller.sending,{"subject":"control" + "." + self.name,
                         "content_type": "request",
                         "content":{"request":"nickname", 
-                                    "target":"light",
-                                    "token": bridgectl.mysubject,
-                                    "value":{"name":self.name,"nickname": msg.content["value"]}}})
+                                    "target": self.controller.subject+"."+ self.name,
+                                    "token": self.controller.target,
+                                    "value":{"name":self.name,"nickname": msg["content"]["value"]}}})
+                self.conn.set_label(msg["content"]["value"],callb=lambda x,y:mypartial())
                 
-        except:
-            print "Bloody process problem"
-            traceback.print_exc(file=sys.stdout)
-            #TODO log a messaage
+                
+    except:
+        print("Bloody process problem")
+        traceback.print_exc(file=sys.stdout)
+        #TODO log a messaage
         
     return None
 
+
+def lighthb(self,delay=30):
+    try: #Could happen that conn is None... Maybe a race condition with unregister
+        self.conn.get_color(callb=self.sendStatus)
+        self.controller.lifxhb[self.name]=self.controller.loop.call_later(delay, partial(self.lighthb,delay))
+    except:
+        pass
+
+
+def sendStatus(self,lifx=None,resp=None):
+    #Can be used in callback
+    try:
+        colour=self.conn.color
+        self.controller.sending({"subject":self.controller.subject,
+                        "content_type":"event",
+                        "content": {"event":"status",
+                                    "target": self.controller.subject + "." + self.name,
+                                    "value":{"power":self.conn.power_level and "on" or "off",
+                                            "colour":{"hue": (360.0*colour[0])/65365.0,
+                                                    "saturation":(100.0*colour[1])/65365.0,
+                                                    "value": (100.0*colour[2])/65365.0},
+                                            "white":{ "value": (100.0*colour[2])/65365.0,
+                                                    "temperature":colour[3]}}}})
+    except:
+        self.log.warning("Ooops could not send status")
 #Hop we go....
 bl.light._process=lifx_process
+bl.light.sendStatus=sendStatus
+bl.light.lighthb=lighthb
         
 
 class LifxBridge(bl.BuddyBridge):
@@ -168,118 +216,36 @@ class LifxBridge(bl.BuddyBridge):
     This is the bridge application. It will check for the current list  of lifx bulb.
     It will report any new bulb
     """
-    def __init__(self, name):
-        super(LifxBridge, self).__init__(name)
+    def __init__(self, name,loop,future,config,log):
+        super(LifxBridge, self).__init__(name,loop,future,config,log)
         self.lifx = None
-
-    def configure(self):
-        self.default["heartbeat"] = 60      #Only the element specified here should be saved to config
-        parser = argparse.ArgumentParser(description="Track Lifx light bulbs.")
-        #                            version="%prog " + __version__ + "/" + bl.__version__) 
-        parser.add_argument("-a", "--address", default="autobuddy/light",
-                        help="The AMQP-style address we are listening to (default \"autobuddy/light\"). Format should be <topic>/<subject>")
-        parser.add_argument("-b", "--broker", default="",
-                        help="connect to specified BROKER")
-        parser.add_argument("-c", "--config", default="/etc/autobuddy/lifx.cfg", type=file,
-                        help="Config file to use (default \"/etc/autobuddy/lifx.cfg\")")
-        parser.add_argument("-H", "--heartbeat", type=int, default=self.default,
-                        help="number of seconds to wait for messages. (default "+str(self.default["heartbeat"])+")"),
-        parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
-        parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="Log warning messages")
-        parser.add_argument("-C", "--configonly", default="",
-                        help="Exit after the the configuration has been saved")
-        
-        try:
-            opts=parser.parse_args()
-        except Exception as e:
-            parser.error("Error: "+str(e))
-        self.config = {"debug":opts.debug}
-        if opts.debug >= 2:
-            enable("qpid", DEBUG)
-        elif opts.verbose:
-            enable("qpid", WARN)
-
-        lifxcfg=self.config
-        try:
-        #if True:
-            
-            cfgdata = json.load(opts.config)
-            opts.config.close()
-            if opts.broker:
-                lifxcfg["broker"] = opts.broker
-            else:
-                lifxcfg["broker"] = ""
-                if "user" in cfgdata["broker"] and cfgdata["broker"]["user"]:
-                    lifxcfg["broker"] += cfgdata["broker"]["user"]+"/" + cfgdata["broker"]["password"] + "@"
-                lifxcfg["broker"] += cfgdata["broker"]["host"]
-                
-                if "port" in cfgdata["broker"] and cfgdata["broker"]["port"]:
-                    lifxcfg["broker"] += ":"+ str(cfgdata["broker"]["port"])
-
-            if opts.debug:
-                iprint("The broker is",lifxcfg["broker"])   
-            if "address" in cfgdata:
-                lifxcfg["address"] = cfgdata["address"]
-                
-            if opts.debug:
-                iprint("The topic is",self.topic,"and the subject is",self.subject)      
-            else:
-                lifxcfg["address"] = opts.address
-            
-            if "buddykey" in cfgdata:
-                lifxcfg["buddykey"] = cfgdata["buddykey"]
-
-            lifxcfg["heartbeat"] = opts.heartbeat
-            lifxcfg["hb"] ="5"   #initially check every 5 second until we get the DB config
-                        
-            if opts.configonly:
-                import os
-                brokconfig={}
-                if "@" in lifxcfg["broker"]:
-                    brokconfig["user"],brokconfig["password"]=lifxcfg["broker"].split("@")[0].split("/")
-                if ":" in lifxcfg["broker"]:
-                    brokconfig["host"],brokconfig["port"] =  lifxcfg["broker"].split("@")[-1].split(":")
-                else:
-                    brokconfig["host"] =  lifxcfg["broker"].split("@")[-1]
-                newconfig={"broker":brokconfig,"address": lifxcfg["address"]}
-                if "buddykey" in lifxcfg:
-                    newconfig["buddykey"] = lifxcfg["buddykey"]
-                else:
-                    if opts.debug:
-                        iprint("Generating random key")   
-                    lifxcfg["buddykey"] = keygen()
-                    
-                with file(opts.configonly,"w") as cfile:
-                    json.dump(newconfig,cfile)
-                os.chmod(opts.configonly,0600)
-                self.config["configonly"]=True
-            else:
-                self.config["configonly"]=False
-        
-        except Exception as e:
-            iprint("Error:",e)
-            sys.exit(-2)
+        self.probelights = None
+        self.lifxhb={}
 
     def process_response(self,msg):
-        if msg.content["token"] != self.mysubject:
-            print "Token not matching",msg.content["token"],"vs",self.mysubject
-        if self.state == "init" and msg.content["response"] == "configuration" and msg.subject == self.mysubject:
+        if msg["content"]["token"] != self.target:
+            if self.log:
+                self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            else:
+                print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             #Getting the config
             newconfig={}
             savenew=False
             fromconfig=[]
-            if msg.content["configuration"]:
+            if msg["content"]["configuration"]:
                 try:
-                    storedconfig=bl.decrypt(msg.content["configuration"],self.config["buddykey"])
+                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
                     if self.config["debug"]:
-                        iprint("The config stored is",storedconfig)
+                        self.log.debug("The config stored is {}".format(storedconfig))
                 except:
                     storedconfig={}
                     savenew=True
-                    #TODO log
-                    iprint("Config is mangled")
+                    #log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
                 if not isinstance(storedconfig,dict):
                     savenew=True
                 else:
@@ -295,152 +261,170 @@ class LifxBridge(bl.BuddyBridge):
                     newconfig[x] = self.config[x]
                     savenew=True
 
-            self.config["database"]= msg.content["database"]
+            self.config["database"]= msg["content"]["database"]
             if "configonly" in self.config and self.config["configonly"]:
                 self.state = "wait config save"
             else:
                 self.state = "active"
                 self.build()
-            self.config["hb"]=self.config["heartbeat"]
-            if savenew or self.config["configonly"]:
+            if savenew or ("configonly" in self.config and self.config["configonly"]):
                 self.sending({"subject":"control" + "." + self.name,
                                 "content_type": "request",
                                 "content": {"request":"save configuration",
-                                            "target":self.subject,
-                                            "token": self.mysubject,
+                                            "target":self.target,
+                                            "token": self.target,
                                             "value":bl.encrypt(newconfig,self.config["buddykey"])}})
                                 
-        elif msg.content["response"] == "save configuration" and msg.subject == self.mysubject:
-            if self.state == "active" and  msg.content["status"] != "done":
-                #TODO log
-                iprint("Warning: Configuration was not saved.")
+        elif msg["content"]["response"] == "save configuration" and msg.subject == self.target:
+            if self.state == "active" and  msg["content"]["status"] != "done":
+                #log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
             elif self.state == "wait config save":
-                if msg.content["status"] == "done":
+                if msg["content"]["status"] == "done":
                     raise bl.Exit(0,"Configuration was saved")
                 else:
                     raise bl.Exit(2,"Error: Configuration was not saved")
 
         elif self.state == "active":
-            if msg.content["response"] == "creation" and msg.content["status"] == "done":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
                 sess=bl.getSession(self.config["database"])
-                light=sess.query(bl.light).filter_by(name=msg.subject.split(".")[-1]).one()
-                self.sending({"subject":self.subject + "." + light.name,
+                light=sess.query(bl.light).filter_by(name=msg["subject"].split(".")[-1]).one()
+                self.sending({"subject":self.subject,
                             "content_type": "event",
                             "content":{"event":"new device", 
                             "value":{"type":self.subject,"subtype":SUBTYPE,
+                                     "target":self.subject + "." + light.name,
                                      "name":light.name,"nickname":light.nickname}}})
                 bidx=0
+                notseen=True
                 for b in  self.pending:
                     if b.name == light.name:
                         light.conn = b 
                         light.present=True
                         self.devices.append(light)
                         self.pending = self.pending[:bidx] + self.pending[bidx+1:]
-                        self.sending({"subject":self.subject + "." + light.name,
+                        self.sending({"subject":self.subject,
                                     "content_type": "event",
                                     "content":{"event":"presence", 
-                                    "value":"online"}})
+                                               "target":self.subject + "." + light.name,
+                                               "value":"online"}})
+                        notseen=False
                         break
                     bidx+=1
+                if notseen:
+                    self.sending({"subject":self.subject,
+                                "content_type": "event",
+                                "content":{"event":"presence", 
+                                           "target":self.subject + "." + light.name,
+                                           "value":"offline"}})
                 sess.close()
-            elif msg.content["response"] == "nickname" :
-                if msg.content["status"] == "done":
-                    print msg
+            elif msg["content"]["response"] == "nickname" :
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug (msg)
                     for light in self.devices:
                         if light.name==msg.subject.split(".")[-1]:
-                            light.nickname=msg.content["value"] 
-                            self.sending({"subject":self.subject + "." + light.name,
+                            light.nickname=msg["content"]["value"] 
+                            self.sending({"subject":self.subject,
                                     "content_type": "event",
-                                    "content":{"event":"nickname", 
-                                    "value":light.nickname}})
+                                    "content":{"event":"nickname",  
+                                               "target":self.subject + "." + light.name,
+                                               "value":light.nickname}})
                             break
         else:
-            iprint("Unknown response",msg.subject ,msg.content_type ,msg.content) 
+            if self.log:
+                self.log.warning("Unknown response {} {} {}".format(msg.subject ,msg["content_type"] ,msg["content"])) 
+            else:
+                print ("Unknown response {} {} {}".format(msg.subject ,msg["content_type"] ,msg["content"])) 
 
 
                                     
     def build(self):
         sess=bl.getSession(self.config["database"])
-        self.sending({"subject":"control" + ".light."+SUBTYPE  ,
+        self.sending({"subject":"control" + "." + self.target ,
                 "content_type": "request",
                 "content":{"request":"functions", 
-                            "target":self.subject,
+                            "target":self.target,
                             "subtype": SUBTYPE,
-                            "token": self.mysubject,
+                            "token": self.target,
                             "value":{"functions":lifx_functions}}})
-        self.lifx=lifx.LifxLAN()
-        self.pending=self.lifx.get_lights()
-        for b in self.pending:
-            b.name=self.name+"-"+b.get_mac_addr().replace(":","")
-            b.nickname=b.get_label()
-            if b.nickname:
-                b.nickname=b.nickname.strip("\x00")
+
         self.devices=sess.query(bl.light).filter_by(subtype=self.name).all()
         for light in self.devices:
-            light.present=False 
-            bidx=0
-            while bidx < len(self.pending):
-                b = self.pending[bidx]
-                if b.name == light.name:
-                    light.conn=b
-                    light.present=True
-                    self.pending = self.pending[:bidx] + self.pending[bidx+1:]
-                    self.sending({"subject":self.subject + "." + light.name,
-                        "content_type": "event",
-                        "content":{"event":"presence", 
-                                   "value":"online"}})
-                    break
-                bidx+=1
-            if not light.present:
-                self.sending({"subject":self.subject + "." + light.name,
-                    "content_type": "event",
-                    "content":{"event":"presence", 
-                                "value":"offline"}})
+            light.present=False
+            self.sending({"subject":self.subject,
+                "content_type": "event",
+                "content":{"event":"presence", 
+                           "target":self.subject + "." + light.name,
+                            "value":"offline"}})
                 
-        for b in self.pending:
-            self.sending({"subject":"control" + "." + b.name,
-                      "content_type": "request",
-                      "content":{"request":"creation", 
-                                 "target":self.subject,
-                                 "token": self.mysubject,
-                                 "value":{"name":b.name, "nickname":b.nickname or b.name,"subtype":self.name}}})
+        coro = self.loop.create_datagram_endpoint(
+                  partial(LifxDiscovery,self.loop, parent=self,ipv6prefix=self.config["ipv6prefix"]), local_addr=('0.0.0.0', UDP_BROADCAST_PORT))
+        self.probelights = self.loop.create_task(coro)
 
-    def newbulbs(self):
-        self.lifx=lifx.LifxLAN()
-        self.pending=self.lifx.get_lights()
-        for b in self.pending:
-            b.name=self.name+"-"+b.get_mac_addr().replace(":","")
-            b.nickname=b.get_label()
-            if b.nickname:
-                b.nickname=b.nickname.strip("\x00")
-
+    #This is a call back, so we need the right signature
+    def newbulb(self,alight,xx):
+        alight.name=self.name+"-"+alight.mac_addr.replace(":","")
+        alight.nickname=alight.label
+        notseen =  True
         for light in self.devices:
             ispresent=False 
-            bidx=0
-            while bidx < len(self.pending):
-                b = self.pending[bidx]
-                if b.name == light.name:
-                    light.conn=b
-                    ispresent=True
-                    self.pending = self.pending[:bidx] + self.pending[bidx+1:]
-                    break
-                bidx+=1
-            if ispresent != light.present:
-                light.present = ispresent
-                self.sending({"subject":self.subject + "." + light.name,
-                      "content_type": "event",
-                      "content":{"event":"presence", 
-                                 "value":ispresent and "online" or "offline"}})
-        for b in self.pending:
-            self.sending({"subject":"control" + "." + b.name,
+
+            if alight.name == light.name:
+                light.conn=alight
+                light.controller = self
+                ispresent=True
+                if ispresent != light.present:
+                    light.present = ispresent
+                    self.sending({"subject":self.subject,
+                        "content_type": "event",
+                        "content":{"event":"presence", 
+                                   "target":self.subject + "." + light.name,
+                                    "value":ispresent and "online" or "offline"}})
+                notseen=False
+                break
+        if notseen:
+            self.pending.append(alight)
+            self.sending({"subject":"control" + "." + self.subject,
                       "content_type": "request",
                       "content":{"request":"creation", 
-                                 "target":self.subject,
-                                 "token": self.mysubject,
-                                 "value":{"name":b.name, "nickname":b.nickname or b.name,"subtype":self.name}}})
+                                 "target":self.subject, #Here we need the type
+                                 "token": self.target,
+                                 "value":{"name":alight.name, "nickname":alight.nickname or alight.name,"subtype":self.name}}})
+        else:
+            self.lifxhb[self.name]=self.loop.call_later(LIFX_HEARTBEAT+random.randrange(60), partial(light.lighthb,LIFX_HEARTBEAT))
+            
+    def register(self,alight):
+        alight.log=self.log
+        xx=alight.get_color(callb=partial(self.newbulb))
+        
+    def unregister(self,alight):
+        if alight in self.pending:
+            self.pending.remove(alight)
+        else:
+            try:
+                self.lifxhb[alight.name].cancel()
+                print ("HB Canceled fror {}".format(alight.label))
+            except:
+                pass
+            for light in self.devices:
+                try: #HAve to protect, in some rare cases, alight does not have a name attribute yet
+                    if light.name == alight.name:
+                        light.conn = None
+                        light.present = False
+                        self.sending({"subject":self.subject ,
+                                    "content_type": "event",
+                                    "content":{"event":"presence", 
+                                            "target": self.subject + "." + light.name,
+                                            "value":"offline"}})
+                except:
+                    pass
 
-aboutstr="""<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. It makes extensive use 
-of <a href="https://github.com/mclarkk/lifxlan">lifxlan</a> to communicate with the actual device.</p>
+aboutstr="""<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. Parts 
+of <a href="https://github.com/mclarkk/lifxlan">lifxlan</a> is used when communicating with the actual device.</p>
 <p>The icon used to represent Lifx devices has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>
 <i class=\"fa fa-flag-o \">These guys rock!</i></p>
 <p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>
@@ -465,39 +449,175 @@ iconstr="""
               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
    </svg>
 """
-              
-if __name__ == "__main__":
-    bridgectl=LifxBridge(SUBTYPE)
-    bridgectl.configure()
-    bridgectl.connect()
-    bridgectl.configrequest({"about":{"LifxBuddy":aboutstr},"display":{"Lifx":iconstr}})
-    sleep(1)   #Jus t to let the first message go through
-    while True:
-        try:
-            bridgectl.receiving()
-        except  KeyboardInterrupt:
-            iprint("\n","Exiting at user's request")
-            bridgectl.disconnect()
-            sys.exit(0)
-        except bl.Exit as e:
-            iprint(e.msg)
+cfgdefault={"subject":"light.lifx","host":"localhost","port":8745,"credential":"","ssl":""}
+def configure(): 
+    parser = argparse.ArgumentParser(description="Track Lifx light bulbs.")
+    #                            version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-s", "--subject", default=cfgdefault["subject"],
+                    help="The subject we are listening to (default \"%s\")." % cfgdefault["subject"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/lifx.cfg", type=argparse.FileType('r'),
+                    help="Config file to use (default \"/etc/autobuddy/lifx.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-6", "--ipv6prefix", default=False,
+                    help="Connect to Lifx using IPv6 with given /64 prefix (Do not end with colon unless you have less than 64bits).")
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                    help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                    help="The directory where the file %s can be found."%(CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                    help="Exit after the the configuration has been saved")
+    
+    try:
+        opts=parser.parse_args()
+    except Exception as e:
+        parser.error("Error: "+str(e))
+        
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    lightlog = logging.getLogger('')
+    lifxcfg = {"debug":opts.debug}
+    try:
+    #if True:
+        
+        cfgdata = json.load(opts.config)
+        opts.config.close()
+        if opts.subject != cfgdefault["subject"]:
+            lifxcfg["subject"] = opts.subject
+        elif "subject" in cfgdata:
+            lifxcfg["subject"] = cfgdata["subject"]     
+        else:
+            lifxcfg["subject"] = opts.subject
+        if opts.debug:
+            lightlog.debug("The subject is %s." % lifxcfg["subject"]) 
+            
+        if opts.credential != cfgdefault["credential"]:
+            lifxcfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            lifxcfg["credential"] = cfgdata["credential"]
+        else:
+            lifxcfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            lightlog.debug("The credential is %s"%lifxcfg["credential"])       
+            
+        if opts.ipv6prefix:
+            lifxcfg["ipv6prefix"] = opts.ipv6prefix
+        elif "ipv6prefix" in cfgdata:
+            lifxcfg["ipv6prefix"] = cfgdata["ipv6prefix"]
+        else:
+            lifxcfg["ipv6prefix"] = opts.ipv6prefix
+        if opts.debug:
+            lightlog.debug("The IPv6 prefix is %s"%lifxcfg["ipv6prefix"])
+            
+        if opts.port != cfgdefault["port"]:
+            lifxcfg["port"] = opts.port
+        elif "port" in cfgdata:
+            lifxcfg["port"] = cfgdata["port"]
+        else:
+            lifxcfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            lightlog.debug("The port is %s" % (lifxcfg["port"]))
+            
+        if opts.host != cfgdefault["host"]:
+            lifxcfg["host"] = opts.host
+        elif "host" in cfgdata:
+            lifxcfg["host"] = cfgdata["host"]
+        else:
+            lifxcfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            lightlog.debug("The host is %s"%lifxcfg["host"])       
+ 
+        if "buddykey" in cfgdata:
+            lifxcfg["buddykey"] = cfgdata["buddykey"]
+
+        if opts.ssl != cfgdefault["ssl"]:
+            lifxcfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            lifxcfg["ssl"] = cfgdata["ssl"]
+        else:
+            lifxcfg["ssl"] = cfgdefault["ssl"]
+        if lifxcfg["ssl"] and not ( os.path.isfile(lifxcfg["ssl"]+"/"+CERTFILE)):
+            lightlog.critical("Encryption: Could not find {} .".format(
+                lifxcfg["ssl"]+"/"+CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if lifxcfg["ssl"]:
+                lightlog.debug("The ssl certificates can be found in %s"%lifxcfg["ssl"]) 
+            else:
+                lightlog.debug("The connection is not encrypted") 
+                    
+        if opts.configonly:
+
+            if "buddykey" not in lifxcfg:
+                if opts.debug:
+                    lightlog.debug("Generating random key")   
+                lifxcfg["buddykey"] = bl.keygen()
             try:
-                bridgectl.disconnect()
+                del(lifxcfg["debug"])
             except:
                 pass
-            sys.exit(e.value)
-        except Exception, e:
-            if bridgectl.state == "init":
-                #Ask again
-                bridgectl.configrequest({"about":{"LifxBuddy":aboutstr}})
-            elif bridgectl.state == "active":
-                bridgectl.newbulbs()
-            else:
-                iprint("State is",bridgectl.state,"we waited long enough,. bailing out")
-                try:
-                    bridgectl.disconnect()
-                except:
-                    pass
-                sys.exit(3)
+            with file(opts.configonly,"w") as cfile:
+                json.dump(lifxcfg,cfile)
+            os.chmod(opts.configonly,384) # 0600
+            sys.exit()
+        
+    except Exception as e:
+        lightlog.error("Error: %r" % e)
+        sys.exit(-2)
+    
+    return (lightlog,lifxcfg)
+
+         
+if __name__ == "__main__":
+    log,config=configure()
+    print("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+            cafile=config["ssl"]+'/'+CERTFILE)
+        
+        sslcontext.check_hostname = False
+    else:
+        sslcontext=None
+    connFuture=aio.Future()
+    fac=loop.create_connection(functools.partial(LifxBridge,SUBTYPE,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    conn,bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(bridgectl.configrequest,{"about":{"LifxBuddy":aboutstr},"display":{"Lifx":iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        for x in bridgectl.lifxhb.values():
+            x.cancel()
+        bridgectl.probelights.cleanup()
+        conn.close()
+        loop.close()
+
             
     

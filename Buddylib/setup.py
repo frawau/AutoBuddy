@@ -37,7 +37,7 @@ setup(
     packages=["buddylib"],
 
     # Details
-    url="https://github.com/frawau/BuddyWheel",
+    url="https://github.com/frawau/AutoBuddy",
     license = "MIT",
     #
     # license="LICENSE.txt",

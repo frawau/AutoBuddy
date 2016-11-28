@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
 # Copyright (c) 2015 François Wautier
@@ -20,9 +20,8 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
-import optparse, sys, traceback
-import qpid.messaging as qm
-from qpid.log import enable, DEBUG, WARN
+import optparse, sys, traceback,base64
+import asyncio as aio
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, create_engine, and_,ForeignKeyConstraint
 from sqlalchemy.orm import sessionmaker,relationship,backref
@@ -33,18 +32,18 @@ from uuid import uuid4
 import json,functools
 from Crypto.Cipher import  AES
 
-__version__="0.1"
+__version__="0.10"   #Major change. Get rid of AMQP, use asyncio with python >=3.5
 
 def encrypt (val,key):
     x=json.dumps(val)
     codec=AES.new(key)
-    return codec.encrypt(x+(16-len(x)%16)*"\x00").encode("base64")
+    return base64.b64encode(codec.encrypt(x+(16-len(x)%16)*"\x00")).decode()
 
 
 def decrypt(val,key):
-    x=val.decode("base64")
+    x=base64.b64decode(val.encode())
     codec=AES.new(key)
-    x=codec.decrypt(x).strip("\x00")
+    x=codec.decrypt(x).decode().strip("\x00")
     return json.loads(x)
 
 
@@ -71,15 +70,7 @@ def memoize(obj):
             cache[args] = obj(*args, **kwargs)
         return cache[args]
     return memoizer
-
-
-def iprint(*arg):
-    """
-        Just here to make it easy when changing to python 3
-    """
-    for x in arg:
-        print x,
-    print      
+    
 
 #Lifted from manual
 class JSONEncodedDict(TypeDecorator):
@@ -125,17 +116,16 @@ class MutableDict(Mutable, dict):
         self.changed()
         
 
-class AMQPEntity(object):
+class BEntity(object):
     """
-    This object defines a number beaviour common to all
+    This object defines a number of behaviour common to all
     connected devices
     """
 
-    def __init__(self,topic=None,subject=None):
+    def __init__(self,subject=None):
         """
-        Creating a AMQP entity is simply definig its topic and subject
+        Creating a Buddy entity is simply definig its subject
         """
-        self.topic=topic
         self.subject=subject
         super().__init__()
     
@@ -156,7 +146,7 @@ class AMQPEntity(object):
         generic processing
         """
         
-        if self.of_interest(msg.subject):
+        if self.of_interest(msg["subject"]):
             return self._process(msg)
         return None
     
@@ -167,7 +157,6 @@ class AMQPEntity(object):
         """
         Needs to be overloaded. Actual processing
         returns None or a list of dictionary
-        [{"address":"topic/subject.subject","data":<data to be sent>}] or 
         [{"subject":"subject.subject","data":<data to be sent>}]
         """
         raise NotImplementedError()
@@ -175,7 +164,7 @@ class AMQPEntity(object):
 
 Base= declarative_base()
 
-class Zone(Base,AMQPEntity):
+class Zone(Base,BEntity):
     """
     The automation system groups  entity by zone.Commands can be 
     applied to the devices in the zone.
@@ -238,7 +227,7 @@ class BuddyFunction(Base):
     functions = Column(Text)
     
     
-class BuddyDevice(Base,AMQPEntity):
+class BuddyDevice(Base,BEntity):
     """
         Buddy devices have a name, a type, possibly a location and a list of
         functions. The list of fuctions is a dictionary of dictionaries.
@@ -290,8 +279,8 @@ class light(BuddyDevice):
 class mediaplayer(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'av'}
 
-class television(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'tv'}
+class video(BuddyDevice):
+    __mapper_args__ = {'polymorphic_identity': 'video'}
     
 class voice(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'voice'}
@@ -333,92 +322,118 @@ class Exit(Exception):
     """
     def __init__(self, value, msg):
         self.value = value
-        self.msg=msg
+        self.msg = msg
 
-class BuddyBridge(object):
+
+class BuddyBridge(aio.Protocol):
     """
     This is a bridge application. It will check for the current list  of devices.
     It will report any new device
     """
-    def __init__(self,name):
-        self.name = name
-        self.Receiver = None
-        self.config = {"debug": False}
+    def __init__(self,name,loop,future,config,log):
+        super().__init__()
+        self.name = name     # Should be subtype, config["subject"] contains the type
+        self.config = config
         self.devices = []    # list of device known to the controller
         self.state = "init"
         self.pending = []     # list of emtities not know by the controller yet
         self.default = {}     # dictionary of command line option that should be persisted with their default value
+        self.future=future
+        self.loop=loop
+        self.log=log
+        self.partialdata=""
 
     def configure(self):
         """
         This function MUST set at leat 3 key in the self.config dictionary
-            broker    The messaging server to connect to
-                      For mat should be <usnername>/<password>@<host>:<port>
-            address   The topic and subject we are listening to
-                      format is <topic>/<subject>
+            server    The messaging server to connect to
+                      Format should be <credentials>@<host>:<port>
+            subject   The topic and subject we are listening to
         """
         raise NotImplementedError()
+    
 
+    def connection_made(self,transport):
+        self.transport=transport
+        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.subject},"content_type":"authenticate"})
         
-    def connect(self):
-        self.Connection = qm.Connection(url=str(self.config["broker"]),
-                  protocol='ssl')
-        self.Connection.open()
-        self.Session = self.Connection.session()
-        self.Receiver = self.Session.receiver(self.config["address"]+".#", capacity=10)
-        #self.Sender = self.Session.sender(self.config["address"])
+    def data_received(self,data):
+        if data:
+            #All messages are dictionaries... so we can parse the JSON to seperate multiple objects
+            mydata=self.partialdata+data.decode()
+            self.partialdata=""
+            lvl=0
+            pdata=""
+            for x in mydata:
+                if x == "{":
+                    lvl+=1
+                elif x == "}":
+                    lvl-=1
+                pdata+=x
+                if lvl==0:
+                    msg=json.loads(pdata)
+                    self.MsgProcess(msg)
+                    pdata=""
+                    
+            if pdata:
+                if self.log:
+                    self.log.warning ("Partially received")
+                self.partialdata=pdata
+    
+    def connection_lost(self,error):
+        if self.log:
+            self.log.debug ("Connection to server lost")
+        self.transport.close()
+        if not self.future.done():
+            self.future.set_result(True)
+        super().connection_lost(error)
+        
     
     def disconnect(self):
-        self.Connection.close()
+        self.transport.close()
+        if not self.f.done():
+            self.f.set_result(True)
     
     def configrequest(self,value=None):
         if value:
-            self.sending({"subject":"control"+"."+self.name,
+            self.sending({"subject":"control"+"."+self.subject,
                         "content_type": "request",
                         "content":{"request":"configuration",
-                                    "token": self.mysubject,
-                                    "target":self.subject,
-                                    "value":value}})
+                                    "token": self.target,
+                                    "target":self.target,
+                                    "value":value,
+                                    "credential":self.config["credential"]}})
         else:
-            self.sending({"subject":"control"+"."+self.name,
+            self.sending({"subject":"control"+"."+self.subject,
                         "content_type": "request",
                         "content":{"request":"configuration",
-                                    "token": self.mysubject,
-                                    "target":self.subject}})
+                                    "token": self.target,
+                                    "target":self.target,
+                                    "credential":self.config["credential"]}})
         
-    def receiving(self):
-        try:
-            while True:
-                msg = self.Receiver.fetch(0)
-                if msg:
-                    msg.content=json.loads(msg.content)
-                    self.MsgProcess(msg)
-        except:
-            self.Session.acknowledge()
-            msg = self.Receiver.fetch(self.config["hb"])
-            if msg:
-                msg.content=json.loads(msg.content)
-                self.MsgProcess(msg)
             
     def MsgProcess(self,msg):
         try:
-            if self.config["debug"]:
-                iprint("Got",msg.subject ,msg.content_type ,msg.content)
-            if msg.content_type == "command":
-                for aconn in self.devices:
-                    aconn.process(msg)
-            elif msg.content_type == "response" and msg.content["token"] == self.mysubject :
+            if self.log:
+                self.log.debug("Got %r" % msg)
+            if msg["content_type"] == "command":
+                self.process_command(msg)
+            elif msg["content_type"] == "response": # and msg["content"]["token"] == self.target :
                 self.process_response(msg)
-            elif msg.content_type == "event":
+            elif msg["content_type"] == "event":
                 self.process_event(msg)
             else:
-                iprint("other",msg.subject ,msg.content_type ,msg.content) 
+                if self.log:
+                    self.log.debug("other %r"%msg) 
             
         except Exit as e:
             raise e
         except:
-            print "Fucking msg problem"
-            traceback.print_exc(file=sys.stdout)
+            if self.log:
+                self.log.warning("Message problem for {}:\n{}".format(msg,exc_info=(traceback)))
+            else:
+                print("Warning: Message problem for {}:\n{}".format(msg,exc_info=(traceback)))
+
             
     def process_command(self,msg):
         """
@@ -435,44 +450,46 @@ class BuddyBridge(object):
         """
         By default just do nothing
         """
-        if self.config["debug"]:
-            iprint("event",msg.content["value"])
+        if self.log:
+            self.log.debug("event {}".format(msg["content"]["value"]))
     
     def sending(self,msg):
-        if self.config["debug"]:
-            iprint("Sending",msg["subject"],msg["content_type"])
-            #iprint("Sending",msg["subject"],msg["content_type"],msg["content"])
-        qmsg = qm.Message(subject=msg["subject"],
-                            content_type=msg["content_type"],
-                            content=json.dumps(msg["content"]))
-        snd = self.Session.sender(self.config["address"].split("/")[0]+"/"+msg["subject"]) 
-        snd.send(qmsg,sync=False) 
-        snd.close() 
-        #self.Sender.send(qmsg,sync=False)
+        if self.log:
+            self.log.debug("Sending {}".format(msg["subject"]))
+        jmsg = json.dumps(msg)
+        self.transport.write(jmsg.encode())
+
  
     def build(self):
         raise NotImplementedError()
                 
-    def _topic(self):
-        return self.config["address"].split("/")[0]
-    
-    def _subject(self):
-        return self.config["address"].split("/")[1] 
 
-    def _mysubject(self):
+    def _subject(self):
+        return self.config["subject"]
+
+    def _target(self):
         #When destined to me
         return self.subject + "." + self.name
     
+    # Manage devices 
     
-    topic=property(_topic)
+    def register(self,dev):
+        self.devices.append(dev)
+        
+    def unregister(self,dev):
+        try:
+            self.devices.remove(dev)
+        except:
+            pass
+        
     subject=property(_subject)
-    mysubject=property(_mysubject)
+    target=property(_target)
 
 
 
 def getSession(db):
     """
-    db = postgresql://autobuddy:76Bon19@lima.fwconsult.com/autobuddy')
+    db = postgresql://autobuddy:76Bon19@lima.fwconsult.com/autobuddy'
     """
     engine = create_engine(db)
     mysess=sessionmaker(bind=engine)()

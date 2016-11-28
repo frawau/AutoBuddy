@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # 
 # Copyright (c) 2015 François Wautier
@@ -27,7 +27,7 @@
 # One could define different user/access right to enforce this.
 #
 # This application need only to know:
-#                - The broker for ampq messaging
+#                - The host address and port to serve on
 #                - The DB url with credential
 #                - The read only db credential for requesting clients
 #
@@ -38,16 +38,16 @@
 # Buddy can also persist information for other applications
 
 import argparse, sys, traceback,json
-import qpid.messaging as qm
+import asyncio as aio
 import buddylib as bl
-from qpid.log import enable, DEBUG, WARN
+import logging, functools, os, ssl
 from collections import defaultdict
 from time import sleep
 
-__version__="0.1"
 
-iprint=bl.iprint
-
+__version__="0.10"
+KEYFILE="autobuddy.key"
+CERTFILE="autobuddy.crt"
 
 def zone_of_interest(self,subject):
     #TODO  change to a regex... Now light.Home and light.Home Theatre  would both match on Home zone
@@ -58,22 +58,86 @@ def zone_of_interest(self,subject):
     
         
 def zone_process(self,msg):
-    if msg.content_type == "command":
+    if msg["content_type"]== "command":
+        ct=msg["content"]["target"] 
         for device in self.devices:
-            if msg.content["target"] == "zone" or msg.content["target"] == device.type:
+            if ct == "zone" or ct == device.type:
+                msg["content"]["target"] = device.type + "." + device.name
                 myc.sending({"subject":device.type + "." + device.name,
-                           "content_type":msg.content_type,
-                           "content": msg.content})
-        try:
-            if msg.content["propagate"]:
-                for szone in self.sub_zone:
-                    szone._process(msg) #Direcet into _process insteat of process because we need to avoind of_interest. Sub-zone won't match
-        except: pass 
+                           "content_type":msg["content_type"],
+                           "content": msg["content"]})
+        #try:
+        #restore oriinal target for further processing
+        msg["content"]["target"] = ct
+        if "propagate" in msg["content"] and msg["content"]["propagate"]:
+            for szone in self.sub_zone:
+                szone._process(msg) #Direcet into _process insteat of process because we need to avoind of_interest. Sub-zone won't match
+        #except: pass 
     return None
 
 #Hop we go....
 bl.Zone._process=zone_process
 bl.Zone.of_interest=zone_of_interest
+
+class BuddyPartner(aio.Protocol):
+    """ A persistent client"""
+    def __init__(self,controller,log):
+        self.controller=controller
+        self.log=log
+        super().__init__()
+        
+        
+    def connection_made(self,transport):
+        self.transport = transport
+        self.addr = transport .get_extra_info('peername')
+        self.ptask = None
+        self.state = "Init"
+        self.filter="*"
+        
+    def data_received(self,data):
+        if len(data) != 0 :
+            #All messages are dictionaries... so we can parse the JSON to seperate multiple objects
+            mydata=data.decode()
+            lvl=0
+            pdata=""
+            for x in mydata:
+                if x == "{":
+                    lvl+=1
+                elif x == "}":
+                    lvl-=1
+                pdata+=x
+                if lvl==0:
+                    msg=json.loads(pdata)
+                    if self.log:
+                        self.log.debug("Received: %r" % msg)
+                    if self.state == "Init":
+                        if msg["content_type"] == "authenticate" and msg["content"]["credential"] == self.controller.config["credential"]:
+                            try:
+                                self.filter=msg["content"]["subject"].split(".")
+                                self.controller.loclients.append(self)
+                                self.state="Active"
+                            except:
+                                pass
+                    elif self.state == "Active":
+                        self.controller.broadcast(msg,[self.addr])
+                    pdata=""
+            if pdata:
+                self.log.warning ("Partially received")
+                
+                
+    def dosend(self,msg):
+        for x, y in zip(self.filter,msg["subject"].split(".")):
+            if x != "*" and not y.startswith(x):
+                return
+        self.transport.write(json.dumps(msg).encode())
+                
+        
+
+    def connection_lost(self, error):
+        self.state="Closed"
+        super().connection_lost(error)
+
+
 
 class Controller():
     """
@@ -81,22 +145,24 @@ class Controller():
     """
     def __init__(self):
         self.name=None
-        self.Sender=None
-        self.Receiver=None
         self.config={}
         self.pendingauth={}
-        self.about={};
-        self.display={};
+        self.about={}
+        self.display={}
+        self.log=None
+        self.loclients = []
 
 
     def configure(self):
-        self.default={"address":"autobuddy/#"}
+        self.default={"subject":"#","host":"","port":8745,"credential":"","ssl":""}
         parser = argparse.ArgumentParser(description="Track the overall Buddy Home Automation ecosystem.")
         #                            version="%prog " + __version__ + "/" + bl.__version__) 
-        parser.add_argument("-a", "--address", default=self.default,
-                        help="The AMQP-style address we are listening to (default \"%s\"). Format should be <topic>/<subject>"%self.default["address"])
-        parser.add_argument("-b", "--broker", default="",
-                        help="connect to specified BROKER")
+        parser.add_argument("-s", "--subject", default=self.default["subject"],
+                        help="The subject we are listening to (default \"%s\")." % self.default["subject"])
+        parser.add_argument("-a", "--host", default=self.default["host"],
+                        help="The host address used by the server (default \"%s\")." % self.default["host"])
+        parser.add_argument("-p", "--port", type=int, default=self.default["port"],
+                        help="The port used by the server (default \"%s\")." % self.default["port"])
         parser.add_argument("-c", "--config", default="/etc/autobuddy/config.cfg",
                         help="Config file to use (default \"/etc/autobuddy/config.cfg\")")
         parser.add_argument("-C", "--configonly",
@@ -111,51 +177,59 @@ class Controller():
                         help="create the Zone if it does not exist.")
         parser.add_argument("-r", "--dbronly", default="",
                         help="credentials for readonly access to DB")
+        parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the files %s and %s can be found."%(KEYFILE,CERTFILE))
         parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
+        parser.add_argument("-V", "--credential", default=self.default['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % self.default["credential"])
         parser.add_argument("-z", "--zone", default="",
                         help="The zone we want to control")
         try:
             opts=parser.parse_args()
         except Exception as e:
-            iprint("Error: ",e)
+            print("Error: ",e)
             parser.print_help()
             sys.exit(-2)
 
-        if opts.debug:
-            enable("qpid", DEBUG)
-        elif opts.verbose:
-            enable("qpid", WARN)
-            
         buddycfg = {}
+        if opts.debug:
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format='%(levelname)7s: %(message)s',
+                stream=sys.stderr,
+               )
+            self.log = logging.getLogger('')
+        elif opts.verbose:
+            logging.basicConfig(
+                level=logging.WARNING,
+                format='%(levelname)7s: %(message)s',
+                stream=sys.stderr,
+               )
+            self.log = logging.getLogger('')
+        elif opts.verbose:
+            logging.basicConfig(
+                level=logging.CRITICAL,
+                format='%(levelname)7s: %(message)s',
+                stream=sys.stderr,
+               )
+            self.log = logging.getLogger('')
+            
+        buddycfg = {"debug":self.log}
         
-        try:
-        #if True:
+        #try:
+        if True:
             try:
-                with file(opts.config,"r") as cfile:
+                with open(opts.config,"r") as cfile:
                     cfgdata = json.load(cfile)
                 self.config["config"] = opts.config
             except:
                 if opts.configonly:
-                    iprint ("Warning: configuration file %s does not exist or contains garbage."%opts.config)
+                    print ("Warning: configuration file %s does not exist or contains garbage."%opts.config)
                     cfgdata={}
                 else:
-                    file(opts.config,"r")
+                    open(opts.config,"r")
             
-            if opts.broker:
-                buddycfg["broker"] = opts.broker
-            else:
-                buddycfg["broker"] = ""
-                if "user" in cfgdata["broker"] and cfgdata["broker"]["user"]:
-                    buddycfg["broker"] += cfgdata["broker"]["user"]+"/" + cfgdata["broker"]["password"] + "@"
-                buddycfg["broker"] += cfgdata["broker"]["host"]
-                
-                if "port" in cfgdata["broker"] and cfgdata["broker"]["port"]:
-                    buddycfg["broker"] += ":"+ str(cfgdata["broker"]["port"])
-
-            if opts.debug:
-                iprint("The broker is",buddycfg["broker"])
-                    
             if opts.database:
                 buddycfg["database"] = opts.database
             else:
@@ -170,7 +244,7 @@ class Controller():
                 
                 
             if opts.debug:
-                iprint("The database is",buddycfg["database"])     
+                self.log.debug("The database is %r" %buddycfg["database"])     
                     
             if opts.dbronly:
                 buddycfg["dbronly"] = opts.dbronly
@@ -186,23 +260,69 @@ class Controller():
                 
                 
             if opts.debug:
-                iprint("The dbronly is",buddycfg["dbronly"])      
+                self.log.debug("The dbronly is %r" %buddycfg["dbronly"])      
             
             if "buddykey" in cfgdata:
                 buddycfg["buddykey"] = cfgdata["buddykey"]
                 
             buddycfg["hb"] = opts.heartbeat
             if opts.debug:
-                iprint("The heartbeat interval is",buddycfg["hb"]) 
-              
-            if opts.address != self.default:
-                buddycfg["address"] = opts.address
-            elif "address" in cfgdata:
-                buddycfg["address"] = cfgdata["address"]
+                self.log.debug("The heartbeat interval is %r" %buddycfg["hb"]) 
+                
+            if opts.subject != self.default["subject"]:
+                buddycfg["subject"] = opts.subject
+            elif "subject" in cfgdata:
+                buddycfg["subject"] = cfgdata["subject"]
             else:
-                buddycfg["address"] = self.default["address"]
+                buddycfg["subject"] = self.default["subject"]
             if opts.debug:
-                iprint("The topic is",buddycfg["address"].split("/")[0],"and the subject is",buddycfg["address"].split("/")[-1])      
+                self.log.debug("The subject is %s"%buddycfg["subject"]) 
+                
+            if opts.credential != self.default["credential"]:
+                buddycfg["credential"] = opts.credential
+            elif "credential" in cfgdata:
+                buddycfg["credential"] = cfgdata["credential"]
+            else:
+                buddycfg["credential"] = self.default["credential"]
+            if opts.debug:
+                self.log.debug("The credential is %s"%buddycfg["credential"])       
+                
+            if opts.port != self.default["port"]:
+                buddycfg["port"] = opts.port
+            elif "port" in cfgdata:
+                buddycfg["port"] = cfgdata["port"]
+            else:
+                buddycfg["port"] = self.default["port"]
+            if opts.debug:
+                self.log.debug("The port is %s" % (buddycfg["port"]))
+                
+            if opts.host != self.default["host"]:
+                buddycfg["host"] = opts.host
+            elif "host" in cfgdata:
+                buddycfg["host"] = cfgdata["host"]
+            else:
+                buddycfg["host"] = self.default["host"]
+            if opts.debug:
+                self.log.debug("The host is %s"%buddycfg["host"])
+                
+            if opts.ssl != self.default["ssl"]:
+                buddycfg["ssl"] = opts.ssl
+            elif "ssl" in cfgdata:
+                buddycfg["ssl"] = cfgdata["ssl"]
+            else:
+                buddycfg["ssl"] = self.default["ssl"]
+
+            if buddycfg["ssl"] and not ( os.path.isfile(buddycfg["ssl"]+"/"+KEYFILE) and 
+                     os.path.isfile(buddycfg["ssl"]+"/"+CERTFILE)):
+                self.log.critical("Encryption disabled: Could not find {} or/nor {}".format(
+                    buddycfg["ssl"]+"/"+KEYFILE, 
+                    buddycfg["ssl"]+"/"+CERTFILE))
+                sys.exit()
+            if opts.debug:
+                if buddycfg["ssl"]:
+                    self.log.debug("The ssl key and certificates can be found in %s"%buddycfg["ssl"]) 
+                else:
+                    self.log.debug("The connection is not encrypted")       
  
             if opts.zone:
                 buddycfg["zone"] = opts.zone
@@ -211,18 +331,10 @@ class Controller():
             buddycfg["create zone"] = opts.initial
                 
             if opts.debug:
-                iprint("The zone is",buddycfg["zone"]) 
+                self.log.debug("The zone is %r" %buddycfg["zone"]) 
                 
             if opts.configonly:
-                import os
-                brokconfig={}
-                if "@" in buddycfg["broker"]:
-                    brokconfig["user"],brokconfig["password"]=buddycfg["broker"].split("@")[0].split("/")
-                if ":" in buddycfg["broker"]:
-                    brokconfig["host"],brokconfig["port"] =  buddycfg["broker"].split("@")[-1].split(":")
-                else:
-                    brokconfig["host"] =  buddycfg["broker"].split("@")[-1]
-                newconfig={"broker":brokconfig,"address": buddycfg["address"]}
+                newconfig={"port": buddycfg["port"],"host": buddycfg["host"],"subject": buddycfg["subject"]}
                 
                 if buddycfg["dbronly"]:
                     userpass = buddycfg["dbronly"].split("://")[-1]
@@ -249,23 +361,31 @@ class Controller():
                     newconfig["buddykey"] = buddycfg["buddykey"]
                 else:
                     if opts.debug:
-                        iprint("Generating random key")   
+                        self.log.debug("Generating random key")   
                     newconfig["buddykey"] = bl.keygen()
+                if "credential" in buddycfg:
+                    newconfig["credential"] = buddycfg["credential"]
+                else:
+                    if opts.debug:
+                        self.log.debug("Generating random key")   
+                    newconfig["credential"] = bl.keygen()
+                    
                 with file(opts.configonly,"w") as cfile:
                     json.dump(newconfig,cfile)
-                os.chmod(opts.configonly,0600)
-                iprint("The configuration has been saved")
+                os.chmod(opts.configonly,384)
+                print("The configuration has been saved")
                 try:
                     sess=bl.getSession(buddycfg["database"])
                     bl.initialize(sess)
                 except:
-                    iprint("Database could not be created")
+                    print("Database could not be created")
                 sys.exit(0)
 
-        except Exception as e:
-            iprint("Error:",e)
-            sys.exit(-2)
-        buddycfg["debug"]=opts.debug
+        #except Exception as e:
+            #print("Error:",e)
+            #sys.exit(-2)
+       
+        buddycfg["debug"]=self.log
         self.config = buddycfg
 
 
@@ -285,10 +405,10 @@ class Controller():
                     sess.commit()
                     self.Zone=nzone
                 except:
-                    iprint("Error: Cannot initial zone",self.config["zone"]," Is it already defined?")
+                    self.log.debug("Error: Cannot initial zone",self.config["zone"]," Is it already defined?")
                     sys.exit(-3)
             else:
-                iprint("Error: Cannot unambiguously find zone",self.config["zone"])
+                self.log.debug("Error: Cannot unambiguously find zone",self.config["zone"])
                 sys.exit(-3)
             
         self.allZones = self.Zone.allNames()
@@ -298,35 +418,38 @@ class Controller():
             self.allFunctions[x.type][x.subtype]=x.functions
         #sess.close()
         
-        
     def connect(self):
-        self.Connection = qm.Connection(url=str(self.config["broker"]),
-                  protocol='ssl')
-        self.Connection.open()
-        self.Session = self.Connection.session()
-        self.Receiver = self.Session.receiver(self.config["address"])
-        #self.ControlReceiver = self.Session.receiver(self.config["address"])
-        #self.Sender = self.Session.sender(self.config["address"])
+        self.loop = aio.get_event_loop()
+        if self.config["debug"]:
+            self.loop.set_debug(True)
+        if self.config["ssl"]:
+            #try:
+            sslcontext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            sslcontext.load_cert_chain(self.config["ssl"]+'/'+CERTFILE, self.config["ssl"]+'/'+KEYFILE)
+            #except:
+                #self.log.warning("SSL keys and certificates could not be found")
+                #sslcontext=None
+        else:
+            sslcontext=None
+        roserver = self.loop.create_server(functools.partial(BuddyPartner,self,self.log), self.config["host"], self.config["port"],ssl=sslcontext)
+        server = self.loop.run_until_complete(roserver)
+        cleantask = self.loop.create_task(self.cleanup())
+        return self.loop,server,cleantask
 
-    def disconnect(self):
-        self.Connection.close()
-
-    def receiving(self):
-        try:
-            while True:
-                msg = self.Receiver.fetch(0)
-                if msg:
-                    msg.content=json.loads(msg.content)
-                    self.MsgProcess(msg)
-        except:
-            self.Session.acknowledge()
-            msg = self.Receiver.fetch(self.config["hb"])
-            if msg:
-                msg.content=json.loads(msg.content)
-                self.MsgProcess(msg)
+        
+        
+    async def cleanup(self):
+        while True:
+            idx=len(self.loclients)
+            while idx:
+                idx-=1
+                if self.loclients[idx].state == "Closed":
+                    xx=self.loclients.pop(idx)
+                    del(xx)
+            await aio.sleep(60)
             
     def MsgProcess(self,msg):
-        if msg.content_type == "command" and msg.subject.split(".")[0] == "zone":
+        if msg["content_type"]== "command" and msg["subject"].split(".")[0] == "zone":
             #Just echo the command
             loz=[self.Zone]
             nloz=[]
@@ -336,107 +459,110 @@ class Controller():
                     nloz += sz.sub_zone
                 loz=nloz
                 nloz=[]
-        elif msg.subject.split(".")[0] == "control":
-            #print msg
+        elif msg["subject"].split(".")[0] == "control":
             try:
-                if msg.content_type == "request":
+                if msg["content_type"]== "request":
                     sess=self.DBSession
-                    if msg.content["request"] == "configuration":
+                    if msg["content"]["request"] == "configuration":
                         try:
                             myconfig = sess.query(bl.BuddyProperty)
                             myconfig = myconfig.filter_by(name="configuration")
-                            myconfig = myconfig.filter_by(entity=msg.subject.split(".")[1]).one()
+                            if len(msg["content"]["target"].split(".")) > 1:
+                                myconfig = myconfig.filter_by(entity=msg["content"]["target"].split(".")[1]).one()
+                            else:
+                                myconfig = myconfig.filter_by(entity=msg["content"]["target"]).one()
                             cfgdata = myconfig.values
                         except:
                             cfgdata = ""
-                        self.sending({"subject":msg.content["target"]+"."+msg.subject.split(".")[1],
+                        self.sending({"subject":msg["content"]["target"],#+"."+msg["subject"].split(".")[1],
                                     "content_type":"response",
                                     "content": {"response":"configuration",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "database":self.config["database"],
                                                 "status": "done",
                                                 "configuration":cfgdata}})
                         #See what's in it form me
-                        if "value" in msg.content:
+                        if "value" in msg["content"]:
                             msgval={}
-                            if "about" in msg.content["value"]:
-                                self.about.update(msg.content["value"]["about"])
-                                msgval["about"]=msg.content["value"]["about"]
-                            if "display" in msg.content["value"]:
-                                self.display.update(msg.content["value"]["display"])
-                                msgval["display"]=msg.content["value"]["display"]
+                            #TODO generalize this
+                            if "about" in msg["content"]["value"]:
+                                self.about.update(msg["content"]["value"]["about"])
+                                msgval["about"]=msg["content"]["value"]["about"]
+                            if "display" in msg["content"]["value"]:
+                                self.display.update(msg["content"]["value"]["display"])
+                                msgval["display"]=msg["content"]["value"]["display"]
                             if msgval:
-                                 self.sending({"subject":msg.content["target"]+"."+msg.subject.split(".")[1],
+                                 self.sending({"subject":msg["content"]["target"],#+"."+msg["subject"].split(".")[1],
                                     "content_type":"event",
                                     "content": {"response":"gui info",
                                                 "value":msgval}})
                                     
-                    elif msg.content["request"] == "save configuration":
+                    elif msg["content"]["request"] == "save configuration":
                         try:
                             myconfig = sess.query(bl.BuddyProperty)
                             myconfig = myconfig.filter_by(name="configuration")
-                            myconfig = myconfig.filter_by(entity=msg.subject.split(".")[1]).one()
+                            myconfig = myconfig.filter_by(entity=msg["subject"].split(".")[1]).one()
                         except:
                             myconfig = bl.BuddyProperty()
                             myconfig.name = "configuration"
-                            myconfig.entity = msg.subject.split(".")[1]
+                            myconfig.entity = msg["subject"].split(".")[1]
                             sess.add(myconfig)
-                        myconfig.values = msg.content["value"]
+                        myconfig.values = msg["content"]["value"]
                         try:
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+msg.subject.split(".")[1],
+                        self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
                                     "content_type":"response",
                                     "content": {"response":"save configuration",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
                                     
-                    elif msg.content["request"] == "save property":
+                    elif msg["content"]["request"] == "save property":
                         try:
                             myprop = sess.query(bl.BuddyProperty)
-                            myprop = myprop.filter_by(entity=msg.subject.split(".")[1])
-                            myprop = myprop.filter_by(name=msg.content["name"]).one()
+                            myprop = myprop.filter_by(entity=msg["subject"].split(".")[1])
+                            myprop = myprop.filter_by(name=msg["content"]["name"]).one()
                         except:
                             myprop = bl.BuddyProperty()
-                            myprop.entity = msg.subject.split(".")[1]
-                            myprop.name = msg.content["name"]
+                            myprop.entity = msg["subject"].split(".")[1]
+                            myprop.name = msg["content"]["name"]
                             sess.add(myprop)
-                        myprop.values = msg.content["value"]
+                        myprop.values = msg["content"]["value"]
                         try:
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+msg.subject.split(".")[1],
+                        self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
                                     "content_type":"response",
                                     "content": {"response":"save property",
                                                 "name": myprop.name,
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
                                     
-                    elif msg.content["request"] == "get property":
+                    elif msg["content"]["request"] == "get property":
                         result={}
                         myprop = sess.query(bl.BuddyProperty)
-                        myprop = myprop.filter_by(entity=msg.content["target"])
-                        if "name" in msg.content and msg.content["name"]:
-                            myprop = myprop.filter_by(name=msg.content["name"])
+                        myprop = myprop.filter_by(entity=msg["content"]["target"])
+                        if "name" in msg["content"] and msg["content"]["name"]:
+                            myprop = myprop.filter_by(name=msg["content"]["name"])
                         lop=myprop.all()
                         for x in lop:
                             result[x.name]=x.values
 
-                        self.sending({"subject":msg.content["target"]+"."+msg.subject.split(".")[1],
+                        self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
                                     "content_type":"response",
                                     "content": {"response":"get property",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "value": result,
                                                 "status": "done" }})
 
-                    elif msg.content["request"] == "creation":
-                        newent=getattr(bl,msg.content["target"])()
-                        for x in msg.content["value"]:
-                            setattr(newent,x,msg.content["value"][x])
+                    elif msg["content"]["request"] == "creation":
+                        newent=getattr(bl,msg["content"]["target"])()
+                        for x in msg["content"]["value"]:
+                            setattr(newent,x,msg["content"]["value"][x])
                         sess.add(newent)
                         newent.location = self.Zone
                         try:
@@ -444,31 +570,31 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+newent.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+newent.name,
                                     "content_type":"response",
                                     "content": {"response":"creation",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
                            
-                    elif msg.content["request"] == "deletion":
-                        mytype=getattr(bl,msg.content["target"])
+                    elif msg["content"]["request"] == "deletion":
+                        mytype=getattr(bl,msg["content"]["target"])
                         try:
-                            thisdev=sess.query(mytype).filter_by(name=msg.content["value"]).one()
+                            thisdev=sess.query(mytype).filter_by(name=msg["content"]["value"]).one()
                             sess.delete(thisdev)
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+newent.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+newent.name,
                                     "content_type":"response",
                                     "content": {"response":"deletion",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
                                                         
-                    elif msg.content["request"] == "define device":
-                        mytype=getattr(bl,msg.content["target"])
+                    elif msg["content"]["request"] == "define device":
+                        mytype=getattr(bl,msg["content"]["target"])
                         try:
-                            device=self.getDevice(msg.content["value"]["name"])
+                            device=self.getDevice(msg["content"]["value"]["name"])
                             thisval={"name":device.name}
                             thisval["nickname"]=device.nickname
                             thisval["type"]=device.type
@@ -477,40 +603,40 @@ class Controller():
                         except:
                             sts=False
                             thisval={}
-                        self.sending({"subject":msg.content["target"]+"."+newent.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+newent.name,
                                     "content_type":"response",
                                     "content": {"response":"define device",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed",
                                                 "value": thisval}})
-                    elif msg.content["request"] == "nickname":
-                        mytype=getattr(bl,msg.content["target"])
+                    elif msg["content"]["request"] == "nickname":
+                        mytype=getattr(bl,msg["content"]["target"])
                         try:
-                            device=self.getDevice(msg.content["value"]["name"])
-                            device.nickname=msg.content["value"]["nickname"]
+                            device=self.getDevice(msg["content"]["value"]["name"])
+                            device.nickname=msg["content"]["value"]["nickname"]
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+msg.content["value"]["name"],
+                        self.sending({"subject":msg["content"]["target"]+"."+msg["content"]["value"]["name"],
                                     "content_type":"response",
                                     "content": {"response":"nickname",
-                                                "value": msg.content["value"]["nickname"],
-                                                "token": msg.content["token"],
+                                                "value": msg["content"]["value"]["nickname"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
                                     
-                    elif msg.content["request"] == "functions":
+                    elif msg["content"]["request"] == "functions":
                         try:
                             myent=sess.query(bl.BuddyFunction).\
-                                filter_by(type=msg.content["target"]).\
-                                    filter_by(subtype=msg.content["subtype"]).one()
+                                filter_by(type=msg["content"]["target"]).\
+                                    filter_by(subtype=msg["content"]["subtype"]).one()
                         except:
                             myent=bl.BuddyFunction()
-                            myent.type=msg.content["target"]
-                            myent.subtype=msg.content["subtype"]
+                            myent.type=msg["content"]["target"]
+                            myent.subtype=msg["content"]["subtype"]
                             sess.add(myent)
-                        for x in msg.content["value"]:
-                            setattr(myent,x,msg.content["value"][x])
+                        for x in msg["content"]["value"]:
+                            setattr(myent,x,msg["content"]["value"][x])
                         
                         try:
                             sess.commit()
@@ -518,18 +644,18 @@ class Controller():
                             self.allFunctions[myent.type][myent.subtype]=myent.functions
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+".functions",
+                        self.sending({"subject":msg["content"]["target"]+".functions",
                                     "content_type":"response",
                                     "content": {"response":"functions",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed" }})
 
-                    elif msg.content["request"] == "zone creation":
-                        pzone=self.getZone(msg.content["value"]["parent"])
-                        del(msg.content["value"]["parent"])
+                    elif msg["content"]["request"] == "zone creation":
+                        pzone=self.getZone(msg["content"]["value"]["parent"])
+                        del(msg["content"]["value"]["parent"])
                         czone=bl.Zone()
-                        for x in msg.content["value"]:
-                            setattr(czone,x,msg.content["value"][x])
+                        for x in msg["content"]["value"]:
+                            setattr(czone,x,msg["content"]["value"][x])
                         czone.parent=pzone
                         sess.add(czone)
                         try:
@@ -537,21 +663,23 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+czone.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+czone.name,
                                     "content_type":"response",
                                     "content": {"response":"zone creation",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
+                                                "target":msg["content"]["target"]+"."+czone.name,
                                                 "status": (sts and "done" ) or "failed"}})
                         if sts:
                             self.sending({"subject":"zone"+"."+czone.name,
                                         "content_type":"event",
-                                        "content": {"event":msg.content["request"],
+                                        "content": {"event":msg["content"]["request"],
+                                                    "target":"zone."+czone.name,
                                                     "value" : {"nickname":czone.nickname,"parent":pzone.name}}})
                                         
 
-                    elif msg.content["request"] == "zone deletion":
+                    elif msg["content"]["request"] == "zone deletion":
                         #print "Got Delete",msg
-                        czone = self.getZone(msg.content["value"]["name"])
+                        czone = self.getZone(msg["content"]["value"]["name"])
                         lodevs=czone.allDevices()
                         cname=czone.name
                         sess.delete(czone)
@@ -562,68 +690,74 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+cname,
+                        self.sending({"subject":msg["content"]["target"]+"."+cname,
                                     "content_type":"response",
                                     "content": {"response":"zone deletion",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed",
-                                                "name" : msg.content["value"]["name"]}})
+                                                "target":msg["content"]["target"]+"."+cname,
+                                                "name" : msg["content"]["value"]["name"]}})
                         if sts:
                             self.sending({"subject":"zone"+"."+czone.name,
                                         "content_type":"event",
-                                        "content": {"event":msg.content["request"]}})
+                                        "target":"zone."+czone.name,
+                                        "content": {"event":msg["content"]["request"]}})
                                         
                     
-                    elif msg.content["request"] in ["zone location"]:
+                    elif msg["content"]["request"] in ["zone location"]:
                         #print "Got",msg
-                        pzone = self.getZone(msg.content["value"]["parent"])
-                        czone = self.getZone(msg.content["value"]["name"])
+                        pzone = self.getZone(msg["content"]["value"]["parent"])
+                        czone = self.getZone(msg["content"]["value"]["name"])
                         czone.parent = pzone
                         try:
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+czone.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+czone.name,
                                     "content_type":"response",
-                                    "content": {"response":msg.content["request"],
-                                                "token": msg.content["token"],
+                                    "content": {"response":msg["content"]["request"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed",
+                                                "target":msg["content"]["target"]+"."+czone.name,
                                                 "name" : (sts and czone.name) or ""}})
                         if sts:
                             self.sending({"subject":"zone"+"."+czone.name,
                                         "content_type":"event",
-                                        "content": {"event":msg.content["request"],
+                                        "content": {"event":msg["content"]["request"],
+                                                    "target":"zone."+czone.name,
                                                     "value" : {"parent":pzone.name}}})
                     
-                    elif msg.content["request"] in ["zone nickname"]:
+                    elif msg["content"]["request"] in ["zone nickname"]:
                         #print "Got",msg
-                        czone = self.getZone(msg.content["value"]["name"])
-                        czone.nickname = msg.content["value"]["nickname"]
+                        czone = self.getZone(msg["content"]["value"]["name"])
+                        czone.nickname = msg["content"]["value"]["nickname"]
                         try:
                             sess.commit()
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg.content["target"]+"."+czone.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+czone.name,
                                     "content_type":"response",
-                                    "content": {"response":msg.content["request"],
-                                                "token": msg.content["token"],
+                                    "content": {"response":msg["content"]["request"],
+                                                "token": msg["content"]["token"],
                                                 "status": (sts and "done" ) or "failed",
+                                                "target":msg["content"]["target"]+"."+czone.name,
                                                 "name" : (sts and czone.nickname) or ""}})
                         if sts:
                             self.sending({"subject":"zone"+"."+czone.name,
                                         "content_type":"event",
-                                        "content": {"event":msg.content["request"],
+                                        "content": {"event":msg["content"]["request"],
+                                                    "target":"zone."+czone.name,
                                                     "value" : {"nickname":czone.nickname}}})
                                     
-                    elif msg.content["request"] == "device location":
-                        pzone=self.getZone(msg.content["value"]["parent"])
+                    elif msg["content"]["request"] == "device location":
+                        pzone=self.getZone(msg["content"]["value"]["parent"])
                         if pzone:
                             device=None
                             idx=0
                             if not device:
-                                device=self.getDevice(msg.content["value"]["name"])
+                                device=self.getDevice(msg["content"]["value"]["name"])
                             if device:
                                 device.location = pzone
                             try:
@@ -631,21 +765,23 @@ class Controller():
                                 sts=True
                             except:
                                 sts=False
-                            self.sending({"subject":msg.content["target"]+"."+device.name,
+                            self.sending({"subject":msg["content"]["target"]+"."+device.name,
                                         "content_type":"response",
                                         "content": {"response":"device location",
-                                                    "token": msg.content["token"],
+                                                    "token": msg["content"]["token"],
+                                                    "target":msg["content"]["target"]+"."+device.name,
                                                     "status": (sts and "done" ) or "failed"}})
                             if sts:
-                                self.sending({"subject":msg.content["target"]+"."+device.name,
+                                self.sending({"subject":msg["content"]["target"]+"."+device.name,
                                             "content_type":"event",
-                                            "content": {"event":msg.content["request"],
+                                            "content": {"event":msg["content"]["request"],
+                                                        "target":msg["content"]["target"]+"."+device.name,
                                                         "value" : {"parent":pzone.name}}})
 
-                    elif msg.content["request"] == "system state":
+                    elif msg["content"]["request"] == "system state":
                         #print msg
-                        pzone=self.getZone(msg.content["value"]["zone"] or self.Zone.name)
-                        #print "Building for ",pzone,msg.content["value"]["zone"] or self.Zone.name
+                        pzone=self.getZone(msg["content"]["value"]["zone"] or self.Zone.name)
+                        #print "Building for ",pzone,msg["content"]["value"]["zone"] or self.Zone.name
                         resu={"name":".","devices":{},"sub_zone":[],"functions":{}}
 
                         for ftype in self.allFunctions:
@@ -659,35 +795,31 @@ class Controller():
                             resu["display"]=self.display
                             
                         resu["sub_zone"].append(pzone.toDict())
-                        self.sending({"subject":msg.content["target"],
+                        self.sending({"subject":msg["content"]["target"],
                                     "content_type":"response",
                                     "content": {"response":"system state",
-                                                "token": msg.content["token"],
+                                                "token": msg["content"]["token"],
                                                 "status": "done",
                                                 "value": resu}})
 
             except:
-                print "Bloody problem"
-                print msg
-                traceback.print_exc(file=sys.stdout)
+                self.log.critical("Bloody problem with ():\n {}".format(msg, exc_info=(traceback)))
+                
         else:
-            if self.config["debug"]:
-                iprint(msg.content_type,msg.subject ,msg.content_type ,msg.content)
+            self.log.debug("Unprocessed message {}".format(msg))
             pass
     
-    def sending(self,msg):
-        #print "Sending",msg
-        qmsg = qm.Message(subject=msg["subject"],
-                            content_type=msg["content_type"],
-                            content=json.dumps(msg["content"])) 
-        snd = self.Session.sender(self.config["address"].split("/")[0]+"/"+msg["subject"]) 
-        snd.send(qmsg,sync=False) 
-        snd.close() 
-        #self.Sender.send(qmsg,sync=False)
-        
-    def hbmsg(self):
-        self.sending({"subject":"control.heartbeat","content_type":"event","content": {}})
-        
+    def broadcast(self,msg,skip=[]):
+        self.sending(msg,skip)
+        if "Controller" not in skip:
+            self.MsgProcess(msg)
+    
+    def sending(self,msg,skip=[]):
+        self.log.debug("Sending {}".format(msg))
+        for c in self.loclients:
+            if c.state == "Active" and c.addr not in skip:
+                c.dosend(msg)
+           
     def dbhb(self):
         xx=self.DBSession.query(bl.Zone).filter_by(name="supercalifragilisticexpialedocious").all()
         
@@ -720,30 +852,15 @@ if __name__ == "__main__":
     myc=Controller()
     myc.configure()
     myc.build()
-    myc.connect()
-    dbcount=0
-    while True:
-        try:
-            myc.receiving()
-        except  KeyboardInterrupt:
-            iprint("\n","Exiting at user's request")
-            myc.disconnect()
-            sys.exit(0)
-        except:
-            try:
-                myc.hbmsg()
-            except qm.exceptions.ConnectionError:
-                while True:
-                    try:
-                        print "Reconnect"
-                        myc.connect()
-                        break
-                    except qm.exceptions.ConnectionError,qm.exceptions.NotFound:
-                        sleep(5)
-            if dbcount >= 10:
-                myc.dbhb()
-                dbcount=0
-            else:
-                dbcount+=1
-                     
+    try:
+        loop,server,task=myc.connect()
+        loop.run_forever()
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        # Close the server
+        server.close()
+        task.cancel()
+        loop.run_until_complete(server.wait_closed())
+        loop.close()         
    

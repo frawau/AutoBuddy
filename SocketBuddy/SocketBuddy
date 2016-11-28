@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
 # Copyright (c) 2015 François Wautier
@@ -23,15 +23,18 @@
 # initialy lifted from Autobahn and twisted matrix
 ###############################################################################
 import sys
-from autobahn.twisted.websocket import WebSocketServerProtocol, WebSocketServerFactory, listenWS
-from twisted.internet import protocol,reactor,ssl
-import argparse,warnings,json,random,traceback,time
-from twisted.web.resource import Resource
-from buddylib import encrypt, decrypt, genid
+import argparse, json, random, traceback, logging, os, aiohttp, ssl, functools
+import buddylib as bl
+from aiohttp import web,WSCloseCode, log as aiohlog
+import asyncio as aio
+
+CERTFILE="autobuddy.crt"
+WCERTFILE="socketbuddy.crt"
+WKEYFILE="socketbuddy.key"
 
 class NamedEntity(object):
     """
-    Just defining objects wit a name
+    Just defining objects with a name
     """
     def __init__(self,name=None):
         self.name=name
@@ -44,166 +47,91 @@ def expr(depth):
         return str(int(random.random() * 1000) )
     return '(' + expr(depth-1) + random.choice(['+','-','*','/']) + expr(depth-1) + ')'
 
-def iprint(*arg):
-    """
-        Just here to make it easy when changing to python 3
-    """
-    for x in arg:
-        print x,
-    print      
 
-class brAMQP(protocol.ProcessProtocol):
-    
-    def __init__(self,name):
-        self.name=name
-        self.buff=""
-
-    def sendMessage(self,msg):
-        #print "sending",msg,"on",self.name
-        self.transport.write(json.dumps(msg)+"\n")
-        
-    def connectionMade(self):
-        sysctl.add_child(self,self.name)
-
-    def outReceived(self, data):
-        #Receiving the output from the program
-        #pass it on
-        try:
-            msg=json.loads(self.buff+data)
-            self.buff=""
-            sysctl.sendMessage(msg,self.name)
-        except:
-            self.buff=data
-        
-    def errReceived(self, data):
-        log.msg(self.name+" error received: %s" % data )
-        
-    def inConnectionLost(self):
-        sysctl.del_child(self,self.name)
-        
-    def outConnectionLost(self):
-        """
-        The stdout of the subprocess was closed
-        """
-        log.msg(self.name+" Subprocess dies")
-    
-    def errConnectionLost(self):
-        pass
-        
-    def processExited(self, reason):
-        log.msg(self.name+" process exited with status %d" % (reason.value.exitCode,))
-        
-    def processEnded(self, reason):
-        print "processEnded, status %d" % (reason.value.exitCode,)
-        print "quitting"
-        reactor.stop()
-
-
-class BuddyProtocol(WebSocketServerProtocol,NamedEntity):
-    
-    def onConnect(self, response):
-        pass
-
-    def onOpen(self):
-        #print("WebSocket connection open.")
-        self.makeName()
-        sysctl.add_child(self)
-        
-    def onMessage(self, data, isBinary):
-        sysctl.sendMessage(json.loads(data),"websockc",self)
-
-    def onClose(self, wasClean, code, reason):
-        #print("WebSocket connection closed: {0}".format(reason))
-        try:
-            sysctl.del_child(self)
-            sysctl.adminsocket.discard(self)
-            sysctl.allowedsocket.discard(self)
-        except:
-            pass
-        
-    def sendMessage(self, payload, isBinary=False, fragmentSize=None, sync=False, doNotCompress=False):
-        newpayload=json.dumps(payload)
-        super(BuddyProtocol,self).sendMessage(newpayload, isBinary, fragmentSize, sync, doNotCompress)
-        
-    def makeName(self,length=16):
+def makeName(ws,length=16):
         name = 'ws-'
         for i in range(length):
             name += random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
-        self.name=name
-        #print self.name
+        ws.name=name
+        
+async def websocket_handler(request):
+
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    makeName(ws)
+    sysctl.register(ws)
+    async for msg in ws:
+        sysctl.log.debug("RECV: on {}, {}".format(ws.name,msg))
+        try:
+            sysctl.msgfromWS(msg.json(),ws)
+        except:
+            pass
+        
+        if msg.type == aiohttp.MsgType.error:
+            sysctl.log.debug('ws connection closed with exception %s' %
+                  ws.exception())
+
+    sysctl.unregister(ws)
+    sysctl.log.warning('websocket connection closed')
+
+    return ws
 
 
-class Broker(object):
+
+class GuiWSBridge(bl.BuddyBridge):
+    """
+    This is the bridge application. It will connect to the controller and will 
+    have WebSocket connections registered with it.
+    """
+    subject= "gui-wsbridge"
     
-    subject= "websocket"
-    
-    def __init__(self):
-        self.slaves = {"toamqp":[],"fromamqp":[],"websockc":[],"dropit":[]}
-        self.config={}
-        self.allowedsocket=set(["fromamqp","toamqp"])
-        self.adminsocket=set()
+    def __init__(self, name,loop,future,config,log):
+        super(GuiWSBridge, self).__init__(name,loop,future,config,log)
         self.users={}
         self.requestids= []
-        
-    def add_child(self,obj,protocol="websockc"):
-        self.slaves[protocol].append(obj)
-        
-    def del_child(self,obj,protocol="websockc"):
-        self.slaves[protocol].remove(obj)
-        
-    def sendMessage(self,msg,protocol="websockc",orig=None,token=None):
-        if protocol == "fromamqp":
-            #Let's filter the message we receive from AMQP
-            # Some may be for us.
-            #print msg,"vs",self.subject
-            if msg["subject"].startswith(self.subject):
-                toprotocol, msg = self.processMessage(msg)
-            else:
-                toprotocol = "websockc"
-        elif protocol == "websockc":
-            toprotocol,amsg = self.msgfromWS(msg,orig)
-            if amsg:
-                msg=amsg
-                
-        elif protocol== "internal":
-            if msg == "save users":
-                newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
-                newmsg["content"]["request"]="save property"
-                newmsg["content"]["target"]= "gui"
-                newmsg["content"]["token"] = token or genid()
-                self.requestids.append(newmsg["content"]["token"])
-                newmsg["content"]["name"] = "users"
-                newmsg["content"]["value"] = encrypt(self.users,self.config["buddykey"])
-                msg=newmsg
-                toprotocol = "toamqp"
-                self.config["save user"]=False
-            elif msg == "get users":
-                newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
-                newmsg["content"]["request"]="get property"
-                newmsg["content"]["target"]= self.subject
-                newmsg["content"]["token"] = genid()
-                self.requestids.append(newmsg["content"]["token"])
-                newmsg["content"]["name"]="users"
-                msg = newmsg
-                toprotocol = "toamqp"
-                self.config["save user"]=False
-            else:
-                toprotocol = "dropit"
+        self.tasks = []
+        self.allowedsocket = set()
+        self.adminsocket = set()
+    
+    #A bit different ....overiding
+    def connection_made(self,transport):
+        self.transport=transport
+        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":""},"content_type":"authenticate"})
+        if "save user" in self.config and self.config["save user"]:
+            if isinstance(self.config["save user"],dict):
+                self.users={**self.config["save user"],**self.users}
+                self.saveUsers()
         else:
-            log.msg("This is not supposed to happen")
-            toprotocol = "fromamqp"
-        
-        for x in self.slaves[toprotocol]:
-            if x.name in self.allowedsocket:
-                x.sendMessage(msg)
-        if self.config["save user"]:
-            self.saveUsers()
+            self.getUsers()
+     
+
+    def sendMessage(self, payload):
+        self.sending(payload)
+         
+    def MsgProcess(self,msg):
+        #Here all messages processed are coming from the controller
+        if self.log:
+            self.log.debug("RECV: {}".format( msg ) )
+
+        #Let's filter the message we receive from the controller
+        # Some may be for us.
+        if msg["subject"].startswith(self.subject):
+            self.processMessage(msg)
+        else:
+            #Forward to the connected gui clients
+            for client in self.devices:
+                try:
+                    if client.name in self.allowedsocket:
+                        client.send_json(msg)
+                except:
+                    pass
    
     def msgfromWS(self,msg,orig):
-        #print "Got",msg
+        forwardmsg = False
         try:
+        #if True:
             if msg["content_type"] == "request" and msg["content"]["request"]=="login":
-                #print "Msg is",msg
+                # Perform authentication
                 if msg["content"]["user"] in self.users and \
                    msg["content"]["password"] == self.users[msg["content"]["user"]][0]:
                     newmsg={"content_type":"response","subject":msg["content"]["target"],"content":{}}
@@ -221,326 +149,329 @@ class Broker(object):
                     newmsg["content"]["response"]="login"
                     newmsg["content"]["status"]= "failed"
                     newmsg["content"]["token"]= msg["content"]["token"]
-                orig.sendMessage(newmsg)
-                #print "Replied",newmsg
-                toprotocol = "dropit"
+                orig.send_json(newmsg)
             elif msg["content_type"] == "request" and msg["content"]["request"]=="change password":
                 #print "Msg is",msg
                 if msg["content"]["value"]["user"] in self.users and \
                    msg["content"]["value"]["password"] == self.users[msg["content"]["value"]["user"]][0]:
                     self.users[msg["content"]["value"]["user"]][0]=msg["content"]["value"]["new password"]
-                toprotocol = "dropit"
                 self.saveUsers(token=msg["content"]["token"])
-            #elif msg["content_type"] == "request" and msg["content"]["request"]=="add user":
-                ##print "Msg is",msg
-                #self.users[msg["content"]["user"]][0]=msg["content"]["password"]
-                #self.users[msg["content"]["user"]][1]=msg["content"]["zone"]
-                #toprotocol = "dropit"
-                #self.saveUsers()
             elif msg["content_type"] == "request" and msg["content"]["request"]=="system state":
                 #Make sure we request the right room
                 if orig.name in self.adminsocket:
                     msg["content"]["value"]={"zone":""}
                 else:
                     msg["content"]["value"]={"zone": self.users[orig.user][1]}
-                toprotocol = "toamqp"
+                self.sending(msg)
             elif orig.name in self.adminsocket:
-                toprotocol = "toamqp"
                 if msg["content_type"] == "request" and msg["content"]["request"]=="add user":
                     #do something
-                    #print msg
                     if "password" in msg["content"]["value"]:
                         self.users[msg["content"]["value"]["user"]] = [msg["content"]["value"]["password"],msg["content"]["value"]["zone"]]
                     else:
                         try:
                             self.users[msg["content"]["value"]["user"]][1]=msg["content"]["value"]["zone"]
                         except:
-                            return "dropit",None
+                            return
                     self.saveUsers(token=msg["content"]["token"])
-                    toprotocol="dropit"
                 elif msg["content_type"] == "request" and msg["content"]["request"]=="delete user":
                     #do something
                     try:
                         del(self.users[msg["content"]["value"]["user"]])
                         self.saveUsers(token=msg["content"]["token"])
                     except:
-                        return "dropit",None
-                    toprotocol="dropit"
+                        return 
                 else:
-                    msg=None
+                    self.sending(msg)
 
             elif orig.name in self.allowedsocket:
-                toprotocol = "toamqp"
-                msg=None
-            else:
-                toprotocol = "dropit"
-                msg=None
+                self.sending(msg)
+
         except:
-            print "Something's wrong! Probably a badly formated message"
+            self.log.warning ("Something's wrong! Probably a badly formated message")
             traceback.print_exc(file=sys.stdout)
-            toprotocol="dropit"
-            msg=None
-        return toprotocol,msg
+        
   
     def processMessage(self,msg):
-        #print "Processing",msg
         if msg["content_type"] == "response":
             if msg["content"]["token"] in self.requestids:
                 self.requestids.remove(msg["content"]["token"])
                 if msg["content"]["response"]=="save property":
                     if msg["content"]["status"]=="failed":
-                        #TODO send something
-                        pass
+                        sysctl.log.warning("Failed to save property.")#TODO send something
                 elif msg["content"]["response"]=="get property":
                     if msg["content"]["status"]=="done":
                         for x,val in msg["content"]["value"].items():
-                            theval=decrypt(val,self.config["buddykey"])
-                            #print theval
+                            theval=bl.decrypt(val,self.config["buddykey"])
                             cattr=getattr(self,x) 
                             for y,v in theval.items():
                                 cattr[y]=v
                             setattr(self,x,cattr)
                         
-        return "dropit",""
-    
-    def configure(self):
-        import os
-        self.default={"topic":"autobuddy","tls":False,"subject":["gui"],"application":"./html/buddyctrl.html","wsport":9000,"host":"localhost","port":8080}
-        self.absolute=["tls","application"]
-        parser = argparse.ArgumentParser(description="Autobuddy Websocket bridge.")
-        #                            version="%prog " + __version__ + "/" + bl.__version__) 
-        parser.add_argument("-a", "--application", default=self.default,
-                        help="The application to serve. (default \"%s\""%self.default["application"])
-        parser.add_argument("-b", "--broker", default="",
-                        help="connect to specified BROKER")
-        parser.add_argument("-c", "--config", default="/etc/autobuddy/websocket.cfg",
-                        help="Config file to use (default \"/etc/autobuddy/websocket.cfg\")")
-        parser.add_argument("-C", "--configonly", default="",
-                            help="Exit after the the configuration has been saved")
-        parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
-        parser.add_argument("-H", "--host", default=self.default,
-                        help="Host or IP address on which to listen. (default \"%s\""%self.default["host"])
-        parser.add_argument("-s", "--subject", nargs="+", default=self.default,
-                        help="List of subject content to echo to websocket. (default \"%s\""%" ".join(self.default["subject"]))
-        parser.add_argument("-T", "--tls", default=self.default, 
-                        help="Use TLS with key and cert file in directory (default \"%s\")"%self.default["tls"])
-        parser.add_argument("-t", "--topic", default=self.default,
-                        help="The AMQP-style topic we are listening to (default \"%s\")."%self.default["topic"])
-        parser.add_argument("-u", "--user",
-                        help="Create an admin user")
-        parser.add_argument("-w", "--wsport", default=self.default, type=int,
-                        help="On which port to listen to web sockets (default \"%s\")"%self.default["wsport"])
-        parser.add_argument("-p", "--port", default=self.default, type=int,
-                        help="On which port to listen to HTML requests (default \"%s\")"%self.default["port"])
-            
-        try:
-            opts=parser.parse_args()
-        except Exception as e:
-            iprint("Error: ",e)
-            parser.print_help()
-            sys.exit(-2)
-
-        try:
-        #if True:
-            try:
-                with file(opts.config,"r") as cfile:
-                    cfgdata = json.load(cfile)
-                self.config["config"] = opts.config
-            except:
-                if opts.configonly:
-                    iprint ("Warning: configuration file %s does not exist or contains garbage."%opts.config)
-                    cfgdata={}
-                else:
-                    file(opts.config,"r")
-                
-            self.config["save user"]=False    
-            self.config["debug"] = opts.debug
-            if opts.broker:
-                self.config["broker"] = opts.broker
-            else:
-                self.config["broker"] = ""
-                if "user" in cfgdata["broker"] and cfgdata["broker"]["user"]:
-                    self.config["broker"] += cfgdata["broker"]["user"]+"/" + cfgdata["broker"]["password"] + "@"
-                self.config["broker"] += cfgdata["broker"]["host"]
-                
-                if "port" in cfgdata["broker"] and cfgdata["broker"]["port"]:
-                    self.config["broker"] += ":"+ str(cfgdata["broker"]["port"])
-
-            if opts.debug:
-                iprint("The broker is",self.config["broker"]) 
-                
-            for cfg in self.default:
-                if getattr(opts,cfg,False) and  getattr(opts,cfg) != self.default:
-                    self.config[cfg] = getattr(opts,cfg)
-                elif cfg in cfgdata:
-                    self.config[cfg] = cfgdata[cfg]
-                else:
-                    self.config[cfg] = self.default[cfg]
-                if cfg in self.absolute:
-                    self.config[cfg] = os.path.abspath(self.config[cfg])
-                if opts.debug:
-                    iprint("%s is %s"%(cfg,self.config[cfg]))      
-            
-            #Let;s make sure we listen for ourself
-            if self.subject not in self.config["subject"]:
-                self.config["subject"].append(self.subject)
-            
-            if "buddykey" in cfgdata:
-                self.config["buddykey"] = cfgdata["buddykey"]
-                
-            if opts.configonly:
-                brokconfig={}
-                if "@" in self.config["broker"]:
-                    brokconfig["user"],brokconfig["password"]=self.config["broker"].split("@")[0].split("/")
-                if ":" in self.config["broker"]:
-                    brokconfig["host"],brokconfig["port"] =  self.config["broker"].split("@")[-1].split(":")
-                else:
-                    brokconfig["host"] =  self.config["broker"].split("@")[-1]
-                newconfig={"broker":brokconfig}
-                for cfg in self.default:
-                    if cfg in self.config and self.config[cfg]:
-                        newconfig[cfg]=self.config[cfg]
-                if "buddykey" in self.config:
-                    newconfig["buddykey"] = self.config["buddykey"]
-                else:
-                    from buddylib import keygen
-                    if opts.debug:
-                        iprint("Generating random key")   
-                    self.config["buddykey"] = keygen()
-                    
-                with file(opts.configonly,"w") as cfile:
-                    json.dump(newconfig,cfile)
-                os.chmod(opts.configonly,0600)
-                iprint("Config was saved")
-                sys.exit(1)
-                
-            if opts.user:
-                from getpass import getpass
-                nbtry=3
-                done=False
-                while nbtry:
-                    nbtry-=1
-                    password = getpass("Enter password for %s "%opts.user)
-                    verify = getpass("Verify password ")
-                    if password == verify :
-                        done = True
-                        self.users={opts.user:[password,"admin"]}
-                        self.config["save user"]=True
-                        break
-                    else:
-                        print "Passwords do not match."
+    def register(self,gui):
+        gui.log=self.log
+        self.devices.append(gui)
         
-        except Exception as e:
-            iprint("Error:",e)
-            sys.exit(-2)
-            
+    def unregister(self,gui):
+        try:
+            self.devices.remove(gui)
+        except:
+            pass
+        try:
+            self.allowedsocket.remove(gui.name)
+        except:
+            pass
+        try:
+            self.adminsocket.remove(gui.name)
+        except:
+            pass
+
+ 
+
     def saveUsers(self,token=None):
-        self.sendMessage("save users","internal",token=token)
+        msg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        msg["content"]["request"]="save property"
+        msg["content"]["target"]= "gui"
+        msg["content"]["token"] = token or bl.genid()
+        self.requestids.append(msg["content"]["token"])
+        msg["content"]["name"] = "users"
+        msg["content"]["value"] = bl.encrypt(self.users,self.config["buddykey"])
+        self.log.debug("SAVE: {}\n\n\n".format(msg))
+        self.config["save user"]=False
+        self.sendMessage(msg)
 
     def getUsers(self):
-        self.sendMessage("get users","internal")
+        newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        newmsg["content"]["request"]="get property"
+        newmsg["content"]["target"]= self.subject
+        newmsg["content"]["token"] = bl.genid()
+        self.requestids.append(newmsg["content"]["token"])
+        newmsg["content"]["name"]="users"
+        msg = newmsg
+        self.config["save user"]=False
+        self.sendMessage(msg)
 
+   
+   
+cfgdefault={"broker":"localhost","tls":False,"subject":"gui","credential":"",
+            "application":"./html/buddyctrl.html","brokerport":8745,"host":"localhost","port":8080,"ssl":""}
+def configure():
+    absolute=["tls","application"]
+    parser = argparse.ArgumentParser(description="Autobuddy Websocket bridge.")
+    #                            version="%prog " + __version__ + "/" + bl.__version__) 
+    parser.add_argument("-a", "--application", default=cfgdefault['application'],
+                    help="The application to serve. (default \"%s\""%cfgdefault["application"])
+    parser.add_argument("-b", "--broker", default=cfgdefault['broker'],
+                    help="connect to specified controler host (default \"%s\")"%cfgdefault["broker"])
+    parser.add_argument("-B", "--brokerport", default=cfgdefault["brokerport"], type=int,
+                    help="On which port to listen to web sockets (default \"%s\")"%cfgdefault["brokerport"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/websocket.cfg",
+                    help="Config file to use (default \"/etc/autobuddy/websocket.cfg\"")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                    help="Log debug information (default False)")
+    parser.add_argument("-H", "--host", default=cfgdefault["host"],
+                    help="Host or IP address on which to listen for HTML requests. (default \"%s\""%cfgdefault["host"])
+    parser.add_argument("-p", "--port", default=cfgdefault["port"], type=int,
+                    help="On which port to listen to HTML requests (default \"%s\")"%cfgdefault["port"])
+    parser.add_argument("-s", "--subject",  default=cfgdefault["subject"],
+                    help="List of subject content to echo to websocket. (default \"%s\""%cfgdefault["subject"])
+    parser.add_argument("-S", "--ssl", default="",
+                    help="The directory where the file %s can be found."%(CERTFILE))
+    parser.add_argument("-t", "--tls", default=cfgdefault["tls"], 
+                    help="Use TLS with key (server.key) and certificat (server.crt) files in directory (default \"%s\")"%cfgdefault["tls"])
+    parser.add_argument("-u", "--user",
+                    help="Create an admin user")
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Log warning messages (default to False)")
+    parser.add_argument("-V", "--credential", default='',
+                    help="The credential used to verify authorization.")
         
+    try:
+        opts=parser.parse_args()
+    except Exception as e:
+        print("Error: ",e)
+        parser.print_help()
+        sys.exit(-2)
+        
+    if opts.debug:
 
-class BuddyApp(Resource):
-    isLeaf = True
-    directory = None
-    application = None
-    tochange=[]
-    def getChild(self, name, request):
-        return self
-
-    def render_GET(self, request):
-        lopref=["js","css","images","favicon.ico","fonts"]
-        ct={"js":"text/javascript","css":"text/css","favicon.ico":"image/x-icon"}
-        imgct=[[["jpg","jpeg"],"image/jpeg"],[["png"],"image/png"],[["svg"],"image/svg+xml"]]
-        fontct=[[["woff"],"application/font-woff"],[["woff2"],"application/font-woff2"],[["ttf"],"application/x-font-ttf"],[["svg"],"image/svg+xml"]]
-        serveme=False
-        if request.uri[-1] != "/":
-            for x in lopref:
-                loelt=request.uri.split("?")[0]
-                loelt=loelt.split("/")
-                if x in loelt:
-                    serveme=("/".join(loelt[loelt.index(x):])).strip().strip("/")
-                    if x == "images":
-                        suff=serveme.split(".")[-1]
-                        request.responseHeaders.setRawHeaders("content-type",["image/unknown"])
-                        for slist,ctype in imgct:
-                            if suff in slist:
-                                request.responseHeaders.setRawHeaders("content-type",[ctype])
-                    elif x == "fonts":
-                        suff=serveme.split(".")[-1]
-                        request.responseHeaders.setRawHeaders("content-type",["application/unknown"])
-                        for slist,ctype in fontct:
-                            if suff in slist:
-                                request.responseHeaders.setRawHeaders("content-type",[ctype])
-                    else:
-                        request.responseHeaders.setRawHeaders("content-type",[ct[x]])
-                    break
-        if serveme:
-            try:
-                with open(self.directory+"/"+serveme) as source:
-                    return source.read()
-            except:
-                request.setResponseCode(404)
-                return ""
-        else:
-            try:
-                with open(self.application) as source:
-                    msg=source.read()
-                    for x,y in self.tochange:
-                        msg=msg.replace(x,str(y))
-                    return msg
-            except:
-                request.setResponseCode(404)
-                return ""
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    guiwslog = logging.getLogger('')
+    guiwscfg = {}
+    try:
+    #if True:
+        try:
+            with open(opts.config,"r") as cfile:
+                cfgdata = json.load(cfile)
+            guiwscfg["config"] = opts.config
+        except:
+            if opts.configonly:
+                guiwslog.warning ("configuration file %s does not exist or contains garbage."%opts.config)
+                cfgdata={}
             
+            
+        guiwscfg["save user"]=False    
+            
+        for cfg in cfgdefault:
+            if getattr(opts,cfg,False) and  getattr(opts,cfg) != cfgdefault[cfg]:
+                guiwscfg[cfg] = getattr(opts,cfg)
+            elif cfg in cfgdata:
+                guiwscfg[cfg] = cfgdata[cfg]
+            else:
+                guiwscfg[cfg] = cfgdefault[cfg]
+            if cfg in absolute:
+                guiwscfg[cfg] = os.path.abspath(guiwscfg[cfg])
+            if opts.debug:
+                guiwslog.debug("%s is %s"%(cfg,guiwscfg[cfg]))      
+        
+        
+        if guiwscfg["ssl"] and not ( os.path.isfile(guiwscfg["ssl"]+"/"+CERTFILE)):
+            self.log.critical("Encryption: Could not find {} .".format(
+                guiwscfg["ssl"]+"/"+CERTFILE))
+            sys.exit()
+        
+        if "buddykey" in cfgdata:
+            guiwscfg["buddykey"] = cfgdata["buddykey"]
+            
+        if opts.configonly:
+            newconfig={}
+            for cfg in cfgdefault:
+                if cfg not in ["debug","save user"]:
+                    newconfig[cfg]=guiwscfg[cfg]
+            if "buddykey" in guiwscfg:
+                newconfig["buddykey"] = guiwscfg["buddykey"]
+            else:
+                if opts.debug:
+                    guiwslog.debug("Generating random key")   
+                newconfig["buddykey"] = bl.keygen()
+                
+            with open(opts.configonly,"w") as cfile:
+                json.dump(newconfig,cfile)
+            os.chmod(opts.configonly,384) # 0600
+            print ("Config was saved")
+            sys.exit(1)
+            
+        if opts.user:
+            from getpass import getpass
+            nbtry=3
+            done=False
+            while nbtry:
+                nbtry-=1
+                password = getpass("Enter password for %s "%opts.user)
+                verify = getpass("Verify password ")
+                if password == verify :
+                    done = True
+                    guiwscfg["save user"]={opts.user:[password,"admin"]}
+                    break
+                else:
+                    guiwslog.critical( "Passwords do not match.")
+                    sys.exit(-2)
+        guiwscfg["debug"]=opts.debug
+        return guiwslog,guiwscfg
+    except Exception as e:
+        guiwslog.critical("{}".format(e))
+        sys.exit(-2)
+   
+def serve_files(request):
+    fname=request.match_info['fname']
+    try:
+        #if True:
+        if fname == "favicon.ico":
+            filedata = None
+            with open(sysctl.config["application"], 'rb') as file :
+                filedata = file.read()
+            return web.Response(body=filedata,content_type="image/x-icon")
+        else:
+            #if fname == os.path.basename(sysctl.config["application"]):
+            filedata = None
+            with open(sysctl.config["application"], 'r') as file :
+                filedata = file.read()
+            # Replace the target string
+            dodebug = sysctl.config["debug"] and "true" or "false"
+            for val,newval in [("<BUDDYWSPROTOCOL/>",sockprot),
+                            ("<BUDDYWSHOST/>",sysctl.config["host"]),
+                            ("<BUDDYWSPORT/>","%d"%sysctl.config["port"])]:
+                filedata = filedata.replace(val, newval)
+            return web.Response(text=filedata,content_type="text/html")
 
+    except:
+        return web.HTTPInternalServerError("Ooops! Something's really wrong.")
+
+async def on_shutdown(app):
+    for ws in sysctl.devices:
+        await ws.close(code=WSCloseCode.GOING_AWAY,
+                       message='Server shutdown')
+     
 if __name__ == '__main__':
 
-    import sys,os
     mypath=os.path.dirname(os.path.abspath(__file__))+"/"
-    from twisted.python import log
-    from twisted.web.server import Site
-    from twisted.web.static import File
-    
-    sysctl=Broker()
-    sysctl.configure()
-    if sysctl.config["debug"]:
-        log.startLogging(sys.stdout)
-        
-    toamqp = brAMQP("toamqp")
-    fromamqp = brAMQP("fromamqp")
-    reactor.spawnProcess(fromamqp, mypath+"amqp-echo.py", ["amqp-echo.py","-c",sysctl.config["config"]], {})
-    reactor.spawnProcess(toamqp, mypath+"wsock-echo.py", ["wsock-echo.py","-c",sysctl.config["config"]], {})
-    time.sleep(3)
-    if "tls" in sysctl.config and sysctl.config["tls"]:
-        contextFactory = ssl.DefaultOpenSSLContextFactory(sysctl.config["tls"]+'/server.key',
-                                                        sysctl.config["tls"]+'/server.crt')
+    guiwslog, guiwscfg = configure()
+  
+    if "tls" in guiwscfg and guiwscfg["tls"]:
+        #ssl_context = ssl.create_default_context(capath=guiwscfg["tls"])
+        ssl_context=ssl.SSLContext(protocol=ssl.PROTOCOL_TLS)
+        ssl_context.load_cert_chain(guiwscfg["tls"]+"/"+WCERTFILE, guiwscfg["tls"]+'/'+WKEYFILE)
         sockprot="wss"
     else:
-        contextFactory = None
+        ssl_contextFactory = None
         sockprot="ws"
         
-    #factory = WebSocketServerFactory(sockprot+"://"+sysctl.config["host"]+":%d"%sysctl.config["wsport"], debug=False)
-    factory = WebSocketServerFactory(sockprot+"://[::]:%d"%sysctl.config["wsport"], debug=False)
-    factory.setProtocolOptions(requireMaskedClientFrames = False, applyMask = True)
-    factory.protocol = BuddyProtocol
-    listenWS(factory,contextFactory)
-    thisApp=BuddyApp()
-    #if "tls" in sysctl.config and sysctl.config["tls"]:
-        #thisApp.contentTypes={'.crt': 'application/x-x509-ca-cert'}
-    thisApp.directory=os.path.dirname(sysctl.config["application"])
-    thisApp.application=sysctl.config["application"]
-    thisApp.tochange.append(["<BUDDYWSPROTOCOL/>",sockprot])
-    thisApp.tochange.append(["<BUDDYWSHOST/>",sysctl.config["host"]])
-    thisApp.tochange.append(["<BUDDYWSPORT/>",sysctl.config["wsport"]])
-    web=Site(thisApp)
-    if "tls" in sysctl.config and sysctl.config["tls"]:
-        reactor.listenSSL(sysctl.config["port"], web, contextFactory)
+    if  guiwscfg["ssl"]:
+        b_ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+            cafile=guiwscfg["ssl"]+'/'+CERTFILE)
+        b_ssl_context.check_hostname = False
     else:
-        reactor.listenTCP(sysctl.config["port"], web,contextFactory)
-    if not sysctl.config["save user"]:
-        reactor.callWhenRunning(sysctl.getUsers)
-    reactor.run()
+        b_ssl_context=None
+        
+    loop = aio.get_event_loop()
+    if guiwscfg["debug"]:
+        loop.set_debug(True)
+        
+    connFuture=aio.Future()
+    fac=loop.create_connection(functools.partial(GuiWSBridge,"gui",loop,connFuture,guiwscfg,guiwslog),guiwscfg["broker"], guiwscfg["brokerport"],ssl=b_ssl_context)
+    #Creating an app
+    buddyapp=web.Application()
+    buddyapp.router.add_static('/js', os.path.dirname(guiwscfg["application"])+"/js")
+    buddyapp.router.add_static('/css', os.path.dirname(guiwscfg["application"])+"/css")
+    buddyapp.router.add_static('/images', os.path.dirname(guiwscfg["application"])+"/images")
+    buddyapp.router.add_static('/fonts', os.path.dirname(guiwscfg["application"])+"/fonts")
+    buddyapp.router.add_get('/ws', websocket_handler)
+    buddyapp.router.add_get('/{fname:.*}', serve_files)
+    buddyapp.on_shutdown.append(on_shutdown)
+
+    conn,sysctl = loop.run_until_complete(fac)   
+    whandler = buddyapp.make_handler(logger=guiwslog)     
+    wapp=loop.create_server(whandler,host=guiwscfg["host"],port=guiwscfg["port"],ssl=ssl_context)
+    wserv = loop.run_until_complete(wapp)  
+    #web.run_app(buddyapp,host=guiwscfg["host"],port=guiwscfg["port"],ssl_context=ssl_context)
+
+    try:
+        loop.run_until_complete(connFuture)
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        wserv.close()
+        conn.close()
+        loop.run_until_complete(wserv.wait_closed())
+        loop.run_until_complete(buddyapp.shutdown())
+        loop.run_until_complete(whandler.finish_connections(60.0))
+        loop.run_until_complete(buddyapp.cleanup())
+        loop.close()

@@ -1,1 +1,1 @@
-from buddylib import *
+from .buddylib import *

@@ -30,6 +30,10 @@ String.prototype.repeat = function(count) {
     return result + pattern;
   };
   
+//Bug fix
+SVGElement.prototype.getTransformToElement = SVGElement.prototype.getTransformToElement || function(elem) {
+    return elem.getScreenCTM().inverse().multiply(this.getScreenCTM());
+};
 
 function generateBGClass() {
     var cssstr = "<style>\n.bu-layer-colour-0-0 { border-bottom-color: #C63D0F; border-right-color: #C63D0F;}\n";
@@ -370,6 +374,7 @@ function manageUsers () {
 function webConfig() {
     bootbox.alert("We are very sorry. This has not been implemented yet. But when we do, it will be great.... We promis!")
 }
+
 // ES6 Alert. Using backquote for multi-lines
 // Lifted from FontAwesome
 var notPresentIcon=`
@@ -392,6 +397,9 @@ var defaultIcon=`
               0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
     </svg>`;
+
+/* A comment to clean highlighting */
+
 var buddyIcons={};
 
 var BuddyDevice = Class.extend({
@@ -464,10 +472,21 @@ var BuddyDevice = Class.extend({
                 if ( this.status["power"] == "off" ) {
                     document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill","transparent");
                 } else {
-                    if (cmd === undefined && this.last_cmd) {
-                        cmd=this.last_cmd;
+                    if (cmd === undefined ){
+                        if (this.last_cmd) {
+                            cmd=this.last_cmd;
+                        } else {
+                            cmd="power"
+                        }
                     }
                     if ( cmd ) {
+                        if ( cmd == "power" ) { //Here it must be on
+                            if (this.status["colour"]["saturation"] > 0) {
+                                cmd = "colour"
+                            } else {
+                                cmd = "white"
+                            }
+                        }
                         if ( cmd == "colour" ) {
                             var col = new HSVColour(this.status["colour"]["hue"],this.status["colour"]["saturation"],this.status["colour"]["value"])
                             document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
@@ -603,7 +622,7 @@ var BuddyDevice = Class.extend({
                         callback: function () {
                             //$("#"+oname+"-power").destroy();
                             //return false;
-                            deviceById[oname].matchStatus();
+                        //    deviceById[oname].matchStatus();
                         }
                     }
                 }
@@ -637,7 +656,7 @@ var BuddyDevice = Class.extend({
                 var cw = colourwheel($("#"+cmd)[0],250)
                 cw.set_colour([h,s,v])
                 if (! modal) {
-                    cw.onchange(deviceById[oname].exec_colcmd)
+                    cw.onchange($.debounce( 50, deviceById[oname].exec_colcmd))
                 }
             })
             
@@ -648,6 +667,7 @@ var BuddyDevice = Class.extend({
         return false;
     },
     
+    // sl for slider
     exec_slcmd: function(event) {
         //"this" is a DOM elt
         var allelt = this.id.split("__");
@@ -663,6 +683,7 @@ var BuddyDevice = Class.extend({
         deviceById[target].last_cmd=cmd
     },
     
+    // sw for switch
     exec_swcmd: function(event,state) {
         //"this" is a DOM elt
         var allelt = this.id.split("__");
@@ -672,7 +693,8 @@ var BuddyDevice = Class.extend({
         var newval={};
         buddy.sendCommand(cmd,target,deviceById[target].type,(state && $(this).attr("bu-on-cmdvalue")) || $(this).attr("bu-off-cmdvalue"))
     },
-        
+    
+    // col for colour picker
     exec_colcmd: function(colour) {
         //"this" is a DOM elt
         var allelt = $(".bu-modal-colourpick").attr("id").split("__");
@@ -1131,15 +1153,13 @@ var BuddyZone = Class.extend({
                         label: "Close",
                         className: "btn-close",
                         callback: function () {
-                            //$("#"+oname+"-power").destroy();
-                            //return false;
                         }
                     }
                 }
             });
             $("#"+oname+"-power").bootstrapSwitch();
             $("#"+oname+"-power").on("switchChange.bootstrapSwitch",function (ev,state) {
-                buddy.sendCommand("power",oname,otype,(state && "on") || "off",$("#"+oname+"-propagate").val()=="on")
+                buddy.sendCommand("power",oname,otype,(state && "on") || "off",$("#"+oname+"-propagate").is(':checked'))
             })
         } 
         return false
@@ -1179,7 +1199,7 @@ var BuddyApp = Class.extend({
         this.user = false;
         this.lousers={};
         this.pass = false;
-        this.debug=true;
+        this.debug= true ;
         
         this.socket.binaryType = "arraybuffer";
         this.socket.onopen = function() {
@@ -1263,6 +1283,20 @@ var BuddyApp = Class.extend({
             if ( buddy.debug ) { console.log("Connection closed."); }
             this.socket = null;
             this.isopen = false;
+            bootbox.dialog({
+                title: "Connection Lost",
+                value: "OMG",
+                message:`<p>We are terribly sorry. The server has gone the way of the dodo. 
+                            You might want to try to reload a bit later. As of now this whole contraption is pretty much useless.</p>`,
+                buttons: {
+                    close: {
+                        label: "Close",
+                        className: "btn-close",
+                        callback: function () {
+                        }
+                    }
+                }
+            });
         }
     },
     
@@ -1559,9 +1593,9 @@ var BuddyApp = Class.extend({
     },
          
     hEZNaming: function(msg) {
-        var type=msg.subject.split(".")[0];
+        var type=msg.content.target.split(".")[0];
         if (type == "zone") {
-            var zid=msg.subject.split(".")[1];
+            var zid=msg.content.target.split(".")[1];
             if ( zid in zoneById) {
                 var nickname=msg.content.value["nickname"]
                 zoneById[zid].nickname=nickname;
@@ -1599,9 +1633,9 @@ var BuddyApp = Class.extend({
     },
     
     hEZLocation: function(msg) {
-        var type=msg.subject.split(".")[0];
+        var type=msg.content.target.split(".")[0];
         if (type == "zone") {
-            var zid=msg.subject.split(".")[1];
+            var zid=msg.content.target.split(".")[1];
             
             if ( zid in zoneById) {
                 var pid = msg.content.value["parent"];
@@ -1640,9 +1674,9 @@ var BuddyApp = Class.extend({
     },
     
     hEZCreation: function(msg) {
-        var type=msg.subject.split(".")[0];
+        var type=msg.content.target.split(".")[0];
         if (type == "zone") {
-            var zid=msg.subject.split(".")[1];
+            var zid=msg.content.target.split(".")[1];
             var pid = msg.content.value["parent"];
             var nickname = msg.content.value["nickname"];
             if ( zoneById[zid] === undefined ) {
@@ -1696,9 +1730,9 @@ var BuddyApp = Class.extend({
     },
     
     hEZDeletion: function(msg) {
-        var type=msg.subject.split(".")[0];
+        var type=msg.content.target.split(".")[0];
         if (type == "zone") {
-            var zonename=msg.subject.split(".")[1];
+            var zonename=msg.content.target.split(".")[1];
             if ( zonename in zoneById) {
                 zoneById[zonename].revert_devices();
                 $.each(zoneById,function(key,val) {
@@ -1759,8 +1793,8 @@ var BuddyApp = Class.extend({
      },
 
     hEDStatus: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         if (deviceById[device]) {
             if (deviceById[device].type==type) {
                 deviceById[device].presence=true;
@@ -1773,8 +1807,8 @@ var BuddyApp = Class.extend({
     },
     
     hEDPresence: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
                 deviceById[device].presence= ( msg.content.value == "online" )
@@ -1788,8 +1822,8 @@ var BuddyApp = Class.extend({
     },
     
     hEDNew: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         if (! deviceById[device]) {
              //Check some consistency
             if ( ( type != msg.content.value["type"] ) || (device != msg.content.value["name"] )) {
@@ -1825,8 +1859,8 @@ var BuddyApp = Class.extend({
     },
     
     hEDLocation: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         var parent=msg.content.value["parent"];
         if ( deviceById[device] ) {
             deviceById[device].set_parent(zoneById[parent]);
@@ -1848,8 +1882,8 @@ var BuddyApp = Class.extend({
    
     hDDefine: function(msg) {
         if ( msg.content.status == 'done' ) {
-            var type=msg.subject.split(".")[0];
-            var device=msg.subject.split(".")[1];
+            var type=msg.content.target.split(".")[0];
+            var device=msg.content.target.split(".")[1];
             if (! deviceById[device]) {
                 var adevice=new BuddyDevice(msg.content.value["type"],msg.content.value["subtype"],msg.content.value["nickname"],msg.content.value["name"]);
                 adevice.set_parent(zoneById[msg.content.value["parent"]])
@@ -1860,8 +1894,8 @@ var BuddyApp = Class.extend({
     },
     
     hEDNickname: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
                 deviceById[device].nickname= msg.content.value;
@@ -1871,12 +1905,12 @@ var BuddyApp = Class.extend({
     },
     
     hEDState: function(msg) {
-        var type=msg.subject.split(".")[0];
-        var device=msg.subject.split(".")[1];
+        var type=msg.content.target.split(".")[0];
+        var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
-                deviceById[device].status[msg.content.target] = msg.content.value;
-                deviceById[device].matchStatus(msg.content.target);
+                deviceById[device].status[msg.content.subject] = msg.content.value;
+                deviceById[device].matchStatus(msg.content.subject);
             }
         }
     },
@@ -1918,8 +1952,6 @@ var BuddyApp = Class.extend({
     },
 
     hEGInfo: function(msg) {
-        var dev=msg.subject.split(".")[0];
-        var type=msg.subject.split(".")[1];
         if (msg.content["about"]) {
             $.each(msg.content["about"], function(key,val) {
                     abouttext[key]=val;
