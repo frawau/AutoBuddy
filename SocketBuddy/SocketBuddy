@@ -31,6 +31,7 @@ import asyncio as aio
 CERTFILE="autobuddy.crt"
 WCERTFILE="socketbuddy.crt"
 WKEYFILE="socketbuddy.key"
+__version__="0.10"
 
 class NamedEntity(object):
     """
@@ -96,7 +97,7 @@ class GuiWSBridge(bl.BuddyBridge):
     #A bit different ....overiding
     def connection_made(self,transport):
         self.transport=transport
-        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":""},"content_type":"authenticate"})
+        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.subject},"content_type":"authenticate"})
         if "save user" in self.config and self.config["save user"]:
             if isinstance(self.config["save user"],dict):
                 self.users={**self.config["save user"],**self.users}
@@ -163,8 +164,8 @@ class GuiWSBridge(bl.BuddyBridge):
                 else:
                     msg["content"]["value"]={"zone": self.users[orig.user][1]}
                 self.sending(msg)
-            elif orig.name in self.adminsocket:
-                if msg["content_type"] == "request" and msg["content"]["request"]=="add user":
+            elif msg["content_type"] == "request" and msg["content"]["request"]=="add user":
+                if orig.name in self.adminsocket:
                     #do something
                     if "password" in msg["content"]["value"]:
                         self.users[msg["content"]["value"]["user"]] = [msg["content"]["value"]["password"],msg["content"]["value"]["zone"]]
@@ -174,17 +175,15 @@ class GuiWSBridge(bl.BuddyBridge):
                         except:
                             return
                     self.saveUsers(token=msg["content"]["token"])
-                elif msg["content_type"] == "request" and msg["content"]["request"]=="delete user":
+            elif msg["content_type"] == "request" and msg["content"]["request"]=="delete user":
+                if orig.name in self.adminsocket:
                     #do something
                     try:
                         del(self.users[msg["content"]["value"]["user"]])
                         self.saveUsers(token=msg["content"]["token"])
                     except:
-                        return 
-                else:
-                    self.sending(msg)
-
-            elif orig.name in self.allowedsocket:
+                        return
+            elif orig.name in self.allowedsocket or orig.name in self.adminsocket:
                 self.sending(msg)
 
         except:

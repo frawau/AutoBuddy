@@ -108,13 +108,14 @@ an appliance image that will be easy to boot and configue using, for instance, K
 ### What is needed
 
 You need
- - Apache Qpid configured with SSL
+ - python3
  - Postgres
- - SQLAlchemy, 
- - qpid python library, 
- - Twisted, 
- - Autobahn WS python library
- - lifxlan python library
+ - SQLAlchemy (Python module), 
+ - asyncio (Python module),
+ - aiohttp (Python module),
+ - ephem  (Python module)
+ - dateutil (Python module),
+ - lifxlan (Python module)
  
 For WebBuddy you also need:
     
@@ -126,6 +127,7 @@ For WebBuddy you also need:
  - Colour.js
  - bootstrap-switch.min.js
  - bootstrap-slider.min.js
+ - jquery.ba-throttle-debounce.js
  - BuddyWheel.js
  
 and their associated CSS files. You also need Awesome Font.

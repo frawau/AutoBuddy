@@ -22,12 +22,14 @@
 #
 import optparse, sys, traceback,base64
 import asyncio as aio
+import datetime as dt
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, create_engine, and_,ForeignKeyConstraint
 from sqlalchemy.orm import sessionmaker,relationship,backref
 from sqlalchemy.ext.mutable import Mutable
 from sqlalchemy.types import TypeDecorator, VARCHAR
 from uuid import uuid4
+from random import randint
 
 import json,functools
 from Crypto.Cipher import  AES
@@ -342,6 +344,7 @@ class BuddyBridge(aio.Protocol):
         self.loop=loop
         self.log=log
         self.partialdata=""
+        self.tokens={}
 
     def configure(self):
         """
@@ -399,7 +402,7 @@ class BuddyBridge(aio.Protocol):
             self.sending({"subject":"control"+"."+self.subject,
                         "content_type": "request",
                         "content":{"request":"configuration",
-                                    "token": self.target,
+                                    #"token": self.target,
                                     "target":self.target,
                                     "value":value,
                                     "credential":self.config["credential"]}})
@@ -407,7 +410,7 @@ class BuddyBridge(aio.Protocol):
             self.sending({"subject":"control"+"."+self.subject,
                         "content_type": "request",
                         "content":{"request":"configuration",
-                                    "token": self.target,
+                                    #"token": self.target,
                                     "target":self.target,
                                     "credential":self.config["credential"]}})
         
@@ -418,21 +421,32 @@ class BuddyBridge(aio.Protocol):
                 self.log.debug("Got %r" % msg)
             if msg["content_type"] == "command":
                 self.process_command(msg)
-            elif msg["content_type"] == "response": # and msg["content"]["token"] == self.target :
-                self.process_response(msg)
             elif msg["content_type"] == "event":
                 self.process_event(msg)
+            elif msg["content_type"] == "request":
+                self.process_request(msg)
+            elif msg["content_type"] == "response" and msg["content"]["token"] in self.tokens :
+                del(self.tokens[msg["content"]["token"]])
+                self.process_response(msg)
             else:
                 if self.log:
                     self.log.debug("other %r"%msg) 
+                    
+            if randint(1,200)==69: #from time to time
+                #clean
+                comp=dt.datetime.now()-dt.timedelta(minutes=1)
+                lot=self.tokens.keys()
+                for x in lot:
+                    if self.tokens[x]<comp:
+                        del(self.tokens[x])
             
         except Exit as e:
             raise e
-        except:
+        except Exception as e:
             if self.log:
-                self.log.warning("Message problem for {}:\n{}".format(msg,exc_info=(traceback)))
+                self.log.critical("Message problem for {}\n".format(msg),exc_info=(type(e), e, e.__traceback__))
             else:
-                print("Warning: Message problem for {}:\n{}".format(msg,exc_info=(traceback)))
+                print("Warning: Message problem for {}:\n{}".format(msg,e.__traceback__))
 
             
     def process_command(self,msg):
@@ -444,7 +458,13 @@ class BuddyBridge(aio.Protocol):
             
     def process_response(self,msg):
         raise NotImplementedError()
-                
+
+    def process_request(self,msg):
+        """
+        By default just do nothing
+        """
+        if self.log:
+            self.log.debug("event {}".format(msg["content"]["value"]))                
     
     def process_event(self,msg):
         """
@@ -454,8 +474,13 @@ class BuddyBridge(aio.Protocol):
             self.log.debug("event {}".format(msg["content"]["value"]))
     
     def sending(self,msg):
+        if msg["content_type"]=="request":
+            if not ("token" in msg["content"] and msg["content"]["token"]):
+                nt=genid()
+                msg["content"]["token"]=nt
+            self.tokens[msg["content"]["token"]]=dt.datetime.now()
         if self.log:
-            self.log.debug("Sending {}".format(msg["subject"]))
+            self.log.debug("Sending {}".format(msg))
         jmsg = json.dumps(msg)
         self.transport.write(jmsg.encode())
 

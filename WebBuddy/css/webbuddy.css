@@ -80,6 +80,11 @@ a {
     width: 100px;
 }
 
+.bootstrap-touchspin {
+    text-align: right;
+    width: 200px;
+}
+
 .bu-label {
     margin-right : 10px;
 }

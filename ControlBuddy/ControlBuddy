@@ -38,16 +38,41 @@
 # Buddy can also persist information for other applications
 
 import argparse, sys, traceback,json
-import asyncio as aio
+import asyncio as aio, datetime as dt
 import buddylib as bl
 import logging, functools, os, ssl
 from collections import defaultdict
-from time import sleep
+from random import randint
 
 
 __version__="0.10"
 KEYFILE="autobuddy.key"
 CERTFILE="autobuddy.crt"
+
+system_config="""
+<buddyui version="0.1">
+    <configuration name="System">
+        <controlgroup type="list"  name="location" label="Location" widget="geolocation">
+            <control type="slider" name="longitude" label="Longitude">
+                <start>-180</start>
+                <end>180</end>
+                <increment>0.1</increment>
+            </control>
+            <control type="slider" name="latitude" label="Latitude">
+                <start>-90</start>
+                <end>90</end>
+                <increment>0.1</increment>
+            </control>
+            <control type="spinner" name="altitude" label="Altitude">
+                <start>-400</start>
+                <end>5100</end>
+                <increment>10</increment>
+            </control>
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+system_config_default={"location":{}}
 
 def zone_of_interest(self,subject):
     #TODO  change to a regex... Now light.Home and light.Home Theatre  would both match on Home zone
@@ -84,6 +109,7 @@ class BuddyPartner(aio.Protocol):
     def __init__(self,controller,log):
         self.controller=controller
         self.log=log
+        self.tokens={}
         super().__init__()
         
         
@@ -93,14 +119,26 @@ class BuddyPartner(aio.Protocol):
         self.ptask = None
         self.state = "Init"
         self.filter="*"
+        self.holdbuffer=""
         
     def data_received(self,data):
         if len(data) != 0 :
             #All messages are dictionaries... so we can parse the JSON to seperate multiple objects
-            mydata=data.decode()
+            mydata=self.holdbuffer+data.decode()
+            self.holdbuffer=""
             lvl=0
             pdata=""
+            isesc=False
             for x in mydata:
+                if isesc:
+                    isesc=False
+                    pdata+=x
+                    continue
+                if x=="\\":
+                    isesc=True
+                    pdata+=x
+                    continue
+                    
                 if x == "{":
                     lvl+=1
                 elif x == "}":
@@ -108,6 +146,7 @@ class BuddyPartner(aio.Protocol):
                 pdata+=x
                 if lvl==0:
                     msg=json.loads(pdata)
+                    pdata=""
                     if self.log:
                         self.log.debug("Received: %r" % msg)
                     if self.state == "Init":
@@ -119,17 +158,31 @@ class BuddyPartner(aio.Protocol):
                             except:
                                 pass
                     elif self.state == "Active":
+                        if msg["content_type"] == "request":
+                            self.tokens[msg["content"]["token"]]=dt.datetime.now()
                         self.controller.broadcast(msg,[self.addr])
-                    pdata=""
             if pdata:
-                self.log.warning ("Partially received")
+                self.log.info ("Partially received: level{} {}||".format(lvl,pdata))
+                self.holdbuffer=pdata
                 
                 
     def dosend(self,msg):
-        for x, y in zip(self.filter,msg["subject"].split(".")):
-            if x != "*" and not y.startswith(x):
+        if msg["content_type"] in ["response"]:
+            if msg["content"]["token"] not in self.tokens:
                 return
+            del(self.tokens[msg["content"]["token"]])
+        if msg["content_type"] in ["command","request"]:
+            for x, y in zip(self.filter,msg["subject"].split(".")):
+                if not y.startswith(x):
+                    return
         self.transport.write(json.dumps(msg).encode())
+        if randint(1,50)==31: #from time to time
+            #clean
+            comp=dt.datetime.now()-dt.timedelta(minutes=1)
+            lot=list(self.tokens.keys())
+            for x in lot:
+                if self.tokens[x]<comp:
+                    del(self.tokens[x])
                 
         
 
@@ -207,7 +260,7 @@ class Controller():
                 stream=sys.stderr,
                )
             self.log = logging.getLogger('')
-        elif opts.verbose:
+        else:
             logging.basicConfig(
                 level=logging.CRITICAL,
                 format='%(levelname)7s: %(message)s',
@@ -416,6 +469,16 @@ class Controller():
         lofunc=sess.query(bl.BuddyFunction).all()
         for x in lofunc:
             self.allFunctions[x.type][x.subtype]=x.functions
+        self.allConfigs= defaultdict(dict)
+        self.allCommands= defaultdict(dict)
+        try:
+            loconf=sess.query(bl.BuddyProperty).filter_by(entity="System").filter_by(name="configuration").one()
+            storedvalue=bl.decrypt(loconf.values,self.config["buddykey"])
+            for k,v in storedvalue.items():
+                system_config_default[k]=v
+        except:
+            pass
+        self.allConfigs["System"]["configuration"]=[system_config,system_config_default]
         #sess.close()
         
     def connect(self):
@@ -459,6 +522,33 @@ class Controller():
                     nloz += sz.sub_zone
                 loz=nloz
                 nloz=[]
+        elif msg["content_type"]== "command" and msg["subject"] == "System.configuration":
+            if msg["content"]["command"] == "update config":
+                    for k,v in msg["content"]["value"].items():
+                        system_config_default[k]=v
+                    try:
+                        sess=self.DBSession
+                        myconfig = sess.query(bl.BuddyProperty).filter_by(name="configuration")
+                        myconfig = myconfig.filter_by(entity="System").one()
+                    except:
+                        myconfig=bl.BuddyProperty()
+                        myconfig.entity="System"
+                        myconfig.name="configuration"
+                        sess.add(myconfig)
+                    myconfig.values=bl.encrypt(system_config_default,self.config["buddykey"])
+                    try:
+                        sess.commit()
+                        self.sending({"subject":"System",
+                                    "content_type":"event",
+                                    "content": {"event":"config updated",
+                                                "target": "System.configuration",
+                                                "values":system_config_default}})
+                    except:
+                        self.sending({"subject":"System",
+                                    "content_type":"event",
+                                    "content": {"event":"Error",
+                                                "target": "System.configuration",
+                                                "values":"Config could not be saved"}})
         elif msg["subject"].split(".")[0] == "control":
             try:
                 if msg["content_type"]== "request":
@@ -480,6 +570,7 @@ class Controller():
                                                 "token": msg["content"]["token"],
                                                 "database":self.config["database"],
                                                 "status": "done",
+                                                "system configuration":system_config_default,
                                                 "configuration":cfgdata}})
                         #See what's in it form me
                         if "value" in msg["content"]:
@@ -494,7 +585,7 @@ class Controller():
                             if msgval:
                                  self.sending({"subject":msg["content"]["target"],#+"."+msg["subject"].split(".")[1],
                                     "content_type":"event",
-                                    "content": {"response":"gui info",
+                                    "content": {"event":"gui info",
                                                 "value":msgval}})
                                     
                     elif msg["content"]["request"] == "save configuration":
@@ -550,7 +641,8 @@ class Controller():
                             myprop = myprop.filter_by(name=msg["content"]["name"])
                         lop=myprop.all()
                         for x in lop:
-                            result[x.name]=x.values
+                            if x.name != "configuration":
+                                result[x.name]=x.values
 
                         self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
                                     "content_type":"response",
@@ -610,7 +702,7 @@ class Controller():
                                                 "status": (sts and "done" ) or "failed",
                                                 "value": thisval}})
                     elif msg["content"]["request"] == "nickname":
-                        mytype=getattr(bl,msg["content"]["target"])
+                        #TODEL mytype=getattr(bl,msg["content"]["target"])
                         try:
                             device=self.getDevice(msg["content"]["value"]["name"])
                             device.nickname=msg["content"]["value"]["nickname"]
@@ -618,7 +710,7 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg["content"]["target"]+"."+msg["content"]["value"]["name"],
+                        self.sending({"subject":msg["content"]["target"],
                                     "content_type":"response",
                                     "content": {"response":"nickname",
                                                 "value": msg["content"]["value"]["nickname"],
@@ -626,24 +718,32 @@ class Controller():
                                                 "status": (sts and "done" ) or "failed" }})
                                     
                     elif msg["content"]["request"] == "functions":
-                        try:
-                            myent=sess.query(bl.BuddyFunction).\
-                                filter_by(type=msg["content"]["target"]).\
-                                    filter_by(subtype=msg["content"]["subtype"]).one()
-                        except:
-                            myent=bl.BuddyFunction()
-                            myent.type=msg["content"]["target"]
-                            myent.subtype=msg["content"]["subtype"]
-                            sess.add(myent)
-                        for x in msg["content"]["value"]:
-                            setattr(myent,x,msg["content"]["value"][x])
-                        
-                        try:
-                            sess.commit()
-                            sts=True
-                            self.allFunctions[myent.type][myent.subtype]=myent.functions
-                        except:
-                            sts=False
+                        sts=True
+                        if "functions" in msg["content"]["value"]:
+                            try:
+                                myent=sess.query(bl.BuddyFunction).\
+                                    filter_by(type=msg["content"]["target"]).\
+                                        filter_by(subtype=msg["content"]["subtype"]).one()
+                                if myent.functions != msg["content"]["value"]:
+                                    myent.functions=msg["content"]["value"]["functions"]
+                            except:
+                                myent=bl.BuddyFunction()
+                                myent.type=msg["content"]["target"]
+                                myent.subtype=msg["content"]["subtype"]
+                                sess.add(myent)
+                                #for x in msg["content"]["value"]:
+                                    #setattr(myent,x,msg["content"]["value"][x])
+                                    
+                            self.allFunctions[myent.type][myent.subtype]=msg["content"]["value"]["functions"]
+                            try:
+                                sess.commit()
+                            except:
+                                sess.rollback()
+                                sts=False
+                        if "configs" in msg["content"]["value"]:
+                            self.allConfigs[msg["content"]["target"]][msg["content"]["subtype"]]=msg["content"]["value"]["configs"]
+                        if "module commands" in msg["content"]["value"]:
+                            self.allCommands[msg["content"]["subtype"]]=msg["content"]["value"]["module commands"]
                         self.sending({"subject":msg["content"]["target"]+".functions",
                                     "content_type":"response",
                                     "content": {"response":"functions",
@@ -782,13 +882,23 @@ class Controller():
                         #print msg
                         pzone=self.getZone(msg["content"]["value"]["zone"] or self.Zone.name)
                         #print "Building for ",pzone,msg["content"]["value"]["zone"] or self.Zone.name
-                        resu={"name":".","devices":{},"sub_zone":[],"functions":{}}
+                        resu={"name":".","devices":{},"sub_zone":[],"functions":{}, "configs": {}}
 
                         for ftype in self.allFunctions:
                             if ftype not in resu["functions"]:
                                 resu["functions"][ftype]={}
                             for fstype in  self.allFunctions[ftype]:
                                 resu["functions"][ftype][fstype]=self.allFunctions[ftype][fstype]
+                                
+                        for ftype in self.allConfigs:
+                            if ftype not in resu["configs"]:
+                                resu["configs"][ftype]={}
+                            for fstype in  self.allConfigs[ftype]:
+                                resu["configs"][ftype][fstype]=self.allConfigs[ftype][fstype]
+
+                        if self.allCommands:
+                            resu["module commands"]=self.allCommands
+
                         if self.about:
                             resu["about"]=self.about
                         if self.display:
@@ -802,9 +912,10 @@ class Controller():
                                                 "status": "done",
                                                 "value": resu}})
 
-            except:
-                self.log.critical("Bloody problem with ():\n {}".format(msg, exc_info=(traceback)))
+            except Exception as e:
+                self.log.critical("Bloody problem with ():\n".format(msg), exc_info=(type(e), e, e.__traceback__))
                 
+
         else:
             self.log.debug("Unprocessed message {}".format(msg))
             pass

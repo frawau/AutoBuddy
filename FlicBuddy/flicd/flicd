@@ -1,0 +1,4 @@
+#! /bin/bash
+SCRIPTPATH=`dirname "$0"`
+ARCH=`uname -m`
+exec $SCRIPTPATH/flicd.$ARCH $@

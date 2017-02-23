@@ -6,6 +6,10 @@
  * Released under the MIT license
  *
  * Date: 2015-08-16
+ *       2016-12-05   Updated to reflect the changes in message structure. 
+ *       2017-01      Updated to use Buddyguilib and added "icon status" support
+ *       2017-02      Lots of changes. Dupport for configuration added. Cleaned naming
+ ^                    
 */
 
 
@@ -19,6 +23,8 @@ var nznametmpl = "New Zone "; /* New Zone name template */
 
 /*
 * Some utility functions
+* This one is for indenting the options to reflect
+* structure.
 */
 String.prototype.repeat = function(count) {
     if (count < 1) return '';
@@ -29,13 +35,8 @@ String.prototype.repeat = function(count) {
     }
     return result + pattern;
   };
-  
-//Bug fix
-SVGElement.prototype.getTransformToElement = SVGElement.prototype.getTransformToElement || function(elem) {
-    return elem.getScreenCTM().inverse().multiply(this.getScreenCTM());
-};
 
-function generateBGClass() {
+function generate_bg_class() {
     var cssstr = "<style>\n.bu-layer-colour-0-0 { border-bottom-color: #C63D0F; border-right-color: #C63D0F;}\n";
     
     
@@ -52,72 +53,41 @@ function generateBGClass() {
     $('html > head').append(cssstr);
 }
 
-function whiteToRGB(K) {
-    // Taken from
-    // http://www.TannerHelland.com/4435/convert-temperature-rgb-algorithm-code/
-    // http://www.zombieprototypes.com/?p=210
-    var red=0;
-    var green=0;
-    var blue=0;
-    if ( K <= 6600 ) {
-        red=255;
-    } else {
-        var a = 351.97690566805693;
-        var b = 0.114206453784165;
-        var c = -40.25366309332127;
-        var x = ( K / 100 ) - 55 ;
-        red=Math.round(a+b*x+c*Math.log(x));
-        if ( red < 0) {
-            red = 0;
-        } else if ( red > 255) {
-            red=255;
+function get_dict_keys(val) {
+    if ($.isArray(val)) {
+        return "&lt;list&gt;"
+    }
+    if ($.isEmptyObject(val)) {
+        return ""
+    }
+    if (typeof val == "string") {
+        return ""
+    }
+    var resu=[]
+    $.each(val, function(pre,ival) {
+        var tmp=get_dict_keys(ival);
+        if ($.isArray(tmp)) {
+            $.each(tmp, function (idx,strval) {
+                resu.push(pre+"::"+strval)
+            })
+        } else if (tmp =="") {
+            resu.push(pre)
+        } else {
+            resu.push(pre+"::"+tmp)
         }
-    }
-    
-    if ( K <= 6600 ) {
-        var a = -155.25485562709179;
-        var b = -0.44596950469579133;
-        var c = 104.49216199393888;
-        var x = ( K / 100 ) - 2;
-    } else {
-        var a = 325.4494125711974;
-        var b = 0.07943456536662342;
-        var c = -28.0852963507957;
-        var x = ( K / 100 ) - 50;
-    }
-    
-    green=Math.round(a+b*x+c*Math.log(x));
-    if ( green < 0) {
-        green = 0;
-    } else if ( green > 255) {
-        green=255;
-    }
-    
-    if ( K >= 6600 ) {
-        blue=255;
-    } else {
-        var a = -254.76935184120902;
-        var b = 0.8274096064007395;
-        var c = 115.67994401066147;
-        var x = ( K / 100 ) - 10;
-        blue=Math.round(a+b*x+c*Math.log(x));
-        if ( blue < 0) {
-            blue = 0;
-        } else if ( blue > 255) {
-            blue=255;
-        }
-    }
-    return new RGBColour(red,green,blue);
+    })
+    return Array.from(new Set(resu));
+//     return $.grep(resu, function(el, index) {
+//         return index === $.inArray(el, array);
 }
 
-
-function setCookie(key, value) {
+function set_cookie(key, value) {
     var expires = new Date();
-    expires.setTime(expires.getTime() + (7 * 24 * 60 * 60 * 1000));
+    expires.setTime(expires.getTime() + (30 * 24 * 60 * 60 * 1000));
     document.cookie = key + '=' + value + ';expires=' + expires.toUTCString();
 }
 
-function getCookie(key) {
+function get_cookie(key) {
     var keyValue = document.cookie.match('(^|;) ?' + key + '=([^;]*)(;|$)');
     return keyValue ? keyValue[2] : null;
 }
@@ -128,7 +98,7 @@ function logout() {
     location.reload()
 }
  
-function showAbout () {
+function show_about () {
     var msg="<ul class=\"nav nav-tabs\">"
     var tabmsg = "<div id=\"about-tab-content\" class=\"tab-content\">";
     var active = " active";
@@ -171,7 +141,7 @@ function showAbout () {
     });
 }
 
-function changePassword () {
+function change_password () {
     var msg="<form class=\"form-ch-password\">"
     msg+="<div class=\"form-group\"><label for=\"opasswd\">Old Password</label><input class=\"form-control\" type=\"password\" name=\"oldPassword\" id=\"opasswd\" /></div>"
     msg+="<div class=\"form-group\"><label for=\"npasswd\">New Password</label><input class=\"form-control\" type=\"password\" name=\"mewPassword\" id=\"npasswd\" />"
@@ -227,8 +197,8 @@ function changePassword () {
                     }
                     
                     if (goon) {
-                        var token = buddy.sendRequest("change password","control.users", buddy.subject,{"user":buddy.user,"password":buddy.pass,"new password":$("#npasswd").val()},["Password could not be changed",{"new password":$("#npasswd").val()}])
-                        buddy.tokento[token]=setTimeout($.proxy(buddy.nhProperty, buddy, token, "Password Change"), buddy.timeout);
+                        var token = buddy.send_request("change password","control.users", buddy.subject,{"user":buddy.user,"password":buddy.pass,"new password":$("#npasswd").val()},["Password could not be changed",{"new password":$("#npasswd").val()}])
+                        buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_property, buddy, token, "Password Change"), buddy.timeout);
                         
                     } else {
                         return false;
@@ -240,7 +210,7 @@ function changePassword () {
 }
  
  
-function manageUsers () {
+function manage_users () {
     
     var msg="<form class=\"form-mng-user\">"
     msg+="<div class=\"form-group\"><label for=\"ig-username\">User Name</label><div class = \"input-group\" id=\"ig-username\"><input class=\"form-control\" type=\"text\" name=\"User\" id=\"username\" />";
@@ -325,8 +295,8 @@ function manageUsers () {
                         if ( $("#upasswd").val()) {
                             myval["password"]=$("#upasswd").val();
                         }
-                        var token = buddy.sendRequest("add user","control.users", buddy.subject,myval,["Usercould not be added",{"add user":[$("#username").val(),$("#bu-nu-location").val().trim()]}])
-                        buddy.tokento[token]=setTimeout($.proxy(buddy.nhProperty, buddy, token, "User Add/Edit"), buddy.timeout);
+                        var token = buddy.send_request("add user","control.users", buddy.subject,myval,["Usercould not be added",{"add user":[$("#username").val(),$("#bu-nu-location").val().trim()]}])
+                        buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_property, buddy, token, "User Add/Edit"), buddy.timeout);
                         return true;
                     } else {
                         return false;
@@ -351,8 +321,8 @@ function manageUsers () {
                         $("#username").closest(".form-group").append($("<p/>", {class: "help-block", html:"You cannot delete youself. Seek counseling."}));
                         $("#username").closest(".form-group").addClass("has-warning");
                     } else {
-                        var token = buddy.sendRequest("delete user","control.users", buddy.subject,{"user":$("#username").val().trim()},["User "+$("#username").val()+" could not be deleted",{"delete user":$("#username").val()}])
-                        buddy.tokento[token]=setTimeout($.proxy(buddy.nhProperty, buddy, token, "Delete User"), buddy.timeout);
+                        var token = buddy.send_request("delete user","control.users", buddy.subject,{"user":$("#username").val().trim()},["User "+$("#username").val()+" could not be deleted",{"delete user":$("#username").val()}])
+                        buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_property, buddy, token, "Delete User"), buddy.timeout);
                     }
                 }
             }
@@ -371,17 +341,303 @@ function manageUsers () {
     })
 }
 
-function webConfig() {
-    bootbox.alert("We are very sorry. This has not been implemented yet. But when we do, it will be great.... We promis!")
+function devcompare(a,b) {
+    if (a[0]< b[0]) {
+        return -1;
+    } else if (a[0] > b[0]) {
+        return 1;
+    }
+    if (a[1]< b[1]) {
+        return -1;
+    } else if (a[1] > b[1]) {
+        return 1;
+    }
+    if (a[2]< b[2]) {
+        return -1;
+    } else if (a[2] > b[2]) {
+        return 1;
+    }
+    return 0
+    
+        
 }
+
+function bu_parse_xml(txt) {
+    var thisdoc=$($.parseXML(txt));
+    var myexpand={};
+    var exidx=1
+    //TODO  Add label, postfix and prefix transform for l10n
+    
+    $.each(thisdoc.find("[expand]"), function(key,eval) {
+        var myex=$(eval).attr("expand")
+        var mykey="bu-expansion-"+exidx;
+        exidx+=1;
+        $(eval).attr("expand",mykey)
+        var options=$(eval).attr("exopt");
+        if ($(eval).attr("label")!= undefined ) {
+            var thisexpand="<controlgroup type=\"choice\" name=\""+$(eval).attr("name")+"\" label=\""+$(eval).attr("label")+"\" >";
+        } else {
+            var thisexpand="<controlgroup type=\"choice\" name=\""+$(eval).attr("name")+"\" label=\""+$(eval).attr("name")+"\" >";
+        }
+        $.each( myex.trim().split(","), function (k,exs) {
+            var myexlist=exs.trim().split("::");
+            var what = myexlist[0].toLowerCase();
+            var dtype = myexlist[1];
+            var dstype = myexlist[2];
+            if (what == "device" ) {
+                if (options != undefined && options.includes("withtype")) { var subtoo = true; } else { var subtoo=false; }
+                var mylist=[];
+                $.each( deviceById, function (idx, dev) {
+                    if ( dtype==undefined || dev.type==dtype) {
+                        if ( dstype==undefined || dev.type==dstype) {
+                            mylist.push([dev.type,dev.subtype,dev.nickname,dev.name])
+                        }
+                    }
+                });
+                if (options != undefined && options.includes("any")) { thisexpand+="<item value=\"\" label=\"Any\" />"; }
+                mylist.sort(devcompare);
+                var ctype=undefined;
+                var cstype=undefined;
+                $.each( mylist, function (idx,val) {
+                    if (val[0]!=ctype) {
+                        ctype=val[0];
+                        cstype=undefined;
+                        if (subtoo) {
+                            thisexpand+="<item value=\""+ctype+"\" />";
+                        } else {
+                            thisexpand+="<itemgroup value=\""+ctype+"\" />";
+                        }
+                    }
+                    if (val[1]!=cstype) {
+                        cstype=val[1];
+                        if (subtoo) {
+                            thisexpand+="<item value=\""+ctype+"."+cstype+"\" label=\"  "+cstype+"\" />";
+                        } else {
+                            thisexpand+="<itemgroup value=\"  "+cstype+"\" />";
+                        }
+                    }
+                    thisexpand+="<item value=\""+ctype+"."+val[3]+"\" label=\"    "+val[2]+"\" />";
+                })
+            } else if (what=="config") {
+                if (dtype != undefined && dstype != undefined && myexlist[3] != undefined && buddy.configs[dtype][dstype]!= undefined) {
+                    //maybe we could check it is defined by a "listmaker" control?
+                    //extracr a value based on dot separated keys
+                    extractval= function (dict,key) { 
+                        var x= dict; 
+                        $.each( key.split("."), function (idx,k) {
+                            x=x[k.trim()]
+                        }); 
+                        return x;
+                    }
+                    if (myexlist[4] != undefined && myexlist[5] != undefined) {
+                        myfilter = function (x) { return extractval(x,myexlist[4]) == myexlist[5] };
+                    } else {
+                        myfilter = function (x) { return true };
+                    }
+                    var mylist=[];
+                    $.each(buddy.configs[dtype][dstype][1],function (idx,val) {
+                        $.each(val,function (jdx,wal) {
+                            if (myfilter(wal)) {
+                                mylist.push(extractval(wal,myexlist[3]));
+                            }
+                        })
+                    })
+                    mylist.sort()
+                    $.each( mylist, function (idx,val) {
+                        thisexpand+="<item value=\""+dtype+"."+dstype+"."+val+"\" label=\""+val+"\" />";
+                    })
+                } else {
+                    console.log("Error: Cannot expand from \""+val+"\"");
+                }
+            } else if (what=="command") {
+                var mylist=[];
+                var seencmd=[];
+                $.each( deviceById, function (idx, dev) {
+                    if ( dtype==undefined || dev.type==dtype) {
+                        if ( dstype==undefined || dev.type==dstype) {
+                            mylist.push([dev.type,dev.subtype,dev.nickname,dev.name])
+                        }
+                    }
+                })
+                if (options == undefined || !options.includes("simplelist")) {
+                    mylist.sort(devcompare);
+                } 
+                var ctype=undefined;
+                var cstype=undefined;
+                var cnlist=[];
+                var clist={};
+                $.each( mylist, function (idx,val) {
+                    if (val[0]!=ctype) {
+                        ctype=val[0];
+                        cstype=val[1];
+                        cnlist=[];
+                        clist={}
+                        cxml=$( jQuery.parseXML(buddy.functions[ctype][cstype])).find( "command" );
+                        $.each(cxml.children(),function(idx,part) {
+                            cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
+                            clist[$(part).attr("name")]=part.outerHTML;
+                        });
+                    }
+                    if (options == undefined || !options.includes("simplelist")) {
+                        thisexpand+="<item value=\""+ctype+"."+val[3]+"\" label=\""+val[2]+"\" >";
+                        thisexpand+="<controlgroup type=\"choice\" name=\"command\">";
+                    }
+                    $.each(cnlist, function (idx,cval) {
+                        if (options != undefined && options.includes("simplelist")) {
+                            if (!seencmd.includes(cval[0]) ) {
+                                seencmd.push(cval[0])
+                                thisexpand+="<item value=\""+cval[0]+"\" label=\""+cval[1]+"\">"
+                                thisexpand+=clist[cval[0]];
+                                thisexpand+="</item>";
+                            }
+                        } else {
+                            thisexpand+="<item value=\""+cval[0]+"\" label=\""+cval[1]+"\">"
+                            thisexpand+=clist[cval[0]];
+                            thisexpand+="</item>";
+                        }
+                    });
+                    if (options == undefined || !options.includes("simplelist")) {
+                        thisexpand+="</controlgroup></item>";
+                    }
+                });
+            }
+        })
+        if ( options!= undefined && options.includes("freeform") ) {
+            thisexpand+="<item value=\"freeform\" label=\"Specify\" >";
+            thisexpand+="<control type=\"text\" name=\"freeform\" label=\" \" length=\"32\" />";
+            thisexpand+="</item>";
+        }
+        thisexpand+="</controlgroup>";
+        myexpand[mykey]=thisexpand;
+    })
+
+    $.each(myexpand, function (key,val) {
+        thisdoc.find("[expand=\""+key+"\"]").replaceWith(val);
+    });
+    return thisdoc;
+}
+
+function module_config() {
+    var msg = "<div id=\"bu-mod-config-choice\">";
+    var ordered = {};
+    Object.keys(buddy.configs).sort().forEach(function(key) {
+        ordered[key] = buddy.configs[key];
+    });
+    buddy.configs=ordered;
+    $.each(buddy.configs, function ( dtype, sub ) {
+        ordered = {};
+        Object.keys(buddy.configs[dtype]).sort().forEach(function(key) {
+            ordered[key] = buddy.configs[dtype][key];
+        });
+        buddy.configs[dtype]=ordered;
+    });
+    $.each(buddy.configs, function ( dtype, sub ) {
+        $.each(sub, function ( dstype, xml ) {
+            msg+="<button type = \"button\" class = \"btn btn-default bu-mod-config-button\"  id=\"bu-mod-config-"+dtype+"."+dstype+"\">"+dtype+" "+dstype+"</button>";
+        });
+    });
+    msg+="</div>";
+    bootbox.dialog({
+        title: "Select what to configure.",
+        value: "conf",
+        message:msg,
+        buttons: {
+        }
+    });
+    $(".bu-mod-config-button").on("click", module_config_bis);
+}
+    
+function module_config_bis(e) {
+    bootbox.hideAll();
+    var elt = e.target.id.split("-").slice(-1)[0];
+    var etype = elt.split(".")[0];
+    var estype = elt.split(".")[1];
+    buddy.cmd_panel = new buddyPanel("config",bu_parse_xml(buddy.configs[etype][estype][0]).find( "buddyui" ),false);
+    buddy.cmd_panel.tgt = etype+"."+estype;
+    var msg = buddy.cmd_panel.render("configuration");
+
+    bootbox.dialog({
+        title: "Configuration "+etype+" "+estype,
+        value: "conf",
+        message:msg,
+        buttons: {
+            close: {
+                label: "Save",
+                className: "btn-close",
+                callback: function () {
+                    var cval = buddy.cmd_panel.getValue();
+                    console.log(cval);
+                    var etype = buddy.cmd_panel.tgt.split(".")[0];
+                    var ename = buddy.cmd_panel.tgt.split(".")[1];
+                    var token=buddy.send_command("update config",ename,etype,cval,false,buddy.cmd_panel.tgt);
+                    buddy.tokens.splice( $.inArray(token, buddy.tokens), 1 );
+//                     var etype = buddy.cmd_panel.tgt.split(".")[0];
+//                     var estype = buddy.cmd_panel.tgt.split(".")[1];
+//                     buddy.configs[etype][estype][1]=cval;
+                    buddy.cmd_panel=null;
+                }
+            }
+        }
+    });
+    buddy.cmd_panel.activate([250,0]);
+    buddy.cmd_panel.setValue(buddy.configs[etype][estype][1])
+}
+
+
+function module_command() {
+    var msg = "<div id=\"bu-mod-cmd-choice\">";
+    var ordered = {};
+    Object.keys(buddy.mcommands).sort().forEach(function(key) {
+        ordered[key] = buddy.mcommands[key];
+    });
+    buddy.mcommands=ordered;
+    $.each(buddy.mcommands, function ( stype, cmd ) {
+        ordered = {};
+        Object.keys(buddy.mcommands[stype]).sort().forEach(function(key) {
+            ordered[key] = buddy.mcommands[stype][key];
+        });
+        buddy.mcommands[stype]=ordered;
+    });
+    $.each(buddy.mcommands, function ( stype, cmds ) {
+        $.each(cmds, function ( cmd, cdef ) {
+            msg+="<button type = \"button\" class = \"btn btn-default bu-mod-cmd-button\"  id=\"bu-mod-cmd-"+stype+"."+cmd+"\">"+cdef.label || (cmd+" "+stype)+"</button>";
+        });
+    });
+    msg+="</div>";
+    bootbox.dialog({
+        title: "Select a command.",
+        value: "cmd",
+        message:msg,
+        buttons: {
+        }
+    });
+    $(".bu-mod-cmd-button").on("click", module_command_bis);
+}   
+function module_command_bis(e) {
+    bootbox.hideAll();
+    var elt = e.target.id.split("-").slice(-1)[0];
+    var etype = elt.split(".")[0];
+    var ecmd = elt.split(".")[1];
+    buddy.send_command(ecmd,etype,buddy.mcommands[etype][ecmd]["module"],buddy.mcommands[etype][ecmd]["value"])
+}
+
+function explore_events() {
+    var msg="<ul>";
+    $.each(buddy.seenevents, function (idx,val) {
+        msg+="<li>"+val+"</li>";
+    })
+    msg+="</ul>";
+    bootbox.alert(msg);
+}
+
 
 // ES6 Alert. Using backquote for multi-lines
 // Lifted from FontAwesome
-var notPresentIcon=`
-     <path class="bu-not-present" fill="#a94442" 
-           d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
-              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
-              163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>`;
+// var notPresentIcon=`
+//      <path class="bu-not-present" fill="#a94442" 
+//            d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
+//               0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
+//               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>`;
 var defaultIcon=`
     <svg  class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
         <path  class="bu-fill"  stroke="black" stroke-width=1 d="M1152 896q0-106-75-181t-181-75-181 75-75 181 75 181 181 75 181-75 75-181zm512-109v222q0 
@@ -413,10 +669,13 @@ var BuddyDevice = Class.extend({
         this.div = false;
         this.presence=false;
         this.status={};
+        this.iconstatus={};
+        this.info={};
         this.last_cmd;
+        this.cmd_panel;
     },
     
-    addDeviceDiv: function() {
+    add_device_div: function() {
         var cdiv=$("<div>", {id: this.name, class: "zonedroppable bu-device "+"bu-"+this.type+" bu-"+this.subtype, 
                             "data-toggle":"tooltip","data-original-title":this.nickname});
         var devicon=false;
@@ -439,8 +698,8 @@ var BuddyDevice = Class.extend({
             return false;
         }, zIndex: 100 })
         this.div=true;
-        cdiv.dblclick(this.deviceDblClick);
-        cdiv.click(this.deviceClick);
+        cdiv.dblclick(this.device_dbl_click);
+        cdiv.click(this.device_click);
         return cdiv
     },
     
@@ -455,7 +714,7 @@ var BuddyDevice = Class.extend({
             });
             $device=$("#"+this.name).detach()
         } else if ( ! this.div ) {
-            $device = this.addDeviceDiv();
+            $device = this.add_device_div();
             this.div=true;
         } else {
             $device=$("#"+this.name).detach()
@@ -465,64 +724,26 @@ var BuddyDevice = Class.extend({
         this.parent=parent;
     },
     
-    matchStatus: function(cmd) {
-        if (this.presence) {
-            $("#"+this.name+" .bu-not-present").css("opacity",0);
-            if ( this.status["power"] ) {
-                if ( this.status["power"] == "off" ) {
-                    document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill","transparent");
-                } else {
-                    if (cmd === undefined ){
-                        if (this.last_cmd) {
-                            cmd=this.last_cmd;
-                        } else {
-                            cmd="power"
-                        }
-                    }
-                    if ( cmd ) {
-                        if ( cmd == "power" ) { //Here it must be on
-                            if (this.status["colour"]["saturation"] > 0) {
-                                cmd = "colour"
-                            } else {
-                                cmd = "white"
-                            }
-                        }
-                        if ( cmd == "colour" ) {
-                            var col = new HSVColour(this.status["colour"]["hue"],this.status["colour"]["saturation"],this.status["colour"]["value"])
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        }
-                        if ( cmd == "color" ) {
-                            var col = new HSVColour(this.status["colour"]["hue"],this.status["colour"]["saturation"],this.status["colour"]["value"])
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        }
-                        if ( cmd == "white" ) {
-                            var col = whiteToRGB(this.status["white"]["temperature"]);
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        }
-                    } else {
-                        if ( this.status["colour"] &&  this.status["colour"]["saturation"]>1) {
-                            var col = new HSVColour(this.status["colour"]["hue"],this.status["colour"]["saturation"],this.status["colour"]["value"])
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        }
-                        else if ( this.status["color"]  &&  this.status["colour"]["saturation"]>1) {
-                            var col = new HSVColour(this.status["color"]["hue"],this.status["color"]["saturation"],this.status["color"]["value"])
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        } else if ( this.status["white"]) {
-                            var col = whiteToRGB(this.status["white"]["temperature"]);
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill",col.getCSSHexadecimalRGB());
-                        } else {
-                            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill","white");
-                        }
-                    }
-                }
+    match_status: function(cmd) {
+        var self = this;
+        $("#"+this.name).removeClass("run-animation")
+        if ("animation" in this.iconstatus ) {
+            $("#"+this.name+"_anim").remove();
+            $("head").append("<style type=\"text/css\" id=\""+ this.name+"_anim\" >"+this.iconstatus.animation+"</style>")
+        }
+        $.each(this.iconstatus, function (eclass,val) {
+            if ( eclass != "animation" ) {
+                $.each(val, function (attr,aval) {
+                    document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                })
             }
-        } else {
-            document.getElementById( this.name ).getElementsByClassName("bu-fill")[0].setAttribute("fill","transparent");
-            $("#"+this.name+" .bu-not-present").css("opacity",1);
+        });
+        if ("animation" in this.iconstatus ) {
+            $("#"+this.name).addClass("run-animation")
         }
     },
     
-    deviceDblClick: function() {
+    device_dbl_click: function() {
         if (buddy.editmode) {
             /*change name panel*/
             var oname = this.id;
@@ -534,288 +755,69 @@ var BuddyDevice = Class.extend({
                 callback: function(result) {
                     if (result === null) {
                     } else {
-                        var token = buddy.sendCommand("nickname", oname, otype,result);
+                        var token = buddy.send_command("nickname", oname, otype,result);
                     }
                 }
             });
-            return false
         } else {
             //Command and control
-        }
-    },
-    
-    deviceClick: function() {
-        if (! buddy.editmode && deviceById[this.id].presence) {
-            /*Create amodakl with an on/off switch*/
-            var oname = this.id;
-            var otype = deviceById[this.id].type;
-            var stype = deviceById[this.id].subtype;
-            var zz = deviceById[this.id].nickname;
-            var locontrols = {"slider":[],"switch":[],"knob":[],"modal":[], "spinner":[], "colourpicker":[]};
-            var msg="";
-            var tabmsg = "<div id=\"my-tab-content\" class=\"tab-content\">";
-            var active = " active";
-            if(buddy.functions[otype] && buddy.functions[otype][stype] ) {
-                var $cmd=$( jQuery.parseXML(buddy.functions[otype][stype])).find( "buddyui" );
-                msg+="<ul class=\"nav nav-tabs\">"
-                $.each($cmd.children(), function (idx, apart) {
-                    var part = $(apart);
-                    var lbl = part.attr("label");
-                    var cmdname = $(part).attr("name");
-                    msg+="<li role=\"presentation\" class=\"bu-commandtab"+active+"\"><a href=\"#"+oname+"-"+cmdname+"\"  data-toggle=\"tab\">"+lbl+"</a></li>";
-                    tabmsg+="<div class=\"tab-pane bu-commandpanel"+ active+"\" id=\""+oname+"-"+cmdname+"\">";
-                    if ( part.is("controlgroup") ) {
-                        var domodal=false;
-                        if (part.attr("modal") && part.attr("modal") == '1') {
-                            domodal=true;
-                        } 
-                        if (part.attr("widget")) {
-                           var resu = deviceById[oname].create_widget(part.attr("widget") ,cmdname,"bu-modal-colourpick")
-                           locontrols[resu[0]].push([resu[1],domodal]);
-                           tabmsg+=resu[2];
-                        } else {
-                            if (part.children().filter("control").length < 3 ) {
-                                var hidx = 0;
-                            } else if (part.children().filter("control").length > 5 ) {
-                                var hidx=part.children().length -1;
-                            } else {
-                                var hidx = -1;
-                            }
-                            $.each(part.children().filter("control"), function (jdx, actrl) {
-                                var resu = deviceById[oname].create_control($(actrl),cmdname,(jdx == hidx))
-                                locontrols[resu[0]].push([resu[1],domodal]);
-                                tabmsg+=resu[2];
-                                if (jdx == hidx) {
-                                    hidx+=1;
-                                }
-                            });
-                        }
-                        if ( domodal ) {
-                            //Check for options
-                            $.each(part.children().filter("option"), function (jdx, actrl) {
-                                var resu = deviceById[oname].create_control($(actrl),cmdname,true,"buopt-"+oname+"-"+cmdname)
-                                tabmsg+="<br />"+resu[2];
-                            })
-                            tabmsg+="<br /><button type=\"button\" class=\"btn btn-default\" ";
-                            tabmsg+="id=\"modal__"+oname+"__"+cmdname;
-                            tabmsg+="\">Apply</button>";
-                            locontrols["modal"].push("modal__"+oname+"__"+cmdname);
-                        }
-                    } else if ( part.is("control") ) {
-                        var resu = deviceById[oname].create_control(part,cmdname,true)
-                        locontrols[resu[0]].push([resu[1],false]);
-                        tabmsg+=resu[2];
-                    }
-                    tabmsg+="</div>";
-                    active = "";
-                })
-                msg+="</ul>"+tabmsg+"</div>"
-            }
-            bootbox.dialog({
-                title: "Control "+otype+" "+zz,
-                value: zz,
-                message:msg,
-                buttons: {
-                    close: {
-                        label: "Close",
-                        className: "btn-close",
-                        callback: function () {
-                            //$("#"+oname+"-power").destroy();
-                            //return false;
-                        //    deviceById[oname].matchStatus();
-                        }
-                    }
-                }
-            });
-            $.each(locontrols["switch"], function (idx, vals) {
-                var aswitch = vals[0];
-                var modal = vals[1];
-                $("#"+aswitch).bootstrapSwitch();
-                if (! modal) {
-                    $("#"+aswitch).on("switchChange.bootstrapSwitch",deviceById[oname].exec_swcmd)
-                }
-            })
-            $.each(locontrols["slider"], function (idx, vals) {
-                var slider = vals[0];
-                var modal = vals[1];
-                $("#"+slider).bootstrapSlider({precision: 2});
-                if (! modal) {
-                    $("#"+slider).on("slide",deviceById[oname].exec_slcmd)
-                    $("#"+slider).on("change",deviceById[oname].exec_slcmd)
-                }
-            })
-            $.each(locontrols["colourpicker"], function (idx, vals) {
-                var cmd = vals[0];
-                var modal = vals[1]
-                var rcmd = cmd.split("__");
-                var rdev = rcmd[0];
-                rcmd = rcmd[1];
-                var h = deviceById[rdev].status[rcmd]["hue"];
-                var s = deviceById[rdev].status[rcmd]["saturation"];
-                var v = deviceById[rdev].status[rcmd]["value"];
-                var cw = colourwheel($("#"+cmd)[0],250)
-                cw.set_colour([h,s,v])
-                if (! modal) {
-                    cw.onchange($.debounce( 50, deviceById[oname].exec_colcmd))
-                }
-            })
-            
-            $.each(locontrols["modal"], function (idx, modal) {
-                $("#"+modal).on("click",deviceById[oname].exec_modalcmd)
-            })
         }
         return false;
     },
     
-    // sl for slider
-    exec_slcmd: function(event) {
-        //"this" is a DOM elt
-        var allelt = this.id.split("__");
-        var target = allelt[0];
-        var cmd = allelt[1];
-        var param = allelt[2];
-        var newval={}
-        $.each(deviceById[target].status[cmd], function(key, value) {
-//             newval[key]=$("#"+target+"__"+cmd+"__"+key).bootstrapSlider('getValue')
-            newval[key]=$("#"+target+"__"+cmd+"__"+key).val()
-        })
-        buddy.sendCommand(cmd,target,deviceById[target].type,newval)
-        deviceById[target].last_cmd=cmd
-    },
-    
-    // sw for switch
-    exec_swcmd: function(event,state) {
-        //"this" is a DOM elt
-        var allelt = this.id.split("__");
-        var target = allelt[0];
-        var cmd = allelt[1];
-        var param = allelt[2];
-        var newval={};
-        buddy.sendCommand(cmd,target,deviceById[target].type,(state && $(this).attr("bu-on-cmdvalue")) || $(this).attr("bu-off-cmdvalue"))
-    },
-    
-    // col for colour picker
-    exec_colcmd: function(colour) {
-        //"this" is a DOM elt
-        var allelt = $(".bu-modal-colourpick").attr("id").split("__");
-        var target = allelt[0];
-        var cmd = allelt[1];
-        var param = allelt[2];
-        var newval={}
-        newval["hue"]=colour[0];
-        newval["saturation"]=colour[1];
-        newval["value"]=colour[2];
-        buddy.sendCommand(cmd,target,deviceById[target].type,newval)
-        deviceById[target].last_cmd=cmd
-    },
-    
-    exec_modalcmd: function(event,state) {
-        //"this" is a DOM elt
-        var allelt = this.id.split("__");
-        var target = allelt[1];
-        var cmd = allelt[2];
-        var newval={}
-        $.each(deviceById[target].status[cmd], function(key, value) {
-//             newval[key]=$("#"+target+"__"+cmd+"__"+key).bootstrapSlider('getValue')
-            newval[key]=$("#"+target+"__"+cmd+"__"+key).val();
-        })
-        var opts={}
-        $(".buopt-"+target+"-"+cmd).each( function () {
-            var myelt = this.id.split("__");
-            var opt = myelt[2];
-            opts[opt]=$(this).val();
-        })
-        buddy.sendCommand(cmd,target,deviceById[target].type,newval,false,false,opts)
-        this.last_cmd=cmd
-    },
-    
-    
-    create_widget: function ( widget,cmdname,classes ) {
-        if ( widget == "colourpicker" ) {
-            var tabmsg = "<div id=\""+this.name+"__"+cmdname+"\"";
-            if (classes) {
-                tabmsg += " class=\""+classes+"\" "
-            }
-            tabmsg += "/>";
-            var col = new HSVColour(this.status[cmdname]["hue"],this.status[cmdname]["saturation"],this.status[cmdname]["value"])
-            return ["colourpicker",this.name+"__"+cmdname,tabmsg]
-        }
-    },
-            
-            
-    create_control: function ( ctrl,cmdname,horiz,classes ) {
-        if ( ctrl.attr("type") == "slider" ) {
-            var tabmsg = "<label class=\"bu-label\"  for=\""+this.name+"__"+cmdname+"__"+ctrl.attr("name")+"\">"+ctrl.attr("label")+"</label>"
-            tabmsg += "<input id=\""+this.name+"__"+cmdname+"__"+ctrl.attr("name")+ "\" type=\"text\" ";
-            tabmsg += "data-slider-min=\""+ctrl.find("start").text()+"\" data-slider-max=\""+ctrl.find("end").text();
-            tabmsg += "\" data-slider-step=\""+ctrl.find("increment").text();
-            tabmsg += "\" data-slider-value=\""+deviceById[this.name].status[cmdname][ctrl.attr("name")]+"\" ";
-            if (classes) {
-                tabmsg += " class=\""+classes+"\" "
-            }
-            if (horiz) {
-                tabmsg+="/><br />"
-            } else {
-                tabmsg+="data-slider-orientation=\"vertical\" data-slider-reverse=\"1\"";
-                tabmsg+="/>";
-              
-            }
-            return ["slider",this.name+"__"+cmdname+"__"+ctrl.attr("name"),tabmsg];
+    device_click: function() {
+        if (! buddy.editmode && deviceById[this.id].presence) {
+            /*Create a modal with an on/off switch*/
+            var oname = this.id;
+            var otype = deviceById[this.id].type;
+            var stype = deviceById[this.id].subtype;
+            var zz = deviceById[this.id].nickname;
+            var self = deviceById[this.id];
 
-        } else if ( ctrl.attr("type") == "knob" ) {
-        } else if ( ctrl.attr("type") == "switch" ) {
-            var tabmsg = "<label class=\"bu-label\" for=\""+this.name+"__"+cmdname+"__"+ctrl.attr("name")+"\">"+(ctrl.attr("label") || ctrl.attr("name"))+"</label>"
-            tabmsg +="<input type=\"checkbox\" id=\""+this.name+"__"+cmdname+"\" ";
-            var self=this;
-            $.each(ctrl.children().filter("value"), function (idx, aval) {
-                var  val=$(aval);
-                if (idx == 0) {
-                    tabmsg+=" data-on-label=\""+val.attr("label")+"\" "
-                    tabmsg+=" bu-on-cmdvalue=\""+val.text()+"\" "
-                    if ( deviceById[self.name].status[cmdname] == val.text() ) {
-                        tabmsg +="checked "
+            if(buddy.functions[otype] && buddy.functions[otype][stype] ) {
+                self.cmd_panel = new buddyPanel(oname,bu_parse_xml(buddy.functions[otype][stype]).find( "buddyui" ),true);
+                var msg = self.cmd_panel.render("command");
+
+                bootbox.dialog({
+                    title: "Control "+otype+" "+zz,
+                    value: zz,
+                    message:msg,
+                    buttons: {
+                        close: {
+                            label: "Close",
+                            className: "btn-close",
+                            callback: function () {
+                                //$("#"+oname+"-power").destroy();
+                                //return false;
+                            //    deviceById[oname].match_status();
+                            }
+                        }
                     }
-                } else {
-                    tabmsg+=" data-off-label=\""+val.attr("label")+"\" "
-                    tabmsg+=" bu-off-cmdvalue=\""+val.text()+"\" "
-                }
-            }) 
-            if (classes) {
-                tabmsg += " class=\""+classes+"\" "
-            }
-            tabmsg+=" />";
-            return ["switch",this.name+"__"+cmdname,tabmsg];
-        } else if ( ctrl.attr("type") == "spinner" ) {
-            var tabmsg = "<label class=\"bu-label\"  for=\""+this.name+"__"+cmdname+"__"+ctrl.attr("name")+"\">"+(ctrl.attr("label") || ctrl.attr("name"))+"</label>"
-            tabmsg += "<input type=\"number\" id=\""+this.name+"__"+cmdname+"__"+ctrl.attr("name")+"\"";
-            
-            if (ctrl.attr("min")) {
-                tabmsg+= " min=\""+ctrl.attr("min")+"\""
-            }
-            if (ctrl.attr("max")) {
-                tabmsg+= " max=\""+ctrl.attr("max")+"\""
-            }  
-            if (classes) {
-                tabmsg += " class=\"bu-spinner "+classes+"\" "
-            } else {
-                tabmsg += " class=\"bu-spinner\""
-            }if (ctrl.attr("default")) {
-                tabmsg+= " value=\""+ctrl.attr("value")+"\""
-            } else {
-                tabmsg+= " value=\"0\""
-            }
-            tabmsg+= " />"
-            return ["spinner",this.name+"__"+cmdname,tabmsg];
-        } else if ( ctrl.attr("type") == "date" ) { 
-            if (classes) {
-                tabmsg += " class=\""+classes+"\" "
-            }
-        } else if ( ctrl.attr("type") == "date range" ) {
-            if (classes) {
-                tabmsg += " class=\""+classes+"\" "
+                });
+                self.cmd_panel.activate([250,0]);
+                self.cmd_panel.setValue(deviceById[oname].status);
+                self.cmd_panel.setCallback(deviceById[oname].exec_rtcommand)
             }
         }
+        return false;
     },
+    
+    exec_rtcommand: function(event) {
+        var allelt = event.target.id.split("__");
+        if (! allelt || allelt.length <2) {
+            var anelt = $(event.target).parent().closest('div.bu-widget')[0];
+            if ( anelt ) {
+                allelt = anelt.id.split("__");
+            } else {
+                return false;
+            }
+        }
+        var target = allelt[0];
+        var cmd = allelt[1];
+        buddy.send_command(cmd,target,deviceById[target].type,deviceById[target].cmd_panel.getValue()[cmd],undefined,undefined,{"realtime mode":true});
+        return false;
+    },
+
         
     refresh: function (width) {
         /* 
@@ -849,10 +851,10 @@ var BuddyZone = Class.extend({
         if (this.parent != up ) {
             var sdiv = false;
             if (this.parent != false ) {
-                sdiv = this.parent.removeZoneDiv(this);
+                sdiv = this.parent.remove_zone_div(this);
             }
             this.parent = up;
-            up.appendZoneDiv(this,sdiv);
+            up.append_zone_div(this,sdiv);
         }
             
     },
@@ -890,20 +892,20 @@ var BuddyZone = Class.extend({
         return res;
     },
     
-    appendZoneDiv: function  (child,adiv) {
+    append_zone_div: function  (child,adiv) {
         this.children.push(child);
         var cdiv;
         if ( child.div == true ) {
             cdiv = adiv;
         } else {
-            cdiv=this.addZoneDiv(child);
+            cdiv=this.add_zone_div(child);
             child.div=true;
         }
         $("#"+this.name).append(cdiv);
         this.refresh();
     },
     
-    addZoneDiv: function(child) {
+    add_zone_div: function(child) {
         var cdiv=$("<div>", {id: child.name, class: "bu-zone zonedroppable"});
         var ldiv =$("<p>", {class: "bu-zonelabel label"}).html("Zone "+child.nickname);
         cdiv.append(ldiv);
@@ -923,14 +925,14 @@ var BuddyZone = Class.extend({
             activeClass: "ui-state-default",
             hoverClass: "ui-state-hover",
             drop: function( event, ui ) {
-                buddy.dropZone(event,ui,this);
+                buddy.drop_zone(event,ui,this);
             }
         });
-        cdiv.dblclick(this.zoneDblClick);
+        cdiv.dblclick(this.zone_dbl_click);
         return cdiv
     },
      
-    removeZoneDiv: function (child) {
+    remove_zone_div: function (child) {
         $child=$("#"+child.name);
         var sdiv = $child.detach();
         this.children=this.children.filter( function (i) {
@@ -940,9 +942,9 @@ var BuddyZone = Class.extend({
         return sdiv
    },
      
-    destroyZone: function () {
+    destroy_zone: function () {
         $.each(this.children,function(key,val) {
-            val.destroyZone()
+            val.destroy_zone()
         })
         delete zoneById[this.name];
         if ( buddy.debug ) { console.log("Did delete "+this.name); }
@@ -1044,7 +1046,7 @@ var BuddyZone = Class.extend({
                 activeClass: "ui-state-default",
                 hoverClass: "ui-state-hover",
                 drop: function( event, ui ) {
-                    buddy.dropZone(event,ui,this);
+                    buddy.drop_zone(event,ui,this);
                 }
                 });
         $("#"+this.name).append($("<p>", {class: "bu-zonelabel label"}).html("Zone "+this.nickname));
@@ -1064,30 +1066,30 @@ var BuddyZone = Class.extend({
                 })
             }
             buddy.currenttop=this.name;
-            $(".bu-zonelabel").click(zoneById[buddy.currenttop].zoneClick);
+            $(".bu-zonelabel").click(zoneById[buddy.currenttop].zone_click);
             this.refresh();
         }
      },
      
     rebuild_children: function () {
         for (var i=0; i < this.children.length; i++) {
-            $("#"+this.name).append(this.addZoneDiv(this.children[i]));
+            $("#"+this.name).append(this.add_zone_div(this.children[i]));
             this.children[i].rebuild_children();
         }
     
         for (var i=0; i < this.devices.length; i++) {
-            $("#"+this.name).append(this.devices[i].addDeviceDiv());
-            this.devices[i].matchStatus();
+            $("#"+this.name).append(this.devices[i].add_device_div());
+            this.devices[i].match_status();
         }
      },
      
     build_children: function (children) {
-        var memyself=this;
+        var self=this;
         $.each(children,function(key,val) {
             if ( val["name"] ) {
-                var nz = buddy.addZone(val["nickname"],memyself,val["name"]);
+                var nz = buddy.add_zone(val["nickname"],self,val["name"]);
             } else {
-                var nz = buddy.addZone(val["name"],memyself);
+                var nz = buddy.add_zone(val["name"],self);
             }
             $.each(val["devices"],function(type,devices) {
                 $.each(devices,function(idx,subdevice) {
@@ -1113,7 +1115,7 @@ var BuddyZone = Class.extend({
         })
     },
     
-    zoneDblClick: function() {
+    zone_dbl_click: function() {
         if (buddy.editmode) {
             /*change name panel*/
             var oname = this.id;
@@ -1124,8 +1126,8 @@ var BuddyZone = Class.extend({
                 callback: function(result) {
                     if (result === null) {
                     } else {
-                        var token = buddy.sendRequest("zone nickname", "control.zone", buddy.subject,{"name":oname,"nickname": result},[oname]);
-                        buddy.tokento[token]=setTimeout($.proxy(buddy.nhZNaming, buddy, token, zoneById), buddy.timeout);
+                        var token = buddy.send_request("zone nickname", "control.zone", buddy.subject,{"name":oname,"nickname": result},[oname]);
+                        buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_naming, buddy, token, zoneById), buddy.timeout);
                     }
                 }
             });
@@ -1137,7 +1139,7 @@ var BuddyZone = Class.extend({
         }
     },
     
-    zoneClick: function() {
+    zone_click: function() {
         if (! buddy.editmode) {
             /*Create amodakl with an on/off switch*/
             var oname = $(this).closest("div").attr("id");
@@ -1159,7 +1161,7 @@ var BuddyZone = Class.extend({
             });
             $("#"+oname+"-power").bootstrapSwitch();
             $("#"+oname+"-power").on("switchChange.bootstrapSwitch",function (ev,state) {
-                buddy.sendCommand("power",oname,otype,(state && "on") || "off",$("#"+oname+"-propagate").is(':checked'))
+                buddy.send_command("power",oname,otype,(state && "on") || "off",$("#"+oname+"-propagate").is(':checked'))
             })
         } 
         return false
@@ -1186,6 +1188,7 @@ var BuddyApp = Class.extend({
         this.tokeninfo={};
         this.tokento={};
         this.functions={};
+        this.configs={};
         this.socket = ws;
         this.subject = subject;
         this.isopen = false;
@@ -1199,20 +1202,22 @@ var BuddyApp = Class.extend({
         this.user = false;
         this.lousers={};
         this.pass = false;
-        this.debug= true ;
+        this.debug= false ;
+        this.cmd_panel=null;
+        this.seenevents=[];
         
         this.socket.binaryType = "arraybuffer";
         this.socket.onopen = function() {
             if ( buddy.debug ) { console.log("Connected!"); }
             isopen = true;
-            var uname = getCookie("buddyuser");
-            var upass = getCookie("buddypass");
+            var uname = get_cookie("buddyuser");
+            var upass = get_cookie("buddypass");
             if (uname) {
                 if ( buddy.debug ) { console.log("Auto login On"); }
                 this.autologin = true ;
-                buddy.sendLogin(uname,upass);
+                buddy.send_login(uname,upass);
             }
-            buddy.buildLogin();
+            buddy.build_login();
         }
         this.socket.onmessage = function(e) {
             if (typeof e.data == "string") {
@@ -1234,49 +1239,80 @@ var BuddyApp = Class.extend({
                 if (jQuery.inArray( msg.content.token, buddy.tokens) >= 0) {
                     buddy.tokens.splice( $.inArray(msg.content.token, buddy.tokens), 1 );
                     if ( msg.content.response ==  'login' ) {
-                        buddy.handleLogin(msg);
+                        buddy.handle_login(msg);
                     } else if ( msg.content.response ==  'system state' ) {
-                        buddy.handleState(msg)
+                        buddy.handle_state(msg)
                     } else if ( msg.content.response ==  'zone creation' ) {
-                        buddy.hZCreation(msg)
+                        buddy.handle_zone_creation(msg)
                     } else if ( msg.content.response ==  'zone location' ) {
-                        buddy.hZLocation(msg)
+                        buddy.handle_zone_location(msg)
                     } else if ( msg.content.response ==  'zone deletion' ) {
-                        buddy.hZDeletion(msg)
+                        buddy.handle_zone_deletion(msg)
                     } else if ( msg.content.response ==  'zone nickname' ) {
-                        buddy.hZNaming(msg)
+                        buddy.handle_zone_naming(msg)
                     } else if ( msg.content.response ==  'device location' ) {
-                        buddy.hDLocation(msg)
+                        buddy.handle_device_location(msg)
                     } else if ( msg.content.response ==  'define device' ) {
-                        buddy.hDDefine(msg)
+                        buddy.handle_device_define(msg)
                     } else if ( msg.content.response ==  'save property' ) {
-                        buddy.hProperty(msg)
+                        buddy.handle_property(msg)
                     }
                 }
             } else if (msg.content_type == 'event' ) {
                 if ( msg.content.event ==  'status' ) {
-                    buddy.hEDStatus(msg);
+                    buddy.hevent_device_status(msg);
+                } else if ( msg.content.event ==  'info' ) {
+                    buddy.hevent_device_info(msg);
                 } else if ( msg.content.event ==  'presence' ) {
-                    buddy.hEDPresence(msg);
+                    buddy.hevent_device_presence(msg);
                 } else if ( msg.content.event ==  'new device' ) {
-                    buddy.hEDNew(msg);
+                    buddy.hevent_device_new(msg);
                 } else if ( msg.content.event ==  'nickname' ) {
-                    buddy.hEDNickname(msg);
-                } else if ( msg.content.event ==  'state change' ) {
-                    buddy.hEDState(msg);
+                    buddy.hevent_device_nickname(msg);
                 } else if ( msg.content.event ==  'device location' ) {
-                    buddy.hEDLocation(msg)
+                    buddy.hevent_device_location(msg);
                 } else if ( msg.content.event ==  'zone creation' ) {
-                    buddy.hEZCreation(msg)
+                    buddy.hevent_zone_creation(msg);
                 } else if ( msg.content.event ==  'zone location' ) {
-                    buddy.hEZLocation(msg)
+                    buddy.hevent_zone_location(msg);
                 } else if ( msg.content.event ==  'zone deletion' ) {
-                    buddy.hEZDeletion(msg)
+                    buddy.hevent_zone_deletion(msg);
                 } else if ( msg.content.event ==  'zone nickname' ) {
-                    buddy.hEZNaming(msg)
+                    buddy.hevent_zone_naming(msg);
                 } else if ( msg.content.event ==  'gui info' ) {
-                    buddy.hEGInfo(msg)
+                    buddy.hevent_bridge_info(msg);
+                } else if ( msg.content.event ==  'config updated' ) {
+                    buddy.hevent_command_updt(msg);
+                } else if ( msg.content.event ==  'gui alert' ) {
+                    buddy.hevent_gui_alert(msg);
+                } else if ( msg.content.event ==  'error report' ) {
+                    console.log(msg.content.value);
                 }
+                if ( "icon status" in msg.content ) {
+                    if ("target" in msg.content) {
+                        var device=msg.content.target.split(".")[1];
+                        deviceById[device].iconstatus=msg.content["icon status"];
+                        deviceById[device].match_status(msg.content.subject);
+                        if ( msg.content.event in deviceById[device].status && "value" in msg.content ) {
+                            //Should we check if it is a command for that?
+                            deviceById[device].status[msg.content.subject] = msg.content.value;
+                        }
+                    }
+                }
+                //Let's record the event structure
+                var newevents = get_dict_keys(msg.content.value);
+                if ( $.isArray( newevents) ) {
+                    $.each(newevents, function (idx,val) {
+                        buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+val)
+                    })
+                } else if ( newevents=="") {
+                    buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value")
+                } else {
+                    buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+newevents)
+                }
+                buddy.seenevents = Array.from(new Set(buddy.seenevents));
+                buddy.seenevents.sort();
+
             }
         }
         this.socket.onclose = function(e) {
@@ -1300,7 +1336,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    handleLogin: function (msg) {
+    handle_login: function (msg) {
         if ( msg.content.status == 'failed' ) {
             $(".form-signin :input").attr("disabled", false);
             if ( ! this.autologin ) {
@@ -1311,12 +1347,12 @@ var BuddyApp = Class.extend({
             }
         } else {
             if ($('.form-signin :checkbox').is(':checked')) {
-                setCookie('buddyuser',$("#inputName").val());
-                setCookie('buddypass',$("#inputPassword").val())
+                set_cookie('buddyuser',$("#inputName").val());
+                set_cookie('buddypass',$("#inputPassword").val())
             }
             if ( $("#inputName").val() == "" ) {
-                this.user = getCookie("buddyuser");
-                this.pass = getCookie("buddypass");
+                this.user = get_cookie("buddyuser");
+                this.pass = get_cookie("buddypass");
             } else {
                 this.user = $("#inputName").val();
                 this.pass = $("#inputPassword").val();
@@ -1330,19 +1366,19 @@ var BuddyApp = Class.extend({
             } else {
                 this.topzone=msg.content.zone
             }
-            buddy.buildPanel();
+            buddy.build_panel();
         }
     },
     
-    nhLogin: function (token) {
+    not_handle_login: function (token) {
     },
     
-    handleState: function (msg) {
+    handle_state: function (msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
         } else {
             var tzone=msg.content["value"]["sub_zone"][0] /* There should only be one...should we check? */
-            var topzone=buddy.addZone(tzone["nickname"],"",tzone["name"]);
+            var topzone=buddy.add_zone(tzone["nickname"],"",tzone["name"]);
             if (this.isadmin) {
                 this.topzone=tzone["name"];
             }
@@ -1376,6 +1412,8 @@ var BuddyApp = Class.extend({
             })
             this.zonecnt = ccount;
             this.functions= msg.content["value"]["functions"];
+            this.configs= msg.content["value"]["configs"];
+            this.mcommands= msg.content["value"]["module commands"];
             $('[data-toggle="tooltip"]').tooltip({placement : 'top'});
             $(window).resize(function() {
                 $("#"+buddy.currenttop).css("width",$("#bu-topzonec").innerWidth());
@@ -1385,11 +1423,11 @@ var BuddyApp = Class.extend({
             /*Build the menu */
             if (this.isadmin) {
                 var nelt = $('<li/>');
-                nelt.append($('<button/>',{ class: "btn btn-default navbar-btn", onclick:"buddy.editMode(!buddy.editmode);", html:"Edit Mode", id:"editModeButton"}));
-                nelt.append($('<label/>', {for: "editModeButton", class: "sr-only", html:"Toggle Edit mode"}));
+                nelt.append($('<button/>',{ class: "btn btn-default navbar-btn", onclick:"buddy.edit_mode(!buddy.editmode);", html:"Edit Mode", id:"edit-mode-button"}));
+                nelt.append($('<label/>', {for: "edit-mode-button", class: "sr-only", html:"Toggle Edit mode"}));
                 $('#bu-navbar').append(nelt);
                 nelt = $('<li/>');
-                var pelt = $('<p/>', {class: "nav navbar-text zonedroppable bu-admin-menu", html:"New Zone", id:"bu-addZone"});
+                var pelt = $('<p/>', {class: "nav navbar-text zonedroppable bu-admin-menu", html:"New Zone", id:"bu-add_zone"});
                 pelt.draggable( {helper: "clone", revert: "invalid", zIndex: 100 })
                 pelt.draggable("disable");
                 pelt.hide();
@@ -1405,33 +1443,33 @@ var BuddyApp = Class.extend({
                     hoverClass: "ui-state-hover",
                     tolerance:"pointer",
                     drop: function( event, ui ) {
-                        buddy.dropdelZone(event,ui,this);
+                        buddy.drop_delete_zone(event,ui,this);
                     }
                 });
                 pelt.hide();
                 nelt.append(pelt);
                 $('#bu-navbar').append(nelt);
                 nelt = $('<li/>');
-                pelt=$('<button/>',{ class: "btn btn-default navbar-btn bu-admin-menu", onclick:"manageUsers();", html:"Manage Users", id:"manageUsers"});
-                nelt.append($('<label/>', {for: "manageUsers", class: "sr-only", html:"Manage Users"}));
+                pelt=$('<button/>',{ class: "btn btn-default navbar-btn bu-admin-menu", onclick:"manage_users();", html:"Manage Users", id:"manage_users"});
+                nelt.append($('<label/>', {for: "manage_users", class: "sr-only", html:"Manage Users"}));
                 pelt.hide();
                 nelt.append(pelt);
                 $('#bu-navbar').append(nelt);
             }
             topzone.refresh();
-            this.editMode(this.editmode);
+            this.edit_mode(this.editmode);
             $.each(deviceById,function(idx,device) {
-                buddy.sendCommand("status",device.name,device.type,"")
+                buddy.send_command("status",device.name,device.type,"")
             })
-            $(".bu-zonelabel").click(zoneById[buddy.currenttop].zoneClick);
+            $(".bu-zonelabel").click(zoneById[buddy.currenttop].zone_click);
                 
         }
     },
     
-    nhState: function (token) {
+    not_handle_state: function (token) {
     },
      
-    sendLogin: function (user,passwd) {
+    send_login: function (user,passwd) {
         var msg = new BuddyMsg("control.login","request");
         msg.content.request = "login";
         msg.content.target = this.subject;
@@ -1441,7 +1479,7 @@ var BuddyApp = Class.extend({
         this.socket.send(msg.json());
     },
  
-    sendCommand: function (command,target, sendto, value,propagate,targetonly,options) {
+    send_command: function (command,target, sendto, value,propagate,targetonly,options) {
         var msg = new BuddyMsg(sendto+"."+target,"command");
         msg.content.command = command;
         msg.content.value = value;
@@ -1462,7 +1500,17 @@ var BuddyApp = Class.extend({
         this.socket.send(msg.json());
     },
     
-    sendRequest: function (request,target, device, value, tovalue) {
+    send_event: function (event,target, value) {
+        var msg = new BuddyMsg(target,"event");
+        msg.content.target = target;
+        msg.content.event = event;
+        if (value) {
+            msg.content.value = value;
+        }
+        this.socket.send(msg.json());
+    },
+    
+    send_request: function (request,target, device, value, tovalue) {
         var msg = new BuddyMsg(target,"request");
         msg.content.target = device;
         msg.content.request = request;
@@ -1477,7 +1525,7 @@ var BuddyApp = Class.extend({
         return msg.content.token
     },
     
-    buildLogin:  function () {
+    build_login:  function () {
         $('#top-container').html($('<form/>', {action: '', class: "form-signin"}));
         var aelt =$('<h2/>',{ class: "form-signin-heading" });
         aelt.html("Please log-in");
@@ -1502,13 +1550,13 @@ var BuddyApp = Class.extend({
         
         $("form").submit(function( event ) {
                 event.preventDefault();
-                buddy.sendLogin($("#inputName").val(),$("#inputPassword").val());  
+                buddy.send_login($("#inputName").val(),$("#inputPassword").val());  
                 $(".form-signin :input").attr("disabled", true);
             });
         
     },
     
-    buildPanel: function() {
+    build_panel: function() {
         $('#top-container').append($('<div/>', {class: "no-gutter col-xs-12 col-md-12", id: "bu-topzonec"}));
         //var ctrldiv=$('<div/>',{ class: "col-md-4", id: "bu-tools" });
         //ctrldiv.append($('<div/>', {class: "bu-nldevs", id: "bu-nldevs"}));
@@ -1519,10 +1567,10 @@ var BuddyApp = Class.extend({
             zinfo={"zone":this.topzone}
         }
             
-        var token = this.sendRequest("system state","control", "gui",zinfo );
+        var token = this.send_request("system state","control", "gui",zinfo );
     },
          
-    addZone: function (nickname,parent,name) {
+    add_zone: function (nickname,parent,name) {
         if ( buddy.debug ) { console.log("Adding "+nickname); }
         var nz= new BuddyZone(nickname,name);
         if ( parent == "" ) {
@@ -1533,19 +1581,19 @@ var BuddyApp = Class.extend({
         } else {
             nz.set_parent(parent) ;
         }
-        this.editMode(this.editmode)
+        this.edit_mode(this.editmode)
         zoneById[nz.name]=nz;
         return nz;
     },
     
-    dropZone: function (event,ui,dropin) {
+    drop_zone: function (event,ui,dropin) {
         $(ui.draggable).css({left:'auto',top:"auto"}); 
-        if (ui.draggable[0].id == "bu-addZone") {
+        if (ui.draggable[0].id == "bu-add_zone") {
             var pname = zoneById[dropin.id].name;
             var nzname="zone-"+Math.random().toString(36).substr(2);
-            var token = this.sendRequest("zone creation", "control.zone", this.subject, {"parent":pname,"name":nzname, "nickname":nznametmpl+this.zonecnt},[dropin.id]);
+            var token = this.send_request("zone creation", "control.zone", this.subject, {"parent":pname,"name":nzname, "nickname":nznametmpl+this.zonecnt},[dropin.id]);
             this.zonecnt++;
-            this.tokento[token]=setTimeout($.proxy(buddy.nhZCreation, buddy, token, zoneById), this.timeout);
+            this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_creation, buddy, token, zoneById), this.timeout);
         } else {
             if ($("#"+ui.draggable[0].id).hasClass("bu-device")) {
                 // A device
@@ -1557,8 +1605,8 @@ var BuddyApp = Class.extend({
                 var name = deviceById[ui.draggable[0].id].name;
                 var pname = zoneById[dropin.id].name;
                 if ( opname != pname ) {
-                    var token = this.sendRequest("device location", "control.zone", this.subject,{"name":name,"parent": pname},[ui.draggable[0].id,dropin.id]);
-                    this.tokento[token]=setTimeout($.proxy(buddy.nhDLocation, buddy, token, deviceById), this.timeout);
+                    var token = this.send_request("device location", "control.zone", this.subject,{"name":name,"parent": pname},[ui.draggable[0].id,dropin.id]);
+                    this.tokento[token]=setTimeout($.proxy(buddy.err_handle_device_location, buddy, token, deviceById), this.timeout);
                 }
                 
             } else {
@@ -1567,14 +1615,14 @@ var BuddyApp = Class.extend({
                 var name = zoneById[ui.draggable[0].id].name;
                 var pname = zoneById[dropin.id].name;
                 if ( opname != pname ) {
-                    var token = this.sendRequest("zone location", "control.zone", this.subject,{"name":name,"parent": pname},[ui.draggable[0].id,dropin.id]);
-                    this.tokento[token]=setTimeout($.proxy(buddy.nhZLocation, buddy, token, zoneById), this.timeout);
+                    var token = this.send_request("zone location", "control.zone", this.subject,{"name":name,"parent": pname},[ui.draggable[0].id,dropin.id]);
+                    this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_location, buddy, token, zoneById), this.timeout);
                 }
             }
         } 
     },
          
-    hZNaming: function(msg) {
+    handle_zone_naming: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
@@ -1592,7 +1640,7 @@ var BuddyApp = Class.extend({
         }
     },
          
-    hEZNaming: function(msg) {
+    hevent_zone_naming: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
             var zid=msg.content.target.split(".")[1];
@@ -1604,7 +1652,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    nhZNaming: function (token) {
+    err_handle_zone_naming: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Zone "+zoneById[this.tokeninfo[token][0]].nickname;
             delete this.tokeninfo[token];
@@ -1614,7 +1662,7 @@ var BuddyApp = Class.extend({
         bootbox.alert(nzname+" could not be renamed.");
     },
     
-    hZLocation: function(msg) {
+    handle_zone_location: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
@@ -1632,7 +1680,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEZLocation: function(msg) {
+    hevent_zone_location: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
             var zid=msg.content.target.split(".")[1];
@@ -1645,7 +1693,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    nhZLocation: function (token) {
+    err_handle_zone_location: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Zone "+this.tokeninfo[token][0];
             delete this.tokeninfo[token];
@@ -1655,7 +1703,7 @@ var BuddyApp = Class.extend({
         bootbox.alert(nzname+" could not be moved.");
     },
     
-    hZCreation: function(msg) {
+    handle_zone_creation: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
@@ -1673,19 +1721,19 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEZCreation: function(msg) {
+    hevent_zone_creation: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
             var zid=msg.content.target.split(".")[1];
             var pid = msg.content.value["parent"];
             var nickname = msg.content.value["nickname"];
             if ( zoneById[zid] === undefined ) {
-                var nz=buddy.addZone(nickname,zoneById[pid],zid);
+                var nz=buddy.add_zone(nickname,zoneById[pid],zid);
             }
         }
     },
        
-    nhZCreation: function (token) {
+    err_handle_zone_creation: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "New Zone in "+this.tokeninfo[token][0];
             delete this.tokeninfo[token];
@@ -1695,19 +1743,19 @@ var BuddyApp = Class.extend({
         bootbox.alert(nzname+" could not be created.");
     },
     
-    deleteZone: function(name) {
+    delete_zone: function(name) {
         if ( buddy.debug ) { console.log("Deleting "+name); }
-        var token = this.sendRequest("zone deletion", "control.zone", this.subject, {"name":name},name);
-        this.tokento[token]=setTimeout($.proxy(buddy.nhZDeletion, buddy, token, zoneById), this.timeout);
+        var token = this.send_request("zone deletion", "control.zone", this.subject, {"name":name},name);
+        this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_deletion, buddy, token, zoneById), this.timeout);
     },
     
-    dropdelZone: function (event,ui,dropin) {
+    drop_delete_zone: function (event,ui,dropin) {
         $(ui.draggable).addClass('drag-revert');
         $(ui.draggable).hide();
-        this.deleteZone(zoneById[ui.draggable[0].id].name);
+        this.delete_zone(zoneById[ui.draggable[0].id].name);
     },
      
-    hZDeletion: function(msg) {
+    handle_zone_deletion: function(msg) {
         var thisapp = this;
         if ( msg.content.status == 'failed' ) {
              if ( buddy.debug ) { console.log("Delete Failed"); }
@@ -1729,7 +1777,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEZDeletion: function(msg) {
+    hevent_zone_deletion: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
             var zonename=msg.content.target.split(".")[1];
@@ -1748,13 +1796,13 @@ var BuddyApp = Class.extend({
                             return false;
                     }
                 });
-                zoneById[zonename].destroyZone();
+                zoneById[zonename].destroy_zone();
                 zoneById[this.currenttop].refresh()
             }
         }
     },
        
-    nhZDeletion: function (token, zoneById) {
+    err_handle_zone_deletion: function (token, zoneById) {
         if ( this.tokeninfo[token]) {
             var thisapp=this;
             $.each(zoneById,function(key,val) {
@@ -1767,32 +1815,32 @@ var BuddyApp = Class.extend({
         };
     },
     
-    editMode: function(mode) {
+    edit_mode: function(mode) {
          if (mode) {
              $('#bu-topzone').droppable("enable");
              $('.bu-zone').droppable("enable");
              $('.bu-zone').draggable("enable");
              $('.bu-device').draggable("enable");
-             $("#editModeButton").addClass("btn-primary");
-             $('#bu-addZone').draggable("enable");
+             $("#edit-mode-button").addClass("btn-primary");
+             $('#bu-add_zone').draggable("enable");
              $('#bu-navbar .bu-admin-menu').show()
-//              $('#bu-addZone').show();
+//              $('#bu-add_zone').show();
 //              $('#bu-delZone').show();
          } else {
              $('#bu-topzone').droppable("disable");
              $('.bu-zone').droppable("disable");
              $('.bu-zone').draggable("disable");
              $('.bu-device').draggable("disable");
-             $("#editModeButton").removeClass("btn-primary");
-             $('#bu-addZone').draggable("disable");
+             $("#edit-mode-button").removeClass("btn-primary");
+             $('#bu-add_zone').draggable("disable");
              $('#bu-navbar .bu-admin-menu').hide()
-//              $('#bu-addZone').hide();
+//              $('#bu-add_zone').hide();
 //              $('#bu-delZone').hide();
          };
          this.editmode=mode;
      },
 
-    hEDStatus: function(msg) {
+    hevent_device_status: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         if (deviceById[device]) {
@@ -1801,27 +1849,33 @@ var BuddyApp = Class.extend({
                 $.each(msg.content.value,function(key,value) {
                     deviceById[device].status[key]=value;
                 })
+                if ( "icon status" in msg.content ) {
+                    deviceById[device].iconstatus=msg.content["icon status"];
+                }
             }
-            deviceById[device].matchStatus();
+            deviceById[device].match_status();
         }
     },
     
-    hEDPresence: function(msg) {
+    hevent_device_presence: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
+                if ( "icon status" in msg.content ) {
+                    deviceById[device].iconstatus=msg.content["icon status"];
+                }
                 deviceById[device].presence= ( msg.content.value == "online" )
                 if ( msg.content.value == "online" ) {
-                    buddy.sendCommand("status",deviceById[device].name,deviceById[device].type,"");
+                    buddy.send_command("status",deviceById[device].name,deviceById[device].type,"");
                 } else {
-                    deviceById[device].matchStatus();
+                    deviceById[device].match_status();
                 }
             }
         }
     },
     
-    hEDNew: function(msg) {
+    hevent_device_new: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         if (! deviceById[device]) {
@@ -1840,7 +1894,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hDLocation: function(msg) {
+    handle_device_location: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
@@ -1858,7 +1912,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEDLocation: function(msg) {
+    hevent_device_location: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         var parent=msg.content.value["parent"];
@@ -1866,11 +1920,11 @@ var BuddyApp = Class.extend({
             deviceById[device].set_parent(zoneById[parent]);
             zoneById[parent].refresh();
         } else {
-            var token = this.sendRequest("define device", "control.zone", this.subject,{"name":name});
+            var token = this.send_request("define device", "control.zone", this.subject,{"name":name});
         }
     },
     
-    nhDLocation: function(token) {
+    err_handle_device_location: function(token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Device "+this.tokeninfo[token][0];
             delete this.tokeninfo[token];
@@ -1880,7 +1934,7 @@ var BuddyApp = Class.extend({
         bootbox.alert(nzname+" could not be moved.");
     },
    
-    hDDefine: function(msg) {
+    handle_device_define: function(msg) {
         if ( msg.content.status == 'done' ) {
             var type=msg.content.target.split(".")[0];
             var device=msg.content.target.split(".")[1];
@@ -1893,7 +1947,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEDNickname: function(msg) {
+    hevent_device_nickname: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
@@ -1904,18 +1958,17 @@ var BuddyApp = Class.extend({
         }
     },
     
-    hEDState: function(msg) {
+    hevent_device_info: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
-                deviceById[device].status[msg.content.subject] = msg.content.value;
-                deviceById[device].matchStatus(msg.content.subject);
+                deviceById[device].info = msg.content.value;
             }
         }
     },
     
-    hProperty: function(msg) {
+    handle_property: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
@@ -1941,7 +1994,7 @@ var BuddyApp = Class.extend({
         }
     },
     
-    nhProperty: function(token) {
+    err_handle_property: function(token) {
         if ( this.tokeninfo[token] && this.tokeninfo[token][0]) {
             var infoname = this.tokeninfo[token][0];
             delete this.tokeninfo[token];
@@ -1951,12 +2004,28 @@ var BuddyApp = Class.extend({
         bootbox.alert(infoname);
     },
 
-    hEGInfo: function(msg) {
+    hevent_bridge_info: function(msg) {
         if (msg.content["about"]) {
             $.each(msg.content["about"], function(key,val) {
                     abouttext[key]=val;
             })
         }
     },
+
+    hevent_command_updt: function(msg) {
+        if (msg.content["target"]) {
+            var etype = msg.content["target"].split(".")[0];
+            var estype = msg.content["target"].split(".")[1];
+            if ( etype in buddy.configs && estype in buddy.configs[etype] ) {
+                $.each(msg.content["value"], function(key,val) {
+                        buddy.configs[etype][estype][1][key]=val;
+                })
+            }
+        }
+    },
+    
+    hevent_gui_alert: function(msg) {
+        $("<span>").text(msg["content"]["value"]).appendTo('#bu-navbar-info').delay(7000).queue(function() {$(this).remove();});
+    }
     
 })

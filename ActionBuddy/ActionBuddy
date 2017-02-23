@@ -1,0 +1,2348 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application listen for events and process them according 
+# to a set of rules. Commands and/or state changes may ensue.
+# 
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse, sys, traceback,json,os,ssl,functools,logging,datetime as dt, asyncio as aio, ephem, dateutil.easter as due
+
+import buddylib as bl
+
+SUBTYPE="Action"
+__version__="0.10"
+CERTFILE="autobuddy.crt"
+
+aboutstr="""<p>ActionBuddy is an application processing rules defined by the user.</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+action_statevariable="""
+<buddyui version="0.1">
+    <configuration name="action">
+        <controlgroup type="listmaker"  name="state variable" label="State Variable">
+            <control type="text" name="name" label="Name" length="32"/>
+            <controlgroup type="choice"  name="type" label="Type">  
+                <item value="event" label="Event">
+                    <controlgroup type="choice"  name="period" label="Time Frame">
+                        <item value="none" label="No"  />
+                        <item value="hour" label="Hour"  />
+                        <item value="day" label="Day" />
+                        <item value="week" label="Week" />
+                        <item value="month" label="Month" />
+                        <item value="year" label="Year" />
+                    </controlgroup>
+                    <control name="entity" expand="device" exopt="any withtype" label="What to track" type="text" length="16" />
+                    <control name="event" label="Event to track" type="text" length="16" />
+                    <control name="subval" label="Part of value" type="text" length="32" >
+                        <default>value</default>
+                    </control>
+                </item>  
+                <item value="simple" label="Simple">
+                    <controlgroup type="choice"  name="period" label="Time Frame">
+                        <item value="none" label="No"  />
+                        <item value="hour" label="Hour"  />
+                        <item value="day" label="Day" />
+                        <item value="week" label="Week" />
+                        <item value="month" label="Month" />
+                        <item value="year" label="Year" />
+                    </controlgroup>
+                    <control name="init" label="Initial Value" type="text" length="16" />
+                </item> 
+                <item value="counter" label="Counter">
+                    <controlgroup type="choice"  name="period" label="Time Frame">
+                        <item value="none" label="No"  />
+                        <item value="hour" label="Hour"  />
+                        <item value="day" label="Day" />
+                        <item value="week" label="Week" />
+                        <item value="month" label="Month" />
+                        <item value="year" label="Year" />
+                    </controlgroup>
+                    <control name="init" label="Initial Value" type="text" itype="number" length="6" />
+                </item>
+                <item value="tracker" label="Tracker">
+                    <controlgroup type="choice"  name="period" label="Time Frame">
+                        <item value="none" label="No"  />
+                        <item value="hour" label="Hour"  />
+                        <item value="day" label="Day" />
+                        <item value="week" label="Week" />
+                        <item value="month" label="Month" />
+                        <item value="year" label="Year" />
+                    </controlgroup>
+                    <control name="entity" expand="device" exopt="any withtype" label="What to track" type="text" length="16" />
+                    <control name="event" label="Event to track" type="text" length="16" />
+                    <control name="subval" label="Part of value" type="text" length="32" >
+                        <default>value</default>
+                    </control>
+                    <control name="add" label="Increment values" type="text" length="64" help="Comma separated list of values" />
+                    <control name="devent" label="Event to track (decrement)" type="text" length="16" />
+                    <control name="dsubval" label="Part of value" type="text" length="32" >
+                        <default>value</default>
+                    </control>
+                    <control name="sub" label="Decrement values" type="text" length="64" help="Comma separated list of values" />
+                </item>
+                <item value="time" label="Time">
+                    <controlgroup type="choice"  name="period" label="Every">
+                        <item value="year" label="Year" >
+                            <controlgroup type="choice"  name="when" label="on">
+                                <item value="this day" label="This day" >
+                                    <control type="date" name="day"/>
+                                </item>
+                                <item value="easter" label="Easter"/>
+                                <item value="orthodox easter" label="Orthodox Easter" />
+                                <item value="mardi gras" label="Mardi Gras" />
+                            </controlgroup>
+                            <controlgroup type="choice"  name="timing" label="Timing">
+                                <item value="all day" label="All day" />
+                                <item value="at" label="At" >
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                        <item value="time" label="this time">
+                                            <control type="time" name="time" label=" "/>
+                                        </item>
+                                    </controlgroup>
+                                </item>
+                                <item value="before" label="Before" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min before</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="after" label="After" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min after</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="between" label="Between" >
+                                    <control type="time range" name="timedef" label=" "/>
+                                </item>
+                            </controlgroup>
+                        </item>
+                        <item value="month" label="Month">
+                            <controlgroup type="choice"  name="when" label="on">
+                                <item value="day" label="the">
+                                    <control type="spinner" name="day" label=" ">
+                                        <start>1</start>
+                                        <end>31</end>
+                                        <default>1</default>
+                                    </control>
+                                </item>
+                                <item value="last day" label="last day of the month" />
+                                <item value="nth before last" label="days before last">
+                                    <control type="spinner" name="offset" label=" ">
+                                        <start>1</start>
+                                        <end>30</end>
+                                        <postfix>days</postfix>
+                                        <default>1</default>
+                                    </control>
+                                </item>
+                                <item value="nth weekday" label="nth weekday" >
+                                    <controlgroup type="choice"  name="day">
+                                        <item value="monday" label="Monday" />
+                                        <item value="tuesday" label="Tuesday" />
+                                        <item value="wednesday" label="Wednesday" />
+                                        <item value="thursday" label="Thursday" />
+                                        <item value="friday" label="Friday" />
+                                        <item value="saturday" label="Saturday" />
+                                        <item value="sunday" label="Sunday" />
+                                    </controlgroup>
+                                    <control type="spinner" name="occur" label="on week n°">
+                                        <start>1</start>
+                                        <end>5</end>
+                                    </control>
+                                </item>
+                                <item value="last weekday" >
+                                    <controlgroup type="choice"  name="day">
+                                        <item value="monday" label="Monday" />
+                                        <item value="tuesday" label="Tuesday" />
+                                        <item value="wednesday" label="Wednesday" />
+                                        <item value="thursday" label="Thursday" />
+                                        <item value="friday" label="Friday" />
+                                        <item value="saturday" label="Saturday" />
+                                        <item value="sunday" label="Sunday" />
+                                    </controlgroup>
+                                </item>
+                            </controlgroup>
+                            <controlgroup type="choice"  name="timing">
+                                <item value="all day" label="All day" />
+                                <item value="at" label="At" >
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                        <item value="time" label="this time">
+                                            <control type="time" name="time" />
+                                        </item>
+                                    </controlgroup>
+                                </item>
+                                <item value="before" label="Before" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min before</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="after" label="After" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min after</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="between" label="Between" >
+                                    <control type="time range" name="timedef" label=" "/>
+                                </item>
+                            </controlgroup>
+                        </item> 
+                        <item value="week">
+                            <controlgroup type="choice"  name="day" label=" ">
+                                <item value="monday" label="Monday" />
+                                <item value="tuesday" label="Tuesday" />
+                                <item value="wednesday" label="Wednesday" />
+                                <item value="thursday" label="Thursday" />
+                                <item value="friday" label="Friday" />
+                                <item value="saturday" label="Saturday" />
+                                <item value="sunday" label="Sunday" />
+                            </controlgroup>
+                            <controlgroup type="choice"  name="timing">
+                                <item value="all day" label="All day" />
+                                <item value="at" label="At" >
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                        <item value="time" label="this time">
+                                            <control type="time" name="time" />
+                                        </item>
+                                    </controlgroup>
+                                </item>
+                                <item value="before" label="Before" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min before</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="after" label="After" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min after</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="between" label="Between" >
+                                    <control type="time range" name="timedef" label=" "/>
+                                </item>
+                            </controlgroup>
+                        </item>
+                        <item value="day">
+                            <controlgroup type="choice"  name="timing">
+                                <item value="at" label="At" >
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                        <item value="time" label="this time">
+                                            <control type="time" name="time" />
+                                        </item>
+                                    </controlgroup>
+                                </item>
+                                <item value="before" label="Before" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min before</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="after" label="After" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>120</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min after</postfix>
+                                    </control>
+                                    <controlgroup type="choice"  name="timedef" label=" ">
+                                        <item value="sunrise" label="Sunrise" />
+                                        <item value="sunset" label="Sunset" />
+                                    </controlgroup>
+                                </item>
+                                <item value="between" label="Between" >
+                                    <control type="time range" name="timedef" label=" "/>
+                                </item>
+                            </controlgroup>
+                        </item>
+                        <item value="hour">
+                            <controlgroup type="choice"  name="timing">
+                                <item value="at" label="At" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>60</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min past</postfix>
+                                    </control>
+                                </item>
+                                <item value="before" label="Before" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>60</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min past</postfix>
+                                    </control>
+                                </item>
+                                <item value="after" label="After" >
+                                    <control type="spinner" name="delta" label=" ">
+                                        <start>0</start>
+                                        <end>60</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min past</postfix>
+                                    </control>
+                                </item>
+                                <item value="between" label="Between" >
+                                    <control type="spinner" name="sdelta" label=" ">
+                                        <start>0</start>
+                                        <end>60</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min past</postfix>
+                                    </control>
+                                    <control type="spinner" name="edelta" label="and">
+                                        <start>0</start>
+                                        <end>60</end>
+                                        <increment>1</increment>
+                                        <default>10</default>
+                                        <postfix>min past</postfix>
+                                    </control>
+                                </item>
+                            </controlgroup>
+                        </item>
+                        <item value="minute" />
+                    </controlgroup>
+                </item> 
+            </controlgroup>
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+action_rules="""
+<buddyui version="0.1">
+    <configuration name="action">
+        <controlgroup type="listmaker"  name="rules" label="Rules">
+            <control type="text" name="name" length="32"/>
+            <control type="switch" name="active" label="Active">
+                <value label="Active">yes</value>
+                <value label="Inactive">no</value>
+                <default>yes</default>
+            </control>
+            <controlgroup type="list"  name="trigger" label="Trigger" newtab="true">
+                <controlgroup type="choice"  name="type" label=" " >
+                    <item value="time variable" label="Timer">
+                        <control type="text" name="name"  expand="config::action::state variable::name::type.bu-cvalue::time" label=" " />
+                    </item>
+                    <item value="state variable" label="State variable">
+                        <control type="text" name="name"  expand="config::action::state variable::name::type.bu-cvalue::event" label=" " />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" />
+                            <item value="ne" label="!=" />
+                            <item value="in" label="in"/>
+                            <item value="not in" label="not in" />
+                            <item value="gt" label="&gt;" />
+                            <item value="ge" label="&gt;=" />
+                            <item value="lt" label="&lt;" />
+                            <item value="le" label="&lt;=" />
+                        </controlgroup>
+                        <control type="text" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="tracker variable" label="Tracker variable">
+                        <control type="text" name="name" label=" "  expand="config::action::state variable::name::type.bu-cvalue::tracker" />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>  
+                            <item value="ne" label="!=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>  
+                            <item value="in" label="in"/>
+                            <item value="not in" label="not in" />
+                            <item value="gt" label="&gt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>  
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>  
+                            <item value="lt" label="&lt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>  
+                            <item value="le" label="&lt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>    
+                            <item value="first in" label="first in">
+                                <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
+                            </item>
+                            <item value="last out" label="last out">
+                                <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
+                            </item>   
+                            <item value="got in" label="got in">
+                                <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
+                            </item>
+                            <item value="got out" label="got out">
+                                <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
+                            </item>   
+                        </controlgroup>
+                    </item>
+                    <item value="event" label="Event">
+                        <control name="name" expand="device" exopt="any withtype" label="What to track?" type="text" length="16" />
+                        <control name="event" label="Event to track" type="text" length="16" />
+                        <control name="subval" label="Part of value" type="text" length="32" >
+                            <default>value</default>
+                        </control>
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ne" label="!=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="in" label="in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="not in" label="not in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="gt" label="&gt;" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="lt" label="&lt;" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="le" label="&lt;=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="any" label="Any value" />
+                        </controlgroup>
+                    </item> 
+                </controlgroup>
+            </controlgroup>
+            <controlgroup type="listmaker"  name="condition" label="Conditions" newtab="true" key="cond name" > 
+                <control type="text" name="cond name" length="32" label="Name" />
+                <controlgroup type="choice"  name="condition" label=" ">
+                    <item value="t-variable" label="Target Variable">
+                        <control type="text" name="variable" label=" "  expand="config::action::state variable::name::type.bu-cvalue::tracker" />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ne" label="!=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="gt" label="&gt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="lt" label="&lt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="le" label="&lt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="frozen" label="Is Frozen" />
+                            <item value="not frozen" label="Is Not Frozen" />
+                        </controlgroup>
+                    </item>
+                    <item value="time-variable" label="Time Variable">
+                        <control type="text" name="variable" label=" "  expand="config::action::state variable::name::type.bu-cvalue::time" />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" />
+                            <item value="ne" label="!=" />
+                            <item value="in" label="in" />
+                            <item value="not in" label="not in" />
+                            <item value="gt" label="&gt;" />
+                            <item value="ge" label="&gt;=" />
+                            <item value="lt" label="&lt;" />
+                            <item value="le" label="&lt;=" />
+                        </controlgroup>
+                    </item>
+                    <item value="differential" label="Differential">
+                        <control type="text" name="first" label=" "  expand="config::action::state variable::name::type.bu-cvalue::event,config::action::state variable::name::type.bu-cvalue::simple,config::action::state variable::name::type.bu-cvalue::counter" />
+                        <control type="text" name="second" label=" "  expand="config::action::state variable::name::type.bu-cvalue::event,config::action::state variable::name::type.bu-cvalue::simple,config::action::state variable::name::type.bu-cvalue::counter" />
+                        <controlgroup type="choice"  name="transform" label=" ">
+                            <item value="int" label="Integer" />
+                            <item value="roundint" label="Rounded Integer" />
+                            <item value="float" label="Float" />
+                        </controlgroup>
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ne" label="!=" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                            <item value="in" label="in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="not in" label="not in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="gt" label="&gt;" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                            <item value="lt" label="&lt;" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                            <item value="le" label="&lt;=" >
+                                <control type="text" name="compval" itype="number" label="value to compare" length="32"/>
+                            </item>
+                        </controlgroup>
+                    </item>
+                    <item value="variable" label="Variable">
+                        <control type="text" name="variable" label=" "  expand="config::action::state variable::name::type.bu-cvalue::event,config::action::state variable::name::type.bu-cvalue::simple" />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ne" label="!=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="in" label="in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="not in" label="not in">
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="gt" label="&gt;" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="lt" label="&lt;" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="le" label="&lt;=" >
+                                <control type="text" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="frozen" label="Is Frozen" />
+                            <item value="not frozen" label="Is Not Frozen" />
+                        </controlgroup>
+                    </item>
+                    <item value="counter" label="Counter">
+                        <control type="text" name="variable" label=" "  expand="config::action::state variable::name::type.bu-cvalue::counter" />
+                        <controlgroup type="choice"  name="compare" label=" ">
+                            <item value="eq" label="==" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ne" label="!=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="gt" label="&gt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="ge" label="&gt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="lt" label="&lt;" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                            <item value="le" label="&lt;=" >
+                                <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                            </item>
+                        </controlgroup>
+                    </item>
+                </controlgroup>
+            </controlgroup>
+            <controlgroup type="listmaker"  name="commands" label="Commands" newtab="true" dflname="Command" >
+                <control type="text" name="command name" length="32"/>
+                <controlgroup type="choice"  name="command" label=" ">
+                    <item value="set variable" label="Set Variable">
+                        <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::simple" />
+                        <control type="text" name="value" label="Value" />
+                    </item>
+                    <item value="set counter" label="Update Counter">
+                        <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::counter" />
+                        <controlgroup type="choice"  name="set" label=" ">
+                            <item value="add" label="+" >
+                                <control type="text" itype="number" name="value" label="Value" />
+                            </item>
+                            <item value="sub" label="-" >
+                                <control type="text" itype="number" name="value" label="Value" />
+                            </item>
+                            <item value="set" label="Set" >
+                                <control type="text" itype="number" name="value" label="Value" />
+                            </item>
+                        </controlgroup>
+                    </item>
+                    <item value="freeze" label="Freeze Variable">
+                        <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::event,config::action::state variable::name::type.bu-cvalue::tracker" />
+                    </item>
+                    <item value="unfreeze" label="Unfreeze Variable">
+                        <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::event,config::action::state variable::name::type.bu-cvalue::tracker" />
+                    </item>
+                    <item value="event" label="Send Event">
+                        <control type="text" name="event" label="Event" />
+                        <control type="text" name="e-value" label="Value" />
+                    </item>
+                    <item value="sleep" label="Sleep">
+                        <control type="spinner" name="delay" label=" ">
+                            <start>0</start>
+                            <end>600</end>
+                            <increment>1</increment>
+                            <default>10</default>
+                            <postfix>secs</postfix>
+                        </control>
+                    </item>
+                    <item value="command" label="Send Command">
+                        <control type="text" name="command" label=" " expand="command" />
+                    </item>
+                    <item value="command tracker" label="Send Command to tracker">
+                        <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::tracker" />
+                        <control type="text" name="command" label=" " expand="command" exopt="simplelist" />
+                    </item>
+                </controlgroup>
+            </controlgroup>
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+#mystuff=json.loads(urllib.request.urlopen("https://freegeoip.net/json/").read().decode())
+
+daysofweek=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+
+def nth_of_month(val):
+    lok=["type","period","when","day"]
+    day=val
+    for x in lok:
+        day=day[x]
+    try:
+        return dt.date.today().replace(day=int(day))
+    except:
+        #Get the last day
+       return last_of_month()
+
+def last_of_month(val):
+    today=dt.date.today()
+    return (today+dt.timedelta(days=35-today.day)).replace(day=1) - dt.timedelta(days=1)
+
+def nth_blast_month(val):
+    lok=["type","period","when","offset"]
+    day=val
+    for x in lok:
+        day=day[x]
+    
+    return las(val)-dt.timedelta(days=int(day))
+
+def nth_wd_month(val):
+    lok=["type","period","when"]
+    for x in lok:
+        val=val[x]
+    n=int(val["occur"])
+    lok=["day","bu-cvalue"]
+    dow=val
+    for x in lok:
+        dow=dow[x]
+    fotm=dt.date.today().replace(day=1)
+    delta=daysofweek.index(dow)-fotm.weekday()
+    if delta >= 0:
+        return fotm+dt.timedelta(days=delta+(n-1)*7)
+    else:
+        return fotm+dt.timedelta(days=delta+(n)*7)
+  
+def last_wd_month(val):
+    lok=["type","period","when","day","bu-cvalue"]
+    day=val
+    for x in lok:
+        day=day[x]
+    adate=(dt.date.today().replace(day=1)+dt.timedelta(days=32)).replace(day=1)
+    idx=8
+    while idx>=0: #just in case really
+        idx-=1
+        adate=adate-dt.timedelta(days=1)
+        if daysofweek[adate.weekday()]==day:
+            return adate
+
+def day_week(val):
+    lok=["type","period","day","bu-cvalue"]
+    day=val
+    for x in lok:
+        day=day[x]
+    adate=dt.date.today()
+    return adate+dt.timedelta(days=daysofweek.index(day)-adate.weekday())
+            
+def sunrise(date):
+    if "location" in bridgectl.config:
+        myloc=ephem.Observer()
+        myloc.lon=str(bridgectl.config["location"]["longitude"])
+        myloc.lat=str(bridgectl.config["location"]["latitude"])
+        myloc.elevation=bridgectl.config["location"]["altitude"]
+        myloc.date=date
+        sun = ephem.Sun()
+        sr = ephem.localtime(myloc.next_rising(sun))
+        if sr.date() > date.date():
+            sr = ephem.localtime(myloc.previous_rising(sun))
+        sr=(sr+dt.timedelta(seconds=30)).time()
+        return dt.timedelta(hours=sr.hour,minutes=sr.minute)
+    else:
+        return dt.timedelta(hours=6)
+
+def sunset(date):
+    if "location" in bridgectl.config:
+        myloc=ephem.Observer()
+        myloc.lon=str(bridgectl.config["location"]["longitude"])
+        myloc.lat=str(bridgectl.config["location"]["latitude"])
+        myloc.elevation=bridgectl.config["location"]["altitude"]
+        myloc.date=date
+        sun = ephem.Sun()
+        sr = ephem.localtime(myloc.next_setting(sun))
+        if sr.date() > date.date():
+            sr = ephem.localtime(myloc.previous_setting(sun))
+        sr=(sr+dt.timedelta(seconds=30)).time()
+        return dt.timedelta(hours=sr.hour,minutes=sr.minute)
+    else:
+        return dt.timedelta(hours=18)
+
+def easter(val):
+    today=dt.date.today()
+    return due.easter(today.year,due.EASTER_WESTERN)
+    #fullMoon = ephem.next_full_moon(dt.date(today.year, 3, 21)).datetime().date()
+    #if fullMoon.weekday() < 6:
+    #    easter = fullMoon + dt.timedelta(days=(6-fullMoon.weekday()))
+    #else:
+    #    easter = fullMoon + dt.timedelta(days=7)
+    #return easter    
+    
+def orthodox_easter(val):
+    today=dt.date.today()
+    return due.easter(today.year,due.EASTER_ORTHODOX)
+    
+def mardigras(val):
+    mg=easter(None)-dt.timedelta(days=38)
+    while mg.weekday()!=1:
+        mg=mg-dt.timedelta(days=1)
+    return mg
+
+def givenday(val):
+    lok=["type","period","when","day"]
+    day=val
+    for x in lok:
+        day=day[x]
+    month,day=[int(x) for x in day.split("/")]
+    return dt.date.today().replace(month=month).replace(day=day)
+
+
+sv_ressources={
+    "year"  : {
+        "easter" : easter,
+        "orthodox easter" : orthodox_easter,
+        "this day": givenday,
+        "mardi gras": mardigras
+        },
+    "month" : {
+        "day": nth_of_month,
+        "last day": last_of_month,
+        "nth before last": nth_blast_month,
+        "nth weekday": nth_wd_month,
+        "last weekday": last_wd_month
+        },
+    "week"  : {
+        "day" : day_week,
+        },
+    "day"   : {
+        "sunrise"     : sunrise,
+        "sunset"      : sunset
+        }
+}
+
+
+def sv_factory(vardef):
+    if vardef["type"]["bu-cvalue"]=="event":
+        return EventState(vardef)
+    elif vardef["type"]["bu-cvalue"]=="tracker":
+        return AccuState(vardef)
+    elif vardef["type"]["bu-cvalue"]=="simple":
+        return SimpleState(vardef)
+    elif vardef["type"]["bu-cvalue"]=="counter":
+        return CounterState(vardef)
+    elif vardef["type"]["bu-cvalue"]=="time":
+        return TimeState(vardef)
+    else:
+        return None
+
+
+class SimpleState():
+    """A simple state variable"""
+    def __init__(self,vardef):
+        """Generic state variable, just a name"""
+        self.vardef=vardef
+        self.name=None
+        self.period=None
+        self._varstate=None
+        self._parseval(self.vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+        
+    def _parseval(self,val):
+        if val["type"]["bu-cvalue"]!="simple":
+            raise Exception("Wrong state variable type")
+        self.name=val["name"]
+        aval= val["type"]
+        self._varstate=aval["init"]
+        self.period=aval["period"]["bu-cvalue"]
+                
+    @property
+    def event(self):
+        #Should be overwritten for more complex processingtry:
+        return None
+    
+    @property
+    def state(self):
+        #Should be overwritten for more complex processingtry:
+        return self._varstate
+    
+    @state.setter
+    def state(self,val):
+        self._varstate=val
+    
+    def process_event(self,event):
+        if event['event'] == 'time tick':
+            if self.period in event["starts"]:
+                self._varstate = self.reset()
+    
+    def check(self,val,compare="eq"):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """ 
+        try:
+            if compare == "eq":
+                return self._varstate == val
+            if compare == "ne":
+                return self._varstate != val
+            if compare == "in":
+                return self._varstate in val.split(",")
+            if compare == "not in":
+                return self._varstate not in val.split(",")
+            if compare == "gt":
+                return self._varstate > val
+            if compare == "ge":
+                return self._varstate >= val
+            if compare == "lt":
+                return self._varstate < val
+            if compare == "le":
+                return self._varstate <= val
+            return False
+        except Exception as e:
+            emsg="Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
+            self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"error report", 
+                                    "target":self.subject+".state variable",
+                                    "value":emsg}})
+
+            return False
+    
+    def reset(self):
+        """Reset the variable to its initial value"""
+        self._parseval(self.vardef)
+    
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self._parseval(self,val)
+        return True
+        
+    def freeze(self):
+        pass
+        
+    def unfreeze(self):
+        pass
+       
+    def event_trigger(self,event):
+        """Check if the event triggers this  state  variable"""
+        return False
+    
+    
+class CounterState():
+    """A simple state variable"""
+    def __init__(self,vardef):
+        """Generic state variable, just a name"""
+        self.vardef=vardef
+        self.name=None
+        self.period=None
+        self._varstate=None
+        self._parseval(self.vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def _parseval(self,val):
+        if val["type"]["bu-cvalue"]!="counter":
+            raise Exception("Wrong state variable type")
+        self.name=val["name"]
+        aval= val["type"]
+        self._varstate=int(aval["init"])
+        self.period=aval["period"]["bu-cvalue"]
+        
+    @property
+    def state(self):
+        #Should be overwritten for more complex processingtry:
+        return self._varstate
+    
+    @state.setter
+    def state(self,val):
+        self._varstate=int(val)
+    
+    def process_event(self,event):
+        if event['event'] == 'time tick':
+            if self.period in event["starts"]:
+                self._varstate = self.reset()
+    
+    def check(self,val,compare="eq"):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """ 
+        try:
+            if compare == "eq":
+                return self._varstate == int(val)
+            if compare == "ne":
+                return self._varstate != int(val)
+            if compare == "in":
+                return self._varstate in [ int(x) for x in val.split(",")]
+            if compare == "not in":
+                return self._varstate not in [ int(x) for x in val.split(",")]
+            if compare == "gt":
+                return self._varstate > int(val)
+            if compare == "ge":
+                return self._varstate >= int(val)
+            if compare == "lt":
+                return self._varstate < int(val)
+            if compare == "le":
+                return self._varstate <= int(val)
+            return False
+        except Exception as e:
+            emsg="Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
+            self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"error report", 
+                                    "target":self.subject+".state variable",
+                                    "value":emsg}})
+
+            return False
+    
+    def reset(self):
+        """Reset the variable to its initial value"""
+        self._parseval(self.vardef)
+    
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self._parseval(self,val)
+        return True
+        
+    def freeze(self):
+        pass
+        
+    def unfreeze(self):
+        pass
+       
+    def event_trigger(self,event):
+        """Check if the event triggers this  state  variable"""
+        return False
+
+class EventState():
+    """ track an event across entities """
+    
+    def __init__(self,vardef):
+        """Generic state variable, just a name"""
+        self.vardef=vardef
+        self.name=None
+        self.period=None
+        self.what=None
+        self.event=None
+        self.subval=[]
+        self._parseval(self.vardef)
+        self._varstate=None
+        self.frozen = False
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def _parseval(self,val):
+        if val["type"]["bu-cvalue"]!="event":
+            raise Exception("Wrong state variable type")
+        self.name=val["name"]
+        aval= val["type"]
+        self.period=aval["period"]["bu-cvalue"]
+        if isinstance(aval["entity"],dict):
+            #was expanded
+            self.what=aval["entity"]["bu-cvalue"] or None
+        else:
+            self.what=aval["entity"].strip() or None
+        self.event = aval["event"]
+        if aval["subval"].strip():
+            self.subval=[x.strip() for x in aval["subval"].split("::")]
+        else:
+            self.subval=["value"]
+        
+    def process_event(self,event):
+        """This needs to implement the event processing to change the 
+        state of the variable."""
+        if not self.frozen:
+            if event["event"] == self.event:
+                if self.what is None or event["target"].startswith(self.what):
+                    self._varstate = event
+                    try:
+                        for key in self.subval:
+                            self._varstate = self._varstate[key]
+                            
+                        if bridgectl.log:
+                            bridgectl.log.debug("New value for {} is {}".format(self.name,self._varstate))
+                    except Exception as e:
+                        if bridgectl.log:
+                            bridgectl.log.critical("Failed to process event for {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+                        pass
+            if event['event'] == 'time tick':
+                if self.period in event["starts"]:
+                    self._varstate = self.reset()
+    
+    @property
+    def state(self):
+        #Should be overwritten for more complex processingtry:
+        return self._varstate
+    
+    def check(self,val,compare="eq"):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """ 
+        try:
+            if compare == "eq":
+                return self._varstate == val
+            if compare == "ne":
+                return self._varstate != val
+            if compare == "in":
+                return self._varstate in val.split(",")
+            if compare == "not in":
+                return self._varstate not in val.split(",")
+            if compare == "gt":
+                return self._varstate > val
+            if compare == "ge":
+                return self._varstate >= val
+            if compare == "lt":
+                return self._varstate < val
+            if compare == "le":
+                return self._varstate <= val
+            if compare == "frozen":
+                return self.frozen
+            if compare == "not frozen":
+                return not self.frozen
+            return False
+        except Exception as e:
+            emsg="Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
+            self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"error report", 
+                                    "target":self.subject+".state variable",
+                                    "value":emsg}})
+
+            return False
+    
+    def reset(self):
+        """Reset the variable to its initial value"""
+        self._varstate=None
+        self.frozen=False
+    
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self._parseval(self,val)
+        return True
+        
+    def freeze(self):
+        self.frozen=True
+        
+    def unfreeze(self):
+        self.frozen=False
+       
+    def event_trigger(self,event):
+        """Check if the event triggers this  state  variable"""
+        if event["event"] == self.event:
+            if self.what is None or event["target"].startswith(self.what):
+                return True
+        return False
+
+
+class AccuState():
+    """ track an event across entities """
+    
+    def __init__(self,vardef):
+        """Accumulation state variable, just a name"""
+        self.vardef=vardef
+        self.name=None
+        self.period=None
+        self.what=None
+        self.event=None
+        self.subval=[]
+        self.devent=None
+        self.dsubval=[]
+        self.addV=None
+        self.subV=None
+        self.entities=set()
+        self.lastone=None
+        self._parseval(self.vardef)
+        self.frozen=False
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def _parseval(self,val):
+        if val["type"]["bu-cvalue"]!="tracker":
+            raise Exception("Wrong state variable type")
+        self.name=val["name"].strip()
+        aval= val["type"]
+        self.period=aval["period"]["bu-cvalue"].strip()
+        if isinstance(aval["entity"],dict):
+            #was expanded
+            self.what=aval["entity"]["bu-cvalue"] or None
+        else:
+            self.what=aval["entity"].strip() or None
+        self.event = aval["event"].strip()
+        if aval["subval"].strip():
+            self.subval=[x.strip() for x in aval["subval"].split("::")]
+        else:
+            self.subval=["value"] #here the event value
+        self.addV=[y for y in map(lambda x:x.strip(),aval["add"].split(","))]
+        self.devent = aval["devent"].strip() or self.event
+        if self.devent == self.event and not aval["dsubval"].strip():
+            self.dsubval=self.subval
+        else:
+            if aval["dsubval"].strip():
+                self.dsubval=[x.strip() for x in aval["dsubval"].split("::")]
+            else:
+                self.dsubval=["value"] #here the event value
+        self.subV=[y for y in map(lambda x:x.strip(),aval["sub"].split(","))]
+        
+    def process_event(self,event):
+        """This needs to implement the event processing to change the 
+        state of the variable."""
+        if not self.frozen:
+            if event["event"] in [self.event,self.devent]:
+                if self.what is None or event["target"].startswith(self.what):
+                    self.lastone=None
+                    if event["event"] == self.event:
+                        val=event
+                        for key in self.subval:
+                            val = val[key]
+                        if val in self.addV:
+                            if event["target"] not in self.entities:
+                                self.entities.add(event["target"])
+                                self.lastone=event["target"]
+                    if event["event"] == self.devent:
+                        val=event
+                        for key in self.dsubval:
+                            val = val[key]
+                        if val in self.subV:
+                            try:
+                                self.entities.remove(event["target"])
+                                self.lastone=event["target"]
+                            except: pass
+                if self.lastone is not None and bridgectl.log:
+                    bridgectl.log.debug("New value for {} is {}".format(self.name,self.entities))
+            if event['event'] == 'time tick':
+                if self.period in event["starts"]:
+                    self.reset()
+    
+    @property
+    def state(self):
+        #Should be overwritten for more complex processingtry:
+        return len(self.entities)
+    
+    def check(self,val,compare="eq"):
+        """Compare the state variable to a value (val) using compare.
+        """
+        try:
+            if compare == "eq":
+                return len(self.entities)==int(val)
+            if compare == "ne":
+                return len(self.entities)!=int(val)
+            if compare == "in":
+                return val in self.entities
+            if compare == "not in":
+                return val not in self.entities
+            if compare == "gt":
+                return len(self.entities)>int(val)
+            if compare == "ge":
+                return len(self.entities)>=int(val)
+            if compare == "lt":
+                return len(self.entities)<int(val)
+            if compare == "le":
+                return len(self.entities)<=int(val)
+            if compare == "first in": #trigger comparator
+                return len(self.entities)==1 and self.lastone in self.entities
+            if compare == "last out": #trigger comparator
+                return len(self.entities)==0 and val == self.lastone
+            if compare == "got in": #trigger comparator
+                return val == self.lastone and self.lastone in self.entities
+            if compare == "got out": #trigger comparator
+                return val == self.lastone and self.lastone not in self.entities
+            if compare == "frozen":
+                return self.frozen
+            if compare == "not frozen":
+                return not self.frozen
+                   
+            return False
+        except Exception as e:
+            emsg="Error: State variable {} : Tracker compares the number of tracked entities. Comparison value ({}) must be an integer.\nTrace: {}".format(self.name,val,e.__traceback__)
+            self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"error report", 
+                                    "target":self.subject+".state variable",
+                                    "value":emsg}})
+
+            return False
+        
+    
+    def reset(self):
+        """Reset the variable to its initial value"""
+        self.entities=set()
+        self.frozen=False
+    
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self._parseval(self,val)
+        return True
+        
+    def freeze(self):
+        self.frozen=True
+        
+    def unfreeze(self):
+        self.frozen=False
+       
+    def event_trigger(self,event):
+        if event["event"] in [self.event,self.devent]:
+            if self.lastone is not None:
+                return True
+        return False
+
+
+
+class TimeState():
+    """Time dependent state variable
+    """
+    
+    def __init__(self,vardef):
+        """Create a time dependent state variable. Its state is either True or False
+            A time state variable defines a time interval. calc gives us the date whilst
+            after and before define the time interval. The minimum is 60 secs, the max
+            is 1 full day
+        """
+        self.vardef=vardef
+        self.name=None
+        self.period=None
+        self.istart = None
+        self.iend = None
+        self.calc = None
+        self._varstate=None
+        self.lasttick=dt.datetime.now().replace(second=0,microsecond=0)
+        self._parseval(vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+   
+    def __repr__(self):
+        return "Time variable between "+str(self._varstate+self.istart)+" and "+str(self._varstate+self.iend)
+    
+    def _parseval(self,val):
+        if val["type"]["bu-cvalue"]!="time":
+            raise Exception("Wrong state variable type")
+        self.name=val["name"]
+        aval=val["type"]["period"]
+        self.period=aval["bu-cvalue"]
+        self.istart=None
+        self.iend=None
+        if self.period in ["year","month"]:
+            self.calc=sv_ressources[self.period][aval["when"]["bu-cvalue"]]
+        elif self.period in ["week"]:
+            self.calc=sv_ressources["week"]["day"]
+        self._varstate=self.dreset()
+        if self.period in ["minute"]:
+            now=self.lasttick
+            self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[now.hour,now.minute])]))
+            self.iend=self.istart+dt.timedelta(seconds=60)
+        elif self.period in ["hour"]:
+            aval=aval["timing"]
+            thish=self.lasttick.hour
+            if aval["bu-cvalue"] == "at":
+                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
+                self.iend=self.istart+dt.timedelta(seconds=60)
+            elif aval["bu-cvalue"] == "before":
+                self.istart=dt,timedelta()
+                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
+            elif aval["bu-cvalue"] == "after":
+                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
+                self.iend=dt.timedelta(hours=1)
+            elif aval["bu-cvalue"] == "between":
+                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["sdelta"]])]))
+                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["edelta"]])]))
+                self.iend=self.iend+dt.timedelta(seconds=60)
+        else:
+            aval=val["type"]["period"]["timing"]
+            if aval["bu-cvalue"] == "all day":
+                self.istart=dt.timedelta(hours=0)
+                self.iend=dt.timedelta(hours=24)
+            elif aval["bu-cvalue"] == "at":
+                aval=aval["timedef"]
+                if aval["bu-cvalue"]=="sunrise":
+                    self.istart=sunrise(self._varstate)
+                elif avaval == self.lastone and l["bu-cvalue"]=="sunset":
+                    self.istart=sunset(self._varstate)
+                elif aval["bu-cvalue"]=="time":
+                    self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
+                self.iend=self.istart+dt.timedelta(seconds=60)
+            elif aval["bu-cvalue"] == "before":
+                self.istart=dt.timedelta()-dt.timedelta(minutes=int(aval["delta"]))
+                aval=aval["timedef"]
+                if aval["bu-cvalue"]=="sunrise":
+                    self.istart+=sunrise(self._varstate)
+                elif aval["bu-cvalue"]=="sunset":
+                    self.istart+=sunset(self._varstate)
+                elif aval["bu-cvalue"]=="time":
+                    self.istart+=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
+                self.iend=self.istart+dt.timedelta(seconds=60)
+            elif aval["bu-cvalue"] == "after":
+                self.istart=dt.timedelta(minutes=int(aval["delta"]))
+                aval=aval["timedef"]
+                if aval["bu-cvalue"]=="sunrise":
+                    self.istart+=sunrise(self._varstate)
+                elif aval["bu-cvalue"]=="sunset":
+                    self.istart+=sunset(self._varstate)
+                elif aval["bu-cvalue"]=="time":
+                    self.istart+=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
+                self.iend=self.istart+dt.timedelta(seconds=60)
+            elif aval["bu-cvalue"] == "between":
+                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["timedef"][0].split(":"))]))
+                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["timedef"][1].split(":"))]))
+                self.iend=self.iend+dt.timedelta(seconds=60)
+        if bridgectl.log:
+            bridgectl.log.debug("Time var {} between {} and {}".format(self.name,self._varstate+self.istart,self._varstate+self.iend))
+        
+    def dreset(self):
+        """Reinitialise the date variable"""
+        if self.calc:
+            return dt.datetime.combine(self.calc(self.vardef),dt.time(hour=0,minute=0))
+        else:
+            val=dt.date.today()
+            if self.period in ["minute","hour","day"]:
+                return dt.datetime.combine(val,dt.time(hour=0,minute=0))
+            param={}
+            if self.period == "week":
+                return dt.datetime.combine(val-dt.timedelta(days=val.weekday()),
+                                            dt.time(hour=0,minute=0))
+            for x,y in { "month": "day","year": "month"}.items():
+                 param[y]=1
+                 if self.period == x:
+                     return dt.datetime.combine(val.replace(**param).date(),dt.time(hour=0,minute=0))
+            
+            raise Exception()
+         
+    def reset(self):
+        self._parseval(self.vardef)
+    
+    def check(self,val=None,compare="eq"):
+        val=self.lasttick
+        if compare in ["eq","ne","in","not in"] :
+            resu = val >= (self._varstate+self.istart) and val < (self._varstate+self.iend)
+
+            if compare in ["eq","in"]:
+                return resu
+            else:
+                return not resu
+        
+        if compare == "gt":
+            return val>=self._varstate+self.iend
+        if compare == "le":
+            return val<self._varstate+self.iend
+        if compare == "lt":
+            return val<self._varstate+self.istart
+        if compare == "ge":
+            return val>=self._varstate+self.istart
+    
+    
+    def process_event(self,event):
+        """Check events and act accordingly. Here time ticks are what we react to.
+        """
+        if event['event'] == 'time tick':
+            self.lasttick=event['value']
+            if self.period in event["starts"]:
+                self.reset()
+    
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self.vardef=val
+        self._parseval(val)
+        return True
+          
+    def freeze(self):
+        pass #You cannot freeze time
+        
+    def unfreeze(self):
+        pass
+       
+    def event_trigger(self,event):
+        if event["event"] == "time tick":
+            return self.check()
+        return False  
+        
+ 
+class Condition():
+    """
+    A condition is simply a state variable, a value and a conditional to check the 
+    state variable value against the value.
+    
+    The conditional callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter cval
+    """
+    
+    def __init__(self,state,cval=True,conditional="eq"):
+        """State of a state. This one will be True at most once during the timeframe defined by duration"""
+        self.variable=state
+        self.cval = cval
+        self.conditional=conditional
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def __repr__(self):
+        return "Condition on {} {} {}".format(self.variable.name,self.conditional,self.cval)
+        
+    @property
+    def state(self):
+        #proxy it
+        return self.variable.state
+    
+    def check(self):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """
+
+        return self.variable.check(self.cval,self.conditional)
+        
+    def event_trigger(self,event):
+        return self.variable.event_trigger(event) and self.check()
+           
+ 
+    
+class EventTrigger():
+    """ track an event across entities """
+    
+    def __init__(self,rname,vardef):
+        """Generic state variable, just a name"""
+        self.vardef=vardef
+        self.name=rname
+        self.what=None
+        self.event=None
+        self.subval=[]
+        self.compare=None
+        self.compval=None
+        self._parseval(self.vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+   
+    def __repr__(self):
+        return "Event trigger "+self.name+" looking for "+self.event+" on "+(self.what or "anything") +" with "+"::".join(self.subval)+" "+self.compare+" "+(self.compval or "None")
+             
+    def _parseval(self,val):
+        if isinstance(val["name"],dict):
+            #was expanded
+            self.what=val["name"]["bu-cvalue"] or None
+        else:
+            self.what=val["name"].strip() or None
+        self.event = val["event"]
+        if val["subval"].strip():
+            self.subval=[x.strip() for x in val["subval"].split("::")]
+        else:
+            self.subval=["value"]
+        self.compare=val["compare"]["bu-cvalue"]
+        if "compval" in val["compare"]:
+            self.compval=val["compare"]["compval"]
+        else:
+            self.compval=None
+        
+    def process_event(self,event):
+        """This needs to implement the event processing to change the 
+        state of the variable."""
+        if not self.frozen:
+            if event["event"] == self.event:
+                if self.what is None or event["target"].startswith(self.what):
+                    self._varstate = event
+                    try:
+                        for key in self.subval:
+                            self._varstate = self._varstate[key]
+                            
+                        if bridgectl.log:
+                            bridgectl.log.debug("New value for {} is {}".format(self.name,self._varstate))
+                    except Exception as e:
+                        if bridgectl.log:
+                            bridgectl.log.critical("Failed to process event for rule {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+                        pass
+            if event['event'] == 'time tick':
+                if self.period in event["starts"]:
+                    self._varstate = self.reset()
+    
+
+    def check(self,event):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """ 
+        myvar = event
+        try:
+            for key in self.subval:
+                myvar = myvar[key]
+                
+        except Exception as e:
+            if bridgectl.log:
+                bridgectl.log.critical("Failed to process trigger event for {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+            return False
+        try:
+            if self.compare == "any":
+                return True
+            if self.compare == "eq":
+                return myvar == self.compval
+            if self.compare == "ne":
+                return myvar != self.compval
+            if self.compare == "in":
+                return myvar in self.compval.split(",")
+            if self.compare == "not in":
+                return myvar not in self.compval.split(",")
+            if self.compare == "gt":
+                return myvar > self.compval
+            if self.compare == "ge":
+                return myvar >= self.compval
+            if self.compare == "lt":
+                return myvar < self.compval
+            if self.compare == "le":
+                return myvar <= self.compval
+            return False
+        except:
+            return False
+       
+    def event_trigger(self,event):
+        """Check if the event triggers this  state  variable"""
+        if event["event"] == self.event:
+            if self.what is None or event["target"].startswith(self.what):
+                return self.check(event)
+        return False
+
+class DiffCond():
+    """Check the relative value of 2 state variables"""
+    def __init__(self,name,vardef):
+        """Generic state variable, just a name"""
+        self.vardef=vardef
+        self.name=name
+        self.first=None
+        self.second=None
+        self.transform= lambda x: int(x or 0) #just in case it is triggered before the client is
+        self.compare=None
+        self.compval=None
+        self._parseval(self.vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def _parseval(self,val):
+        aval= val
+        self.first=bridgectl.stateVar[aval["first"]["bu-cvalue"]]
+        self.second=bridgectl.stateVar[aval["second"]["bu-cvalue"]]
+        if aval["transform"]["bu-cvalue"]=="float":
+            self.transform= lambda x: float(x or 0)
+        elif aval["transform"]["bu-cvalue"]=="int":
+            self.transform= lambda x: int(x or 0)
+        elif aval["transform"]["bu-cvalue"]=="round int":
+            self.transform= lambda x: int(roubd(float(x or 0)))
+        else:
+            self.transform= lambda x: int(x or 0)
+        self.compare=val["compare"]["bu-cvalue"]
+        self.compval=val["compare"]["compval"]
+     
+    @property
+    def _varstate(self):
+        return self.transform(self.first._varstate)-int(self.second._varstate)
+        
+    @property
+    def state(self):
+        #Should be overwritten for more complex processingtry:
+        return self._varstate
+
+    
+    def process_event(self,event):
+        pass
+    
+    def check(self):
+        """Compare the state variable to a value (val) using compare.
+        The compare callable is expected to accept 2 parameters:
+            x: should be the state variable value
+            y: should be the parameter val
+        """ 
+        
+        try:
+            if self.compare == "eq":
+                return self._varstate == self.transform(self.compval)
+            if self.compare == "ne":
+                return self._varstate != self.transform(self.compval)
+            if self.compare == "in":
+                return self._varstate in [ self.transform(x) for x in self.compval.split(",")]
+            if self.compare == "not in":
+                return self._varstate not in [ self.transform(x) for x in self.compval.split(",")]
+            if self.compare == "gt":
+                return self._varstate > self.transform(self.compval)
+            if self.compare == "ge":
+                return self._varstate >= self.transform(self.compval)
+            if self.compare == "lt":
+                return self._varstate < self.transform(self.compval)
+            if self.compare == "le":
+                return self._varstate <= self.transform(self.compval)
+            return False
+        except Exception as e:
+            emsg="Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
+            self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"error report", 
+                                    "target":self.subject+".state variable",
+                                    "value":emsg}})
+
+            return False
+    
+    def reset(self):
+        """Reset the variable to its initial value"""
+        self._parseval(self.vardef)
+    
+
+
+ 
+class Rule():
+    """Define a rule... """   
+    def __init__(self,vardef):
+        """Create a rule
+        """
+        self.vardef=vardef
+        self.name=None
+        self.active=False
+        self.trigger=None
+        self.condition=[]
+        self.action=[]
+        self._parseval(vardef)
+        self.sending=bridgectl.sending
+        self.subject=bridgectl.subject
+        self.target=bridgectl.target
+        
+    def __repr__(self):
+        return "Rule "+self.name
+   
+    def _parseval(self,val):
+        self.condition=[]
+        self.action=[]
+        self.name=val['name']
+        self.active=val['active']=="yes"
+        #Dealing with the trigger
+        aval=val["trigger"]["type"]
+        if aval['bu-cvalue'] == "time variable":
+            self.trigger=bridgectl.stateVar[aval["name"]['bu-cvalue']]
+        elif aval['bu-cvalue'] == "event":
+            self.trigger=EventTrigger(self.name,aval)
+        elif aval['bu-cvalue'] == "tracker variable" :
+            if "bu-cvalue" in aval["compare"]["compval"]:
+                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compare"]["compval"]["bu-cvalue"],aval["compare"]['bu-cvalue'])
+            else:
+                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compare"]["compval"],aval["compare"]['bu-cvalue'])
+        else :
+            if "bu-cvalue" in aval["compval"]:
+                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compval"]["bu-cvalue"],aval["compare"]['bu-cvalue'])
+            else:
+                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compval"],aval["compare"]['bu-cvalue'])
+
+ 
+        #Dealing with the conditions
+        
+        aval=val["condition"]
+        aval.sort(key=lambda x: x["cond name"])
+        for acond in aval:
+            if acond['condition']['bu-cvalue'] == 'time-variable':
+                self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],None,acond['condition']["compare"]['bu-cvalue']))
+            elif acond['condition']['bu-cvalue'] == 'differential':
+                self.condition.append(DiffCond(acond["cond name"],acond['condition']))
+            else:
+                if "bu-cvalue" in acond['condition']["compare"]["compval"]:
+                    self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],acond['condition']["compare"]["compval"]["bu-cvalue"],acond['condition']["compare"]['bu-cvalue']))
+                else:
+                    self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],acond['condition']["compare"]["compval"],acond['condition']["compare"]['bu-cvalue']))
+
+        #Dealing with the commands
+        aval=val["commands"]
+        aval.sort(key=lambda x: x["command name"])
+        for acmd in aval:
+            acmd=acmd["command"]
+            if acmd['bu-cvalue'] == 'set counter':
+                mycmd=[acmd['bu-cvalue'],acmd['variable']['bu-cvalue']]
+                if acmd['set']['bu-cvalue']=="add":
+                    mycmd.append(lambda x: x+acmd['set']['value'])
+                if acmd['set']['bu-cvalue']=="sub":
+                    mycmd.append(lambda x: x-acmd['set']['value'])
+                if acmd['set']['bu-cvalue']=="set":
+                    mycmd.append(lambda x: acmd['set']['value'])
+                self.action.append(mycmd)
+            elif acmd['bu-cvalue'] == 'set variable':
+                self.action.append([acmd['bu-cvalue'],acmd['variable']['bu-cvalue'],acmd['value']])
+            elif acmd['bu-cvalue'] in ["freeze","unfreeze"]:
+                self.action.append([acmd['bu-cvalue'],acmd['variable']['bu-cvalue'],None])
+            elif acmd['bu-cvalue'] == "sleep":
+                self.action.append([acmd['bu-cvalue'],acmd['delay'],None])
+            elif acmd['bu-cvalue'] == "event":
+                self.action.append([acmd['bu-cvalue'],
+                            {"subject":self.target ,
+                                "content_type": "event",
+                                "content":{"event":acmd['event'], 
+                                            "target":self.subject+".rules",
+                                            "value":acmd['e-value']}},None])
+            elif acmd['bu-cvalue'] == "command":
+                mycmd=[acmd['bu-cvalue']]
+                acmd=acmd["command"]
+                tcmd=acmd["command"]['bu-cvalue']
+                tcmdval=acmd['command'][tcmd]
+                mycmd.append({"subject":acmd['bu-cvalue'],
+                             "content_type": "command",
+                             "content":{ "command": tcmd,
+                                         "token":bl.genid(),
+                                        "target":acmd['bu-cvalue'].split("-")[0],
+                                        "value":tcmdval}})
+                mycmd.append(None)
+                self.action.append(mycmd)
+            elif acmd['bu-cvalue'] == "command tracker":
+                
+                mycmd=[acmd['bu-cvalue']]
+                acmd=acmd["variable"]
+                mycmd.append(acmd['bu-cvalue'])
+                tcmd=acmd['command']['bu-cvalue']
+                tcmdval=acmd['command'][tcmd]
+                mycmd.append({"subject":None,
+                             "content_type": "command",
+                             "content":{ "command": tcmd,
+                                         "token":None,
+                                        "target":None,
+                                        "value":tcmdval}})
+                self.action.append(mycmd)
+        if bridgectl.log:
+            bridgectl.log.debug("Action defined {} defined {}".format(self.name,self.action))   
+
+            
+    def process_event(self,event):
+        if bridgectl.log:
+            bridgectl.log.debug("Checking {} with {}".format(self.name,self.trigger))
+            
+        if not self.active:
+            return False
+        
+        if not self.trigger.event_trigger(event):
+            return False
+        
+        if bridgectl.log:
+            bridgectl.log.debug("\n\nRule {} was triggered\n\n".format(self))                 
+             
+        for c in self.condition:
+            if not c.check():
+                return False
+            
+        if bridgectl.log:
+            bridgectl.log.debug("\n\nRule {} conditions were met\n\n".format(self))
+                
+        xx=aio.ensure_future(self.doAct())
+   
+   
+    async def doAct(self):
+        for c,v,f in self.action:
+            bridgectl.log.debug("\n\nRule action {} {} {}\n\n".format(c,v,f))
+            #try:
+            if c == 'set counter':
+                bridgectl.stateVar[v].state=f(bridgectl.stateVar[v].state)
+            elif c == 'set variable':
+                bridgectl.stateVar[v].state=f
+            elif c == 'freeze':
+                bridgectl.stateVar[v].freeze()
+            elif c == 'unfreeze':
+                bridgectl.stateVar[v].unfreeze()
+            elif c == 'sleep':
+                await aio.sleep(v)
+            elif c == 'event':
+                self.sending(v)
+            elif c == 'command':
+                self.sending(v)
+            elif c == 'command tracker':
+                for ent in bridgectl.stateVar[v].entities:
+                    f["subject"]=ent
+                    f["content"]["token"]=bl.genid()
+                    f["content"]["target"]=ent.split("-")[0]
+                    self.sending(f)
+                    
+            #except Exception as e:
+                #if bridgectl.log:
+                    #emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
+                    #self.sending({"subject":self.target ,
+                                #"content_type": "event",
+                                #"content":{"event":"error report", 
+                                            #"target":self.subject+".rules",
+                                            #"value":emsg}})
+
+            
+    def update(self,val):
+        if val == self.vardef:
+            return False
+        if val["name"] != self.name:
+            #idiot proofing
+            return False
+        
+        self.condition=[]
+        self.action=[]
+        self.vardef=val
+        self._parseval(val)
+        return True
+
+
+cfgdefault={"subject":"action","host":"localhost","port":8745,"credential":"","ssl":""}
+def configure(): 
+    parser = argparse.ArgumentParser(description="Track Lifx action bulbs.")
+    #                            version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-s", "--subject", default=cfgdefault["subject"],
+                    help="The subject we are listening to (default \"%s\")." % cfgdefault["subject"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/action.cfg", type=argparse.FileType('r'),
+                    help="Config file to use (default \"/etc/autobuddy/action.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                    help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                    help="The directory where the file %s can be found."%(CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                    help="Exit after the the configuration has been saved")
+    
+    try:
+        opts=parser.parse_args()
+    except Exception as e:
+        parser.error("Error: "+str(e))
+        
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    actionlog = logging.getLogger('')
+    actioncfg = {"debug":opts.debug}
+    try:
+    #if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except Exception as e:
+            if opts.configonly:
+                cfgdata={}
+            else:
+                raise e
+        if opts.subject != cfgdefault["subject"]:
+            actioncfg["subject"] = opts.subject
+        elif "subject" in cfgdata:
+            actioncfg["subject"] = cfgdata["subject"]     
+        else:
+            actioncfg["subject"] = opts.subject
+        if opts.debug:
+            actionlog.debug("The subject is %s." % actioncfg["subject"]) 
+            
+        if opts.credential != cfgdefault["credential"]:
+            actioncfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            actioncfg["credential"] = cfgdata["credential"]
+        else:
+            actioncfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            actionlog.debug("The credential is %s"%actioncfg["credential"])       
+    
+        if opts.port != cfgdefault["port"]:
+            actioncfg["port"] = opts.port
+        elif "port" in cfgdata:
+            actioncfg["port"] = cfgdata["port"]
+        else:
+            actioncfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            actionlog.debug("The port is %s" % (actioncfg["port"]))
+            
+        if opts.host != cfgdefault["host"]:
+            actioncfg["host"] = opts.host
+        elif "host" in cfgdata:
+            actioncfg["host"] = cfgdata["host"]
+        else:
+            actioncfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            actionlog.debug("The host is %s"%actioncfg["host"])       
+ 
+        if "buddykey" in cfgdata:
+            actioncfg["buddykey"] = cfgdata["buddykey"]
+
+        if opts.ssl != cfgdefault["ssl"]:
+            actioncfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            actioncfg["ssl"] = cfgdata["ssl"]
+        else:
+            actioncfg["ssl"] = cfgdefault["ssl"]
+        if actioncfg["ssl"] and not ( os.path.isfile(actioncfg["ssl"]+"/"+CERTFILE)):
+            actionlog.critical("Encryption: Could not find {} .".format(
+                actioncfg["ssl"]+"/"+CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if actioncfg["ssl"]:
+                actionlog.debug("The ssl certificates can be found in %s"%actioncfg["ssl"]) 
+            else:
+                actionlog.debug("The connection is not encrypted") 
+                    
+        if opts.configonly:
+
+            if "buddykey" not in actioncfg:
+                if opts.debug:
+                    actionlog.debug("Generating random key")   
+                actioncfg["buddykey"] = bl.keygen()
+            try:
+                del(actioncfg["debug"])
+            except:
+                pass
+            with open(opts.configonly,"w") as cfile:
+                json.dump(actioncfg,cfile)
+            os.chmod(opts.configonly,384) # 0600
+            sys.exit()
+        
+    except Exception as e:
+        actionlog.error("Error: %r" % e)
+        sys.exit(-2)
+    
+    return (actionlog,actioncfg)
+
+class Action(bl.BuddyBridge):
+    """
+    This is the main class
+    """
+    def __init__(self, name,loop,future,config,log):
+        super(Action, self).__init__(name,loop,future,config,log)
+        self.rules = {}
+        self.stateVar = {}
+        self.deviceVar = {}
+        self.timer=None
+               
+    @property
+    def target(self):
+        #When destined to me
+        return self.subject
+    
+    
+    def process_event(self,msg):
+        if self.log:
+            self.log.debug("Processing event: {}".format(msg))
+        for x in self.stateVar:
+            try:
+                self.stateVar[x].process_event(msg["content"])
+            except Exception as e:
+                if self.log:
+                    self.log.warning("Problem processing state variable event: {}".format(msg),exc_info=(type(e), e, e.__traceback__))
+        lok=list(self.rules.keys())
+        lok.sort()
+        for x in lok:
+            try:
+                self.rules[x].process_event(msg["content"])
+            except Exception as e:
+                if self.log:
+                    self.log.warning("Problem processing rule: {}".format(msg),exc_info=(type(e), e, e.__traceback__))
+        
+    def process_command(self,msg):
+        """Here we process the commands.
+        
+        Here we expect requests from the gui. These commands are can be one of
+            update config : A command to create or update a state variable/rule
+            set variable   : A command to set the value of a state variable
+            buddy rule     : A command to create or update a rule
+            
+        """
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.subject+".state variable":
+                if "state variable" in  msg["content"]["value"]:
+                    curnames=list(self.stateVar.keys())
+                    needupdate=False
+                    for vardef in msg["content"]["value"]["state variable"]:
+                        vname=self.subject+".state variable."+vardef["name"]
+                        if vname in curnames:
+                            curnames.remove(vname)
+                            try:
+                                needupdate = needupdate or self.stateVar[vname].update(vardef)
+                            except:
+                                self.stateVar[vname] = sv_factory(vardef)
+                                needupdate = True
+                        else:
+                            self.stateVar[vname]=sv_factory(vardef)
+                            needupdate = True
+                    for name in curnames:
+                        del(self.stateVar[name])
+                        needupdate = True
+                                
+                    if needupdate:
+                        self.sending({"subject":"control." + self.subject,
+                                      "content_type": "request",
+                                      "content": {"request":"save property",
+                                                  "target":self.subject,
+                                                  "name":"state variable",
+                                                  #"token": self.target,
+                                                  "value":bl.encrypt([ x.vardef for x in self.stateVar.values()],self.config["buddykey"])}})
+                        if self.log:
+                            self.log.debug("The new property stored is {}".format([ x.vardef for x in self.stateVar.values()]))
+                            
+            if msg["content"]["target"] == self.subject+".rules":
+                if "rules" in  msg["content"]["value"]:
+                    curnames=list(self.rules.keys())
+                    needupdate=False
+                    for vardef in msg["content"]["value"]["rules"]:
+                        vname=self.subject+".rules."+vardef["name"]
+                        if vname in curnames:
+                            curnames.remove(vname)
+                            try:
+                                needupdate = needupdate or self.rules[vname].update(vardef)
+                            except:
+                                self.rules[vname] = Rule(vardef)
+                                needupdate = True
+                        else:
+                            self.rules[vname]=Rule(vardef)
+                            needupdate = True
+                    for name in curnames:
+                        del(self.rules[name])
+                        needupdate = True
+                                
+                    if needupdate:
+                        self.sending({"subject":"control." + self.subject,
+                                      "content_type": "request",
+                                      "content": {"request":"save property",
+                                                  "target":self.subject,
+                                                  "name":"rules",
+                                                  #"token": self.target,
+                                                  "value":bl.encrypt([ x.vardef for x in self.rules.values()],self.config["buddykey"])}})
+                        if self.log:
+                            self.log.debug("The new property stored is {}".format([ x.vardef for x in self.rules.values()]))
+                            
+            #Now value contains the definition of that state variable
+            #   type is the type one of "state" or "time" because device state variable are
+            #        created automatically when devices are referenced in a rule 
+            #   name is the name of the variable it must be unique
+            #   mickname  an easier name
+ 
+    def process_response(self,msg):
+        #if msg["content"]["token"] != self.target:
+            #if self.log:
+                #self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            #else:
+                #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+                
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.subject:
+            #Getting the config
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug("The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig={}
+                    #log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+            if "location" in msg["content"]["system configuration"]:
+                self.config["location"]=msg["content"]["system configuration"]["location"]
+            self.config["database"]= msg["content"]["database"]
+            self.state = "active"
+            self.build()
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"].startswith(self.subject):
+            if self.state == "active" and  msg["content"]["status"] != "done":
+                #log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+                   
+        elif msg["content"]["response"] == "functions" and msg["subject"].startswith(self.subject):
+            if msg["content"]["status"] != "done":
+                if self.log:
+                    self.log.warning("Configuration definition was not registered.")
+                else:
+                    print("Warning: Configuration definition was not registered..")   
+        elif msg["content"]["response"] == "get property" and msg["subject"].startswith(self.subject):
+            if msg["content"]["status"]=="done":
+                for prop in ["state variable","rules"]:
+                    if prop in msg["content"]["value"]:
+                        try:
+                            storedprop=bl.decrypt(msg["content"]["value"][prop],self.config["buddykey"])
+                            if self.config["debug"]:
+                                self.log.debug("The property stored is {}".format(storedprop))
+                        except:
+                            storedprop={}
+                            if self.config["debug"]:
+                                self.log.debug("The property stored cannot be decrypted.")
+
+                        if prop.startswith("state variable"):
+                            for avar in storedprop:
+                                try:
+                                    nv=sv_factory(avar)
+                                    self.stateVar[self.subject+"."+prop+"."+nv.name]=nv
+                                except Exception as e:
+                                    self.log.warning("The data cannot be parsed into a state variable:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
+                                    continue
+                                
+                            self.sending({"subject":"control" + "." + self.subject ,
+                                    "content_type": "request",
+                                    "content":{"request":"functions", 
+                                                "target":self.subject,
+                                                "subtype": "state variable",
+                                                #"token": self.subject+".state variable",
+                                                "value":{"configs":[action_statevariable,{"state variable":[ x.vardef for x in self.stateVar.values()]}]}}})
+                            self.sending({"subject":self.target ,
+                                    "content_type": "event",
+                                    "content":{"event":"config updated", 
+                                                "target":self.subject+".state variable",
+                                                "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
+
+                                
+                        if prop == "rules":
+                            for avar in storedprop:
+                                try:
+                                    nr=Rule(avar)
+                                    self.rules[self.subject+"."+prop+"."+nr.name]=nr
+                                        
+                                except Exception as e:
+                                    self.log.warning("The data cannot be parsed into a rule:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
+                                    continue 
+                            self.sending({"subject":"control" + "." + self.subject ,
+                                    "content_type": "request",
+                                    "content":{"request":"functions", 
+                                                "target":self.subject,
+                                                "subtype": "rules",
+                                                #"token": self.subject+".rules",
+                                                "value":{"configs":[action_rules,{"rules":[ x.vardef for x in self.rules.values()]}]}}})
+                            self.sending({"subject":self.target ,
+                                    "content_type": "event",
+                                    "content":{"event":"config updated", 
+                                                "target":self.subject+".rules",
+                                                "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
+            else:
+                if self.log:
+                    self.log.warning("Property could not be retrieved")
+
+        elif msg["content"]["response"] == "save property" and msg["subject"].startswith(self.subject):
+            if msg["content"]["status"]=="done":
+                if msg["content"]["name"] == "state variable":
+                    self.sending({"subject":self.target ,
+                            "content_type": "event",
+                            "content":{"event":"config updated", 
+                                        "target":self.subject+".state variable",
+                                        "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
+                if msg["content"]["name"] == "rules":
+                    self.sending({"subject":self.target ,
+                            "content_type": "event",
+                            "content":{"event":"config updated", 
+                                        "target":self.subject+".rules",
+                                        "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
+        else:
+            if self.log:
+                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+            else:
+                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+
+
+                                    
+    def build(self):
+        newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        newmsg["content"]["request"]="get property"
+        newmsg["content"]["target"]= self.subject
+        #newmsg["content"]["token"] = bl.genid()
+        self.sending(newmsg)
+        self.timer=aio.ensure_future(self.periodic())
+                
+    async def periodic(self):
+        tstmp=dt.datetime.now()
+        second=tstmp.second #To delete (also in debug below
+        await aio.sleep(60-tstmp.second+1)
+        self.timer=aio.ensure_future(self.periodic())
+        tstmp=dt.datetime.now().replace(second=0,microsecond=0)
+        los=["minute"]
+        tcheck=[int(y) for y in tstmp.strftime("%m %d %H %M %w").split(" ")]
+        if tcheck[0]==1 and tcheck[1]==1:
+            los.append("year")
+        if tcheck[1]==1:
+            los.append("month")
+        if tcheck[2]==0 and tcheck[3]==0:
+            los.append("day")
+        if tcheck[3]==0:
+            los.append("hour")
+        self.process_event({"subject":self.subject,
+                "content_type": "event",
+                "content":{"event":"time tick", 
+                           "target":self.subject,
+                           "starts":los,
+                            "value":tstmp}})
+        
+        if self.config["debug"]:
+            self.log.debug("Time event scheduled at {}  {}.".format(second,{"subject":self.subject,
+                "content_type": "event",
+                "content":{"event":"time tick", 
+                           "target":self.subject,
+                           "starts":los,
+                            "value":tstmp}}))
+
+     
+if __name__ == "__main__":
+    log,config=configure()
+    log.debug("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+            cafile=config["ssl"]+'/'+CERTFILE)
+        
+        sslcontext.check_hostname = False
+    else:
+        sslcontext=None
+    connFuture=aio.Future()
+    fac=loop.create_connection(functools.partial(Action,"action",loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    conn,bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(bridgectl.configrequest,{"about":{"ActionBuddy":aboutstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        bridgectl.timer.cancel()
+        conn.close()
+        loop.close()

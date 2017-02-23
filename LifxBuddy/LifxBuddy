@@ -22,18 +22,17 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse, sys, traceback,json,logging,functools,random,os,ssl
+import argparse, sys, traceback,json,logging,functools,random,os,ssl,math, colorsys
 import buddylib as bl
 import asyncio as aio
-from aiolifx import LifxDiscovery
+import aiolifx
 from functools import partial
 
 SUBTYPE="Lifx"
 CERTFILE="autobuddy.crt"
-__version__="0.1"
+__version__="0.10"
 
 UDP_BROADCAST_PORT = 56700
-LIFX_HEARTBEAT=60
 
 def intround(x):
     return int(round(x))
@@ -41,126 +40,322 @@ def intround(x):
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 lifx_functions="""
 <buddyui version="0.1">
-<control type="switch" name="power" label="Power">
-    <value label="On">on</value>
-    <value label="Off">off</value>
-</control>
-<controlgroup name="colour" label="Colour" widget="colourpicker">
-    <control type="slider" name="hue" label="Hue">
-        <start>0</start>
-        <end>360</end>
-        <increment>1</increment>
-    </control>
-    <control type="slider" name="saturation" label="Saturation">
-        <start>0</start>
-        <end>100</end>
-        <increment>1</increment>
-    </control>
-    <control type="slider" name="value" label="Brightness">
-        <start>0</start>
-        <end>100</end>
-        <increment>1</increment>
-    </control>
-    <option type="spinner" name="delay" label="Delay" min="0" default="0" />
-</controlgroup>
-<controlgroup name="white" label="White">
-    <control type="slider" name="value" label="Brightness">
-        <start>0</start>
-        <end>100</end>
-        <increment>1</increment>
-    </control>
-    <control type="slider" name="temperature" label="Kelvin">
-        <start>2500</start>
-        <end>9000</end>
-        <increment>100</increment>
-    </control>
-    <option type="spinner" name="delay" label="Delay" min="0" />
-</controlgroup>
+    <command name="lifx">
+        <controlgroup type="list" name="power" label="Power" rteffect="1">
+            <control type="switch" name="power" label="Power" rteffect="1">
+                <value label="On">on</value>
+                <value label="Off">off</value>
+            </control>
+            <control type="spinner" name="duration" label="Duration"  >
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list" name="colour" label="Colour" rteffect="1">
+            <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
+                <control type="slider" name="hue" label="Hue" rteffect="1">
+                    <start>0</start>
+                    <end>360</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="saturation" label="Saturation" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="value" label="Brightness" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+            </controlgroup>
+            <control type="spinner" name="duration" label="Duration"  >
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="list" name="white" label="White">
+            <control type="slider" name="value" label="Brightness" rteffect="1">
+                <start>0</start>
+                <end>100</end>
+                <increment>1</increment>
+            </control>
+            <control type="slider" name="temperature" label="Kelvin" rteffect="1">
+                <start>2500</start>
+                <end>9000</end>
+                <increment>100</increment>
+            </control>
+            <control  type="spinner" name="duration" label="Duration">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="pulse" label="Pulse" rteffect="1">
+            <control type="switch" name="trnasient" label="End Colour" rteffect="1">
+                <value label="Old">on</value>
+                <value label="New">off</value>
+            </control>
+            <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
+                <control type="slider" name="hue" label="Hue" rteffect="1">
+                    <start>0</start>
+                    <end>360</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="saturation" label="Saturation" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="value" label="Brightness" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+            </controlgroup>
+            <control type="spinner" name="duration" label="Duration" rteffect="1">
+                <start>0.01</start>
+                <end>300</end>
+                <increment>0.1</increment>
+                <decimals>2</decimals>
+                <default>1.0</default>
+            </control>
+            <control type="spinner" name="repeat" label="Repeat" rteffect="1">
+                <start>1</start>
+                <increment>1</increment>
+            </control>
+            <control  type="slider" name="balance" label="Balance">
+                <start>-50</start>
+                <end>50</end>
+                <increment>1</increment>
+                <default>0</default>
+            </control>
+            <controlgroup type="choice" name="type" label="Type">
+                <item value="0" label="Saw" />
+                <item value="1" label="Sine" />
+                <item value="2" label="Half Sine" />
+                <item value="3" label="Triangle" />
+                <item value="4" label="Pulse" />
+            </controlgroup>
+        </controlgroup>
+    </command>
 </buddyui>
 """
+
+lifx_config="""
+<buddyui version="0.1">
+    <configuration  name="lifx">
+        <control type="spinner" name="refresh" label="Check for new devices interval">
+            <start>30</start>
+            <end>3600</end>
+            <increment>1</increment>
+            <postfix>secs</postfix>
+            <default>180</default>
+        </control>
+        <control type="spinner" name="heartbeat" label="Requesting status from lightbulbs">
+            <start>10</start>
+            <end>600</end>
+            <increment>10</increment>
+            <postfix>secs</postfix>
+            <default>60</default>
+        </control>
+    </configuration>
+</buddyui>
+"""
+lifx_config_default={"refresh":120,"heartbeat":60}
+
+def convert_K_to_RGB(colour_temperature):
+    """
+    Converts from K to RGB, algorithm courtesy of 
+    http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
+    Taken from petrklus on github
+    """
+    #range check
+    if colour_temperature < 1000: 
+        colour_temperature = 1000
+    elif colour_temperature > 40000:
+        colour_temperature = 40000
+    
+    tmp_internal = colour_temperature / 100.0
+    
+    # red 
+    if tmp_internal <= 66:
+        red = 255
+    else:
+        tmp_red = 329.698727446 * math.pow(tmp_internal - 60, -0.1332047592)
+        if tmp_red < 0:
+            red = 0
+        elif tmp_red > 255:
+            red = 255
+        else:
+            red = int(tmp_red+0.5)
+    
+    # green
+    if tmp_internal <=66:
+        tmp_green = 99.4708025861 * math.log(tmp_internal) - 161.1195681661
+        if tmp_green < 0:
+            green = 0
+        elif tmp_green > 255:
+            green = 255
+        else:
+            green = int(tmp_green+0.5)
+    else:
+        tmp_green = 288.1221695283 * math.pow(tmp_internal - 60, -0.0755148492)
+        if tmp_green < 0:
+            green = 0
+        elif tmp_green > 255:
+            green = 255
+        else:
+            green = int(tmp_green+0.5)
+    
+    # blue
+    if tmp_internal >=66:
+        blue = 255
+    elif tmp_internal <= 19:
+        blue = 0
+    else:
+        tmp_blue = 138.5177312231 * math.log(tmp_internal - 10) - 305.0447927307
+        if tmp_blue < 0:
+            blue = 0
+        elif tmp_blue > 255:
+            blue = 255
+        else:
+            blue = int(tmp_blue+0.5)
+    return (red, green, blue)
 
 def lifx_process(self,msg):
     if not self.present:
         return None
     try:
         if msg["content_type"] == "command":
+            if "realtime mode" in msg["content"] and msg["content"]["realtime mode"]:
+                rapidfire = True
+            else:
+                rapidfire = False
             if msg["content"]["command"] == "power":                
                 mypartial=partial(self.controller.sending,
                                 {"subject":self.controller.subject,
                                 "content_type":"event",
-                                "content": {"event":"state change",
+                                "content": {"event":"power",
                                             "target": self.controller.subject + "." + self.name,
-                                            "subject":"power",
+                                            "icon status" : {"bu-fill":{"fill":(msg["content"]["value"]["power"]=="on" and self.cssColour(force=True)) or "transparent"}},
                                             "value":msg["content"]["value"]}})
-                if "delay" in msg["content"]:
-                    self.conn.set_power((msg["content"]["value"]=="on" and 1) or 0,duration=int(msg["content"]["delay"]),
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                    self.conn.set_power((msg["content"]["value"]["power"]=="on" and 1) or 0,duration=1000*int(msg["content"]["value"]["duration"] or 0),
                                         callb=lambda x,y: mypartial())
                 else:
-                    self.conn.set_power((msg["content"]["value"]=="on" and 1) or 0,callb=lambda x,y: mypartial())
+                    self.conn.set_power((msg["content"]["value"]["power"]=="on" and 1) or 0,callb=lambda x,y: mypartial())
                     
             elif msg["content"]["command"] == "colour":
                 mypartial=partial(self.controller.sending,{"subject":self.controller.subject,
                                 "content_type":"event",
-                                "content": {"event":"state change",
+                                "content": {"event":"colour",
                                             "target": self.controller.subject + "." + self.name,
-                                            "subject":"colour",
+                                            "icon status" : {"bu-fill":{"fill":self.cssColour(
+                                                    [intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
+                                                     intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
+                                                     intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500])}},
                                             "value":msg["content"]["value"]}})
-                if "delay" in msg["content"]:
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
                     self.conn.set_color([intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
                                         intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
                                         intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], 
-                                        duration=int(msg["content"]["delay"] or 0)*1000, callb=lambda x,y: mypartial())
+                                        duration=int(msg["content"]["value"]["duration"] or 0)*1000, callb=lambda x,y: mypartial(),rapid=rapidfire)
                 else:    
                     self.conn.set_color([intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
                                         intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
-                                        intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], callb=lambda x,y: mypartial())
+                                        intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], callb=lambda x,y: mypartial(),rapid=rapidfire)
 
             elif msg["content"]["command"] == "white":
                 mypartial=partial(self.controller.sending,{"subject":"",
                                 "content_type":"event",
-                                "content": {"event":"state change",
+                                "content": {"event":"white",
                                             "target": self.controller.subject + "." + self.name,
-                                            "subject":"white",
+                                            "icon status" : {"bu-fill":{"fill":self.cssColour([58275,0,
+                                                    intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
+                                                    intround(float(msg["content"]["value"]["temperature"]))])}},
                                             "value":msg["content"]["value"]}})
-                if "delay" in msg["content"]:
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
                     self.conn.set_color([58275,0,
                                         intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
-                                        intround(float(msg["content"]["value"]["temperature"]))], duration=int(msg["content"]["delay"] or 0)*1000,
-                                        callb=lambda x,y: mypartial())
+                                        intround(float(msg["content"]["value"]["temperature"]))], duration=int(msg["content"]["value"]["duration"] or 0)*1000,
+                                        callb=lambda x,y: mypartial(),rapid=rapidfire)
                 else:
                     self.conn.set_color([58275,0,
                                         intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
-                                        intround(float(msg["content"]["value"]["temperature"]))], callb=lambda x,y: mypartial())
+                                        intround(float(msg["content"]["value"]["temperature"]))], callb=lambda x,y: mypartial(),rapid=rapidfire)
+                    
+            elif msg["content"]["command"] == "pulse":
+                startcss=self.cssColour(force=True)
+                endcss = self.cssColour(col=[intround((float(msg["content"]["value"]["colour"]["hue"])*65535.0)/360.0),
+                                             intround((float(msg["content"]["value"]["colour"]["saturation"])*65535.0)/100.0),
+                                             intround((float(msg["content"]["value"]["colour"]["value"])*65535.0)/100.0),3500])
+                trans = ("transient" in msg["content"]["value"] and msg["content"]["value"]["transient"]=="on") or 1
+                dur = int(float(msg["content"]["value"]["duration"])*1000)
+                repeat=int(msg["content"]["value"]["repeat"])
+                if trans:
+                    anim="@keyframes flash"+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
+                    alen=dur
+                    arep=repeat
+                else:
+                    anim="@keyframes flash"+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
+                    alen=intround(dur*1.5)
+                    arep=intround(repeat/1.5) or 1
+                astyle={"animation-name": "flash"+self.name, "animation-duration:":"%dms"%alen, "animation-iteration-count": "%d"%(arep)}
                 
+                mypartial=partial(self.controller.sending,{"subject":self.controller.subject,
+                                "content_type":"event",
+                                "content": {"event":"colour",
+                                            "target": self.controller.subject + "." + self.name,
+                                            "icon status" : {"bu-fill":astyle,"animation":anim},
+                                            "value":msg["content"]["value"]}})
+                 
+                self.conn.set_waveform({ "color":[intround((float(msg["content"]["value"]["colour"]["hue"])*65535.0)/360.0),
+                                                  intround((float(msg["content"]["value"]["colour"]["saturation"])*65535.0)/100.0),
+                                                  intround((float(msg["content"]["value"]["colour"]["value"])*65535.0)/100.0),3500],
+                                         "transient": trans, "period": dur,
+                                         "cycles":repeat, "duty_cycle":intround((32767*int(msg["content"]["value"]["balance"]))/50.0),
+                                         "waveform":msg["content"]["value"]["type"]["bu-cvalue"]}, callb=lambda x,y: mypartial())
+
             elif msg["content"]["command"] == "status":
                 current=self.conn and ((self.conn.power_level and "on" ) or "off")
                 if current:
                     #Not gone the way of the dodo
                     colour=self.conn.color
                 
-                    try:
-                        self.controller.sending({"subject":self.controller.subject,
+                    #try:
+                    self.controller.sending({"subject":self.controller.subject,
                                         "content_type":"event",
                                         "content": {"event":"status",
                                                     "target": self.controller.subject + "." + self.name,
-                                                    "value":{"power":current,
+                                                    "icon status" : {"bu-fill":{"fill":self.cssColour()},"bu-not-present":{"opacity":0}},
+                                                    "value":{"power":{"power":current},
                                                             "colour":{"hue": (360.0*colour[0])/65365.0,
                                                                     "saturation":(100.0*colour[1])/65365.0,
                                                                     "value": (100.0*colour[2])/65365.0},
                                                             "white":{ "value": (100.0*colour[2])/65365.0,
                                                                     "temperature":colour[3]}}}})
-                    except:
-                        self.sending({"subject":self.controller.subject,
-                                    "content_type": "event",
-                                    "content":{"event":"presence", 
-                                                "target": self.controller.subject + "." + self.name,
-                                                "value":"offline"}})
+                    #except:
+                        #self.sending({"subject":self.controller.subject,
+                                    #"content_type": "event",
+                                    #"content":{"event":"presence", 
+                                                #"target": self.controller.subject + "." + self.name,
+                                                #"value":"offline"}})
                 else:
-                    self.sending({"subject":self.controller.subject,
+                    self.controller.sending({"subject":self.controller.subject,
                                 "content_type": "event",
                                 "content":{"event":"presence", 
                                         "target": self.controller.subject + "." + self.name,
-                                        "value":"offline"}})
+                                        "value":"offline",
+                                        "icon status" : {"bu-fill":{"fill":"transparent"}}}})
                                 
             elif msg["content"]["command"] == "nickname":
                 #print msg
@@ -168,7 +363,7 @@ def lifx_process(self,msg):
                         "content_type": "request",
                         "content":{"request":"nickname", 
                                     "target": self.controller.subject+"."+ self.name,
-                                    "token": self.controller.target,
+                                    #"token": self.controller.target,
                                     "value":{"name":self.name,"nickname": msg["content"]["value"]}}})
                 self.conn.set_label(msg["content"]["value"],callb=lambda x,y:mypartial())
                 
@@ -181,10 +376,10 @@ def lifx_process(self,msg):
     return None
 
 
-def lighthb(self,delay=30):
+def lighthb(self,duration=30):
     try: #Could happen that conn is None... Maybe a race condition with unregister
         self.conn.get_color(callb=self.sendStatus)
-        self.controller.lifxhb[self.name]=self.controller.loop.call_later(delay, partial(self.lighthb,delay))
+        self.controller.lifxhb[self.name]=self.controller.loop.call_later(duration, partial(self.lighthb,self.controller.lifx_config["heartbeat"]))
     except:
         pass
 
@@ -192,12 +387,13 @@ def lighthb(self,delay=30):
 def sendStatus(self,lifx=None,resp=None):
     #Can be used in callback
     try:
-        colour=self.conn.color
+        colour=self.conn.color                        
         self.controller.sending({"subject":self.controller.subject,
                         "content_type":"event",
                         "content": {"event":"status",
                                     "target": self.controller.subject + "." + self.name,
-                                    "value":{"power":self.conn.power_level and "on" or "off",
+                                    "icon status" : {"bu-fill":{"fill":self.cssColour()},"bu-not-present":{"opacity":0}},
+                                    "value":{"power":{"power":self.conn.power_level and "on" or "off"},
                                             "colour":{"hue": (360.0*colour[0])/65365.0,
                                                     "saturation":(100.0*colour[1])/65365.0,
                                                     "value": (100.0*colour[2])/65365.0},
@@ -205,10 +401,31 @@ def sendStatus(self,lifx=None,resp=None):
                                                     "temperature":colour[3]}}}})
     except:
         self.log.warning("Ooops could not send status")
+        
+        
+def cssColour(self, col=None, force=False):
+    #try:
+    if col:
+        colour=col
+    else:
+        colour=self.conn.color
+    if force or col or self.conn.power_level:
+        if (100.0*colour[1])/65365.0 > 1 :
+            iconsts='#%02x%02x%02x' % tuple(map(lambda x: int((x*255)+0.5),colorsys.hsv_to_rgb((1.0*colour[0])/65365.0,(1.0*colour[1])/65365.0,(1.0*colour[2])/65365.0)))
+        else:
+            iconsts='#%02x%02x%02x' % convert_K_to_RGB(colour[3])
+    else:
+        iconsts="transparent"
+    return iconsts
+    #except:
+        #return "white"
+        
+
 #Hop we go....
 bl.light._process=lifx_process
 bl.light.sendStatus=sendStatus
 bl.light.lighthb=lighthb
+bl.light.cssColour=cssColour
         
 
 class LifxBridge(bl.BuddyBridge):
@@ -220,18 +437,39 @@ class LifxBridge(bl.BuddyBridge):
         super(LifxBridge, self).__init__(name,loop,future,config,log)
         self.lifx = None
         self.probelights = None
+        self.probe = None
         self.lifxhb={}
+        self.lifx_config = lifx_config_default
+
+
+    def process_command(self,msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k,v in msg["content"]["value"].items():
+                    lifx_config_default[k]=v
+                    if k == "refresh":
+                        print("Setting  interval on {}".format(dir(fac)))
+                        aiolifx.DISCOVERY_INTERVAL=v
+                
+                self.sending({"subject":"control" + "." + self.name,
+                                    "content_type": "request",
+                                    "content": {"request":"save configuration",
+                                                "target":self.subject,
+                                                #"token": self.target,
+                                            "value":bl.encrypt(lifx_config_default,self.config["buddykey"])}})
+        else:
+            for aconn in self.devices:
+                aconn.process(msg)
 
     def process_response(self,msg):
-        if msg["content"]["token"] != self.target:
-            if self.log:
-                self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            else:
-                print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+        #if msg["content"]["token"] != self.target:
+            #if self.log:
+                #self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            #else:
+                #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             #Getting the config
             newconfig={}
-            savenew=False
             fromconfig=[]
             if msg["content"]["configuration"]:
                 try:
@@ -246,36 +484,27 @@ class LifxBridge(bl.BuddyBridge):
                         self.log.warning("Config is mangled")
                     else:
                         print("Config is mangled")
-                if not isinstance(storedconfig,dict):
-                    savenew=True
-                else:
-                    for x in storedconfig:
-                        newconfig[x]=storedconfig[x]
-                        if x in self.config and (self.config[x] == self.default or self.config[x] == storedconfig[x]):
-                            self.config[x]=storedconfig[x]
-                            fromconfig.append(x)
-            for x in self.default:
-                if self.config[x] == self.default:
-                    self.config[x] = self.default[x]
-                elif x not in fromconfig:
-                    newconfig[x] = self.config[x]
-                    savenew=True
 
+                for x in storedconfig:
+                    self.lifx_config[x]=storedconfig[x]
+                    if x=="refresh":
+                        aiolifx.DISCOVERY_INTERVAL=self.lifx_config[x]
+            
             self.config["database"]= msg["content"]["database"]
             if "configonly" in self.config and self.config["configonly"]:
                 self.state = "wait config save"
             else:
                 self.state = "active"
                 self.build()
-            if savenew or ("configonly" in self.config and self.config["configonly"]):
-                self.sending({"subject":"control" + "." + self.name,
-                                "content_type": "request",
-                                "content": {"request":"save configuration",
-                                            "target":self.target,
-                                            "token": self.target,
-                                            "value":bl.encrypt(newconfig,self.config["buddykey"])}})
+            #if savenew or ("configonly" in self.config and self.config["configonly"]):
+                #self.sending({"subject":"control" + "." + self.name,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"token": self.target,
+                                            #"value":bl.encrypt(newconfig,self.config["buddykey"])}})
                                 
-        elif msg["content"]["response"] == "save configuration" and msg.subject == self.target:
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and  msg["content"]["status"] != "done":
                 #log
                 if self.log:
@@ -287,6 +516,20 @@ class LifxBridge(bl.BuddyBridge):
                     raise bl.Exit(0,"Configuration was saved")
                 else:
                     raise bl.Exit(2,"Error: Configuration was not saved")
+            else:
+                self.sending({"subject":"control" + "." + self.target ,
+                        "content_type": "request",
+                        "content":{"request":"functions", 
+                                    "target":self.subject,
+                                    "subtype": SUBTYPE,
+                                    #"token": self.target,
+                                    "value":{"configs":[lifx_config,lifx_config_default]}}})
+                self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"config updated", 
+                                    "target":self.target,
+                                    "value":lifx_config_default}})
+
 
         elif self.state == "active":
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
@@ -295,9 +538,9 @@ class LifxBridge(bl.BuddyBridge):
                 self.sending({"subject":self.subject,
                             "content_type": "event",
                             "content":{"event":"new device", 
-                            "value":{"type":self.subject,"subtype":SUBTYPE,
-                                     "target":self.subject + "." + light.name,
-                                     "name":light.name,"nickname":light.nickname}}})
+                                "target":self.subject + "." + light.name,
+                                "value":{"type":self.subject,"subtype":SUBTYPE,
+                                        "name":light.name,"nickname":light.nickname}}})
                 bidx=0
                 notseen=True
                 for b in  self.pending:
@@ -310,7 +553,10 @@ class LifxBridge(bl.BuddyBridge):
                                     "content_type": "event",
                                     "content":{"event":"presence", 
                                                "target":self.subject + "." + light.name,
-                                               "value":"online"}})
+                                               "value":"online",
+                                               "icon status" : {"bu-fill":{"fill":light.cssColour()},
+                                                                "bu-not-present":{"opacity":0}}}})
+                        light.conn.get_color(callb=partial(self.newbulb))
                         notseen=False
                         break
                     bidx+=1
@@ -319,7 +565,9 @@ class LifxBridge(bl.BuddyBridge):
                                 "content_type": "event",
                                 "content":{"event":"presence", 
                                            "target":self.subject + "." + light.name,
-                                           "value":"offline"}})
+                                           "value":"offline",
+                                            "icon status" : {"bu-fill":{"fill":"transparent"},
+                                                             "bu-not-present":{"opacity":1}}}})
                 sess.close()
             elif msg["content"]["response"] == "nickname" :
                 if msg["content"]["status"] == "done":
@@ -347,10 +595,10 @@ class LifxBridge(bl.BuddyBridge):
         self.sending({"subject":"control" + "." + self.target ,
                 "content_type": "request",
                 "content":{"request":"functions", 
-                            "target":self.target,
+                            "target":self.subject,
                             "subtype": SUBTYPE,
-                            "token": self.target,
-                            "value":{"functions":lifx_functions}}})
+                            #"token": self.target,
+                            "value":{"functions":lifx_functions,"configs":[lifx_config,lifx_config_default]}}})
 
         self.devices=sess.query(bl.light).filter_by(subtype=self.name).all()
         for light in self.devices:
@@ -359,10 +607,11 @@ class LifxBridge(bl.BuddyBridge):
                 "content_type": "event",
                 "content":{"event":"presence", 
                            "target":self.subject + "." + light.name,
-                            "value":"offline"}})
+                            "value":"offline",
+                            "icon status" : {"bu-fill":{"fill":"transparent"},"bu-not-present":{"opacity":1}}}})
                 
         coro = self.loop.create_datagram_endpoint(
-                  partial(LifxDiscovery,self.loop, parent=self,ipv6prefix=self.config["ipv6prefix"]), local_addr=('0.0.0.0', UDP_BROADCAST_PORT))
+                  partial(aiolifx.LifxDiscovery,self.loop, parent=self, ipv6prefix=self.config["ipv6prefix"],discovery_interval=self.lifx_config["refresh"]), local_addr=('0.0.0.0', UDP_BROADCAST_PORT))
         self.probelights = self.loop.create_task(coro)
 
     #This is a call back, so we need the right signature
@@ -383,7 +632,9 @@ class LifxBridge(bl.BuddyBridge):
                         "content_type": "event",
                         "content":{"event":"presence", 
                                    "target":self.subject + "." + light.name,
-                                    "value":ispresent and "online" or "offline"}})
+                                    "value":ispresent and "online" or "offline",
+                                    "icon status" : {"bu-fill":{"fill":(ispresent and light.cssColour()) or "transparent"},
+                                                     "bu-not-present":{"opacity":(not ispresent and 1) or 0}}}})
                 notseen=False
                 break
         if notseen:
@@ -392,10 +643,10 @@ class LifxBridge(bl.BuddyBridge):
                       "content_type": "request",
                       "content":{"request":"creation", 
                                  "target":self.subject, #Here we need the type
-                                 "token": self.target,
+                                 #"token": self.target,
                                  "value":{"name":alight.name, "nickname":alight.nickname or alight.name,"subtype":self.name}}})
         else:
-            self.lifxhb[self.name]=self.loop.call_later(LIFX_HEARTBEAT+random.randrange(60), partial(light.lighthb,LIFX_HEARTBEAT))
+            self.lifxhb[self.name]=self.loop.call_later(self.lifx_config["heartbeat"]+random.randrange(int(self.lifx_config["heartbeat"])), partial(light.lighthb,self.lifx_config["heartbeat"]))
             
     def register(self,alight):
         alight.log=self.log
@@ -407,7 +658,7 @@ class LifxBridge(bl.BuddyBridge):
         else:
             try:
                 self.lifxhb[alight.name].cancel()
-                print ("HB Canceled fror {}".format(alight.label))
+                #print ("HB Canceled for {}".format(alight.label))
             except:
                 pass
             for light in self.devices:
@@ -419,15 +670,17 @@ class LifxBridge(bl.BuddyBridge):
                                     "content_type": "event",
                                     "content":{"event":"presence", 
                                             "target": self.subject + "." + light.name,
-                                            "value":"offline"}})
+                                            "value":"offline",
+                                            "icon status" : {"bu-fill":{"fill":"transparent"},
+                                                             "bu-not-present":{"opacity":1}}}})
                 except:
                     pass
 
-aboutstr="""<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. Parts 
-of <a href="https://github.com/mclarkk/lifxlan">lifxlan</a> is used when communicating with the actual device.</p>
+aboutstr="""<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. A library called <a href="https://github.com/frawau/aiolifx">aiolifx</a>
+ is used when communicating with the actual device.</p>
 <p>The icon used to represent Lifx devices has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>
 <i class=\"fa fa-flag-o \">These guys rock!</i></p>
-<p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
 
 iconstr="""
@@ -578,7 +831,7 @@ def configure():
                 del(lifxcfg["debug"])
             except:
                 pass
-            with file(opts.configonly,"w") as cfile:
+            with open(opts.configonly,"w") as cfile:
                 json.dump(lifxcfg,cfile)
             os.chmod(opts.configonly,384) # 0600
             sys.exit()
@@ -592,7 +845,7 @@ def configure():
          
 if __name__ == "__main__":
     log,config=configure()
-    print("Configured")
+    log.info("Configured")
     loop = aio.get_event_loop()
     if config["debug"]:
         loop.set_debug(True)
