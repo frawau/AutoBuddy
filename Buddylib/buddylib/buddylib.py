@@ -124,11 +124,11 @@ class BEntity(object):
     connected devices
     """
 
-    def __init__(self,subject=None):
+    def __init__(self,type=None):
         """
-        Creating a Buddy entity is simply definig its subject
+        Creating a Buddy entity is simply definig its type
         """
-        self.subject=subject
+        self.type=type
         super().__init__()
     
     def of_interest(self,subject):
@@ -332,9 +332,9 @@ class BuddyBridge(aio.Protocol):
     This is a bridge application. It will check for the current list  of devices.
     It will report any new device
     """
-    def __init__(self,name,loop,future,config,log):
+    def __init__(self,loop,future,config,log):
+        #Create a bridge. config MUST contain a type,subtype and credential keys
         super().__init__()
-        self.name = name     # Should be subtype, config["subject"] contains the type
         self.config = config
         self.devices = []    # list of device known to the controller
         self.state = "init"
@@ -358,7 +358,7 @@ class BuddyBridge(aio.Protocol):
 
     def connection_made(self,transport):
         self.transport=transport
-        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.subject},"content_type":"authenticate"})
+        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.type},"content_type":"authenticate"})
         
     def data_received(self,data):
         if data:
@@ -399,7 +399,7 @@ class BuddyBridge(aio.Protocol):
     
     def configrequest(self,value=None):
         if value:
-            self.sending({"subject":"control"+"."+self.subject,
+            self.sending({"subject":"control"+"."+self.type,
                         "content_type": "request",
                         "content":{"request":"configuration",
                                     #"token": self.target,
@@ -407,7 +407,7 @@ class BuddyBridge(aio.Protocol):
                                     "value":value,
                                     "credential":self.config["credential"]}})
         else:
-            self.sending({"subject":"control"+"."+self.subject,
+            self.sending({"subject":"control"+"."+self.type,
                         "content_type": "request",
                         "content":{"request":"configuration",
                                     #"token": self.target,
@@ -488,13 +488,18 @@ class BuddyBridge(aio.Protocol):
     def build(self):
         raise NotImplementedError()
                 
+    @property
+    def type(self):
+        return self.config["type"]
+    
+    @property
+    def subtype(self):
+        return self.config["subtype"]
 
-    def _subject(self):
-        return self.config["subject"]
-
-    def _target(self):
+    @property
+    def target(self):
         #When destined to me
-        return self.subject + "." + self.name
+        return self.type + "." + self.subtype
     
     # Manage devices 
     
@@ -506,9 +511,7 @@ class BuddyBridge(aio.Protocol):
             self.devices.remove(dev)
         except:
             pass
-        
-    subject=property(_subject)
-    target=property(_target)
+
 
 
 

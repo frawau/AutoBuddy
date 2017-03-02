@@ -29,17 +29,19 @@ from aiohttp import web,WSCloseCode, log as aiohlog
 import asyncio as aio
 
 CERTFILE="autobuddy.crt"
-WCERTFILE="socketbuddy.crt"
-WKEYFILE="socketbuddy.key"
+WCERTFILE="autobuddy.crt"
+WKEYFILE="autobuddy.key"
+#WCERTFILE="socketbuddy.crt"
+#WKEYFILE="socketbuddy.key"
 __version__="0.10"
 
-class NamedEntity(object):
-    """
-    Just defining objects with a name
-    """
-    def __init__(self,name=None):
-        self.name=name
-        self.authtoken=None
+#class NamedEntity(object):
+    #"""
+    #Just defining objects with a name
+    #"""
+    #def __init__(self,name=None):
+        #self.name=name
+        #self.authtoken=None
         
         
 #Generating evaluable expressions from hveiga @ stackoverflow
@@ -83,11 +85,9 @@ class GuiWSBridge(bl.BuddyBridge):
     """
     This is the bridge application. It will connect to the controller and will 
     have WebSocket connections registered with it.
-    """
-    subject= "gui-wsbridge"
-    
-    def __init__(self, name,loop,future,config,log):
-        super(GuiWSBridge, self).__init__(name,loop,future,config,log)
+    """    
+    def __init__(self, loop,future,config,log):
+        super(GuiWSBridge, self).__init__(loop,future,config,log)
         self.users={}
         self.requestids= []
         self.tasks = []
@@ -97,7 +97,7 @@ class GuiWSBridge(bl.BuddyBridge):
     #A bit different ....overiding
     def connection_made(self,transport):
         self.transport=transport
-        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.subject},"content_type":"authenticate"})
+        self.sending({"subject":"control","content": {"credential":self.config["credential"],"subject":self.type},"content_type":"authenticate"})
         if "save user" in self.config and self.config["save user"]:
             if isinstance(self.config["save user"],dict):
                 self.users={**self.config["save user"],**self.users}
@@ -116,7 +116,7 @@ class GuiWSBridge(bl.BuddyBridge):
 
         #Let's filter the message we receive from the controller
         # Some may be for us.
-        if msg["subject"].startswith(self.subject):
+        if msg["subject"].startswith(self.type):
             self.processMessage(msg)
         else:
             #Forward to the connected gui clients
@@ -187,8 +187,7 @@ class GuiWSBridge(bl.BuddyBridge):
                 self.sending(msg)
 
         except:
-            self.log.warning ("Something's wrong! Probably a badly formated message")
-            traceback.print_exc(file=sys.stdout)
+            self.log.warning ("Something's wrong! Probably a badly formated message",exc_info=(type(e), e, e.__traceback__))
         
   
     def processMessage(self,msg):
@@ -228,9 +227,9 @@ class GuiWSBridge(bl.BuddyBridge):
  
 
     def saveUsers(self,token=None):
-        msg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        msg={"content_type":"request","subject":"control.gui","content":{}}
         msg["content"]["request"]="save property"
-        msg["content"]["target"]= "gui"
+        msg["content"]["target"]= self.type
         msg["content"]["token"] = token or bl.genid()
         self.requestids.append(msg["content"]["token"])
         msg["content"]["name"] = "users"
@@ -240,9 +239,9 @@ class GuiWSBridge(bl.BuddyBridge):
         self.sendMessage(msg)
 
     def getUsers(self):
-        newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        newmsg={"content_type":"request","subject":"control."+self.type,"content":{}}
         newmsg["content"]["request"]="get property"
-        newmsg["content"]["target"]= self.subject
+        newmsg["content"]["target"]= self.type
         newmsg["content"]["token"] = bl.genid()
         self.requestids.append(newmsg["content"]["token"])
         newmsg["content"]["name"]="users"
@@ -252,7 +251,7 @@ class GuiWSBridge(bl.BuddyBridge):
 
    
    
-cfgdefault={"broker":"localhost","tls":False,"subject":"gui","credential":"",
+cfgdefault={"broker":"localhost","tls":False,"type":"gui","credential":"",
             "application":"./html/buddyctrl.html","brokerport":8745,"host":"localhost","port":8080,"ssl":""}
 def configure():
     absolute=["tls","application"]
@@ -274,11 +273,11 @@ def configure():
                     help="Host or IP address on which to listen for HTML requests. (default \"%s\""%cfgdefault["host"])
     parser.add_argument("-p", "--port", default=cfgdefault["port"], type=int,
                     help="On which port to listen to HTML requests (default \"%s\")"%cfgdefault["port"])
-    parser.add_argument("-s", "--subject",  default=cfgdefault["subject"],
-                    help="List of subject content to echo to websocket. (default \"%s\""%cfgdefault["subject"])
+    parser.add_argument("-t", "--type",  default=cfgdefault["type"],
+                    help="List of subject content to echo to websocket. (default \"%s\""%cfgdefault["type"])
     parser.add_argument("-S", "--ssl", default="",
                     help="The directory where the file %s can be found."%(CERTFILE))
-    parser.add_argument("-t", "--tls", default=cfgdefault["tls"], 
+    parser.add_argument("-T", "--tls", default=cfgdefault["tls"], 
                     help="Use TLS with key (server.key) and certificat (server.crt) files in directory (default \"%s\")"%cfgdefault["tls"])
     parser.add_argument("-u", "--user",
                     help="Create an admin user")
@@ -339,8 +338,9 @@ def configure():
             if cfg in absolute:
                 guiwscfg[cfg] = os.path.abspath(guiwscfg[cfg])
             if opts.debug:
-                guiwslog.debug("%s is %s"%(cfg,guiwscfg[cfg]))      
+                guiwslog.debug("%s is %s"%(cfg,guiwscfg[cfg]))    
         
+        guiwscfg["subtype"]="gui"
         
         if guiwscfg["ssl"] and not ( os.path.isfile(guiwscfg["ssl"]+"/"+CERTFILE)):
             self.log.critical("Encryption: Could not find {} .".format(
@@ -445,7 +445,7 @@ if __name__ == '__main__':
         loop.set_debug(True)
         
     connFuture=aio.Future()
-    fac=loop.create_connection(functools.partial(GuiWSBridge,"gui",loop,connFuture,guiwscfg,guiwslog),guiwscfg["broker"], guiwscfg["brokerport"],ssl=b_ssl_context)
+    fac=loop.create_connection(functools.partial(GuiWSBridge,loop,connFuture,guiwscfg,guiwslog),guiwscfg["broker"], guiwscfg["brokerport"],ssl=b_ssl_context)
     #Creating an app
     buddyapp=web.Application()
     buddyapp.router.add_static('/js', os.path.dirname(guiwscfg["application"])+"/js")

@@ -100,7 +100,7 @@ lifx_functions="""
             </control>
         </controlgroup>
         <controlgroup  type="grouplist" name="pulse" label="Pulse" rteffect="1">
-            <control type="switch" name="trnasient" label="End Colour" rteffect="1">
+            <control type="switch" name="transient" label="End Colour" rteffect="1">
                 <value label="Old">on</value>
                 <value label="New">off</value>
             </control>
@@ -242,10 +242,10 @@ def lifx_process(self,msg):
                 rapidfire = False
             if msg["content"]["command"] == "power":                
                 mypartial=partial(self.controller.sending,
-                                {"subject":self.controller.subject,
+                                {"subject":self.controller.type,
                                 "content_type":"event",
                                 "content": {"event":"power",
-                                            "target": self.controller.subject + "." + self.name,
+                                            "target": self.controller.type + "." + self.name,
                                             "icon status" : {"bu-fill":{"fill":(msg["content"]["value"]["power"]=="on" and self.cssColour(force=True)) or "transparent"}},
                                             "value":msg["content"]["value"]}})
                 if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
@@ -255,10 +255,10 @@ def lifx_process(self,msg):
                     self.conn.set_power((msg["content"]["value"]["power"]=="on" and 1) or 0,callb=lambda x,y: mypartial())
                     
             elif msg["content"]["command"] == "colour":
-                mypartial=partial(self.controller.sending,{"subject":self.controller.subject,
+                mypartial=partial(self.controller.sending,{"subject":self.controller.type,
                                 "content_type":"event",
                                 "content": {"event":"colour",
-                                            "target": self.controller.subject + "." + self.name,
+                                            "target": self.controller.type + "." + self.name,
                                             "icon status" : {"bu-fill":{"fill":self.cssColour(
                                                     [intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
                                                      intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
@@ -278,7 +278,7 @@ def lifx_process(self,msg):
                 mypartial=partial(self.controller.sending,{"subject":"",
                                 "content_type":"event",
                                 "content": {"event":"white",
-                                            "target": self.controller.subject + "." + self.name,
+                                            "target": self.controller.type + "." + self.name,
                                             "icon status" : {"bu-fill":{"fill":self.cssColour([58275,0,
                                                     intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
                                                     intround(float(msg["content"]["value"]["temperature"]))])}},
@@ -311,10 +311,10 @@ def lifx_process(self,msg):
                     arep=intround(repeat/1.5) or 1
                 astyle={"animation-name": "flash"+self.name, "animation-duration:":"%dms"%alen, "animation-iteration-count": "%d"%(arep)}
                 
-                mypartial=partial(self.controller.sending,{"subject":self.controller.subject,
+                mypartial=partial(self.controller.sending,{"subject":self.controller.type,
                                 "content_type":"event",
-                                "content": {"event":"colour",
-                                            "target": self.controller.subject + "." + self.name,
+                                "content": {"event":"pulse",
+                                            "target": self.controller.type + "." + self.name,
                                             "icon status" : {"bu-fill":astyle,"animation":anim},
                                             "value":msg["content"]["value"]}})
                  
@@ -332,10 +332,10 @@ def lifx_process(self,msg):
                     colour=self.conn.color
                 
                     #try:
-                    self.controller.sending({"subject":self.controller.subject,
+                    self.controller.sending({"subject":self.controller.type,
                                         "content_type":"event",
                                         "content": {"event":"status",
-                                                    "target": self.controller.subject + "." + self.name,
+                                                    "target": self.controller.type + "." + self.name,
                                                     "icon status" : {"bu-fill":{"fill":self.cssColour()},"bu-not-present":{"opacity":0}},
                                                     "value":{"power":{"power":current},
                                                             "colour":{"hue": (360.0*colour[0])/65365.0,
@@ -344,16 +344,16 @@ def lifx_process(self,msg):
                                                             "white":{ "value": (100.0*colour[2])/65365.0,
                                                                     "temperature":colour[3]}}}})
                     #except:
-                        #self.sending({"subject":self.controller.subject,
+                        #self.sending({"subject":self.controller.type,
                                     #"content_type": "event",
                                     #"content":{"event":"presence", 
-                                                #"target": self.controller.subject + "." + self.name,
+                                                #"target": self.controller.type + "." + self.name,
                                                 #"value":"offline"}})
                 else:
-                    self.controller.sending({"subject":self.controller.subject,
+                    self.controller.sending({"subject":self.controller.type,
                                 "content_type": "event",
                                 "content":{"event":"presence", 
-                                        "target": self.controller.subject + "." + self.name,
+                                        "target": self.controller.type + "." + self.name,
                                         "value":"offline",
                                         "icon status" : {"bu-fill":{"fill":"transparent"}}}})
                                 
@@ -362,16 +362,22 @@ def lifx_process(self,msg):
                 mypartial=partial(self.controller.sending,{"subject":"control" + "." + self.name,
                         "content_type": "request",
                         "content":{"request":"nickname", 
-                                    "target": self.controller.subject+"."+ self.name,
+                                    "target": self.controller.type+"."+ self.name,
                                     #"token": self.controller.target,
                                     "value":{"name":self.name,"nickname": msg["content"]["value"]}}})
                 self.conn.set_label(msg["content"]["value"],callb=lambda x,y:mypartial())
                 
                 
-    except:
-        print("Bloody process problem")
-        traceback.print_exc(file=sys.stdout)
-        #TODO log a messaage
+            elif msg["content"]["command"] == "deletion":
+                self.controller.sending({"subject":"control" + "." + self.controller.type,
+                        "content_type": "request",
+                        "content":{"request":"deletion", 
+                                    "target": self.controller.type,
+                                    "value":self.name}})
+        
+    except Exception as e:
+        bridgectl.log.warning("Bloody process problem",exc_info=(type(e), e, e.__traceback__))
+
         
     return None
 
@@ -388,10 +394,10 @@ def sendStatus(self,lifx=None,resp=None):
     #Can be used in callback
     try:
         colour=self.conn.color                        
-        self.controller.sending({"subject":self.controller.subject,
+        self.controller.sending({"subject":self.controller.type,
                         "content_type":"event",
                         "content": {"event":"status",
-                                    "target": self.controller.subject + "." + self.name,
+                                    "target": self.controller.type + "." + self.name,
                                     "icon status" : {"bu-fill":{"fill":self.cssColour()},"bu-not-present":{"opacity":0}},
                                     "value":{"power":{"power":self.conn.power_level and "on" or "off"},
                                             "colour":{"hue": (360.0*colour[0])/65365.0,
@@ -400,7 +406,7 @@ def sendStatus(self,lifx=None,resp=None):
                                             "white":{ "value": (100.0*colour[2])/65365.0,
                                                     "temperature":colour[3]}}}})
     except:
-        self.log.warning("Ooops could not send status")
+        self.log.warning("Ooops could not send status",exc_info=(type(e), e, e.__traceback__))
         
         
 def cssColour(self, col=None, force=False):
@@ -433,8 +439,8 @@ class LifxBridge(bl.BuddyBridge):
     This is the bridge application. It will check for the current list  of lifx bulb.
     It will report any new bulb
     """
-    def __init__(self, name,loop,future,config,log):
-        super(LifxBridge, self).__init__(name,loop,future,config,log)
+    def __init__(self,loop,future,config,log):
+        super(LifxBridge, self).__init__(loop,future,config,log)
         self.lifx = None
         self.probelights = None
         self.probe = None
@@ -451,10 +457,10 @@ class LifxBridge(bl.BuddyBridge):
                         print("Setting  interval on {}".format(dir(fac)))
                         aiolifx.DISCOVERY_INTERVAL=v
                 
-                self.sending({"subject":"control" + "." + self.name,
+                self.sending({"subject":"control" + "." + self.subtype,
                                     "content_type": "request",
                                     "content": {"request":"save configuration",
-                                                "target":self.subject,
+                                                "target":self.type,
                                                 #"token": self.target,
                                             "value":bl.encrypt(lifx_config_default,self.config["buddykey"])}})
         else:
@@ -497,7 +503,7 @@ class LifxBridge(bl.BuddyBridge):
                 self.state = "active"
                 self.build()
             #if savenew or ("configonly" in self.config and self.config["configonly"]):
-                #self.sending({"subject":"control" + "." + self.name,
+                #self.sending({"subject":"control" + "." + self.subtype,
                                 #"content_type": "request",
                                 #"content": {"request":"save configuration",
                                             #"target":self.target,
@@ -520,8 +526,8 @@ class LifxBridge(bl.BuddyBridge):
                 self.sending({"subject":"control" + "." + self.target ,
                         "content_type": "request",
                         "content":{"request":"functions", 
-                                    "target":self.subject,
-                                    "subtype": SUBTYPE,
+                                    "target":self.type,
+                                    "subtype": self.subtype,
                                     #"token": self.target,
                                     "value":{"configs":[lifx_config,lifx_config_default]}}})
                 self.sending({"subject":self.target ,
@@ -535,11 +541,11 @@ class LifxBridge(bl.BuddyBridge):
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
                 sess=bl.getSession(self.config["database"])
                 light=sess.query(bl.light).filter_by(name=msg["subject"].split(".")[-1]).one()
-                self.sending({"subject":self.subject,
+                self.sending({"subject":self.type,
                             "content_type": "event",
                             "content":{"event":"new device", 
-                                "target":self.subject + "." + light.name,
-                                "value":{"type":self.subject,"subtype":SUBTYPE,
+                                "target":self.type + "." + light.name,
+                                "value":{"type":self.type,"subtype":self.subtype,
                                         "name":light.name,"nickname":light.nickname}}})
                 bidx=0
                 notseen=True
@@ -549,10 +555,10 @@ class LifxBridge(bl.BuddyBridge):
                         light.present=True
                         self.devices.append(light)
                         self.pending = self.pending[:bidx] + self.pending[bidx+1:]
-                        self.sending({"subject":self.subject,
+                        self.sending({"subject":self.type,
                                     "content_type": "event",
                                     "content":{"event":"presence", 
-                                               "target":self.subject + "." + light.name,
+                                               "target":self.type + "." + light.name,
                                                "value":"online",
                                                "icon status" : {"bu-fill":{"fill":light.cssColour()},
                                                                 "bu-not-present":{"opacity":0}}}})
@@ -561,10 +567,10 @@ class LifxBridge(bl.BuddyBridge):
                         break
                     bidx+=1
                 if notseen:
-                    self.sending({"subject":self.subject,
+                    self.sending({"subject":self.type,
                                 "content_type": "event",
                                 "content":{"event":"presence", 
-                                           "target":self.subject + "." + light.name,
+                                           "target":self.type + "." + light.name,
                                            "value":"offline",
                                             "icon status" : {"bu-fill":{"fill":"transparent"},
                                                              "bu-not-present":{"opacity":1}}}})
@@ -576,12 +582,33 @@ class LifxBridge(bl.BuddyBridge):
                     for light in self.devices:
                         if light.name==msg.subject.split(".")[-1]:
                             light.nickname=msg["content"]["value"] 
-                            self.sending({"subject":self.subject,
+                            self.sending({"subject":self.type,
                                     "content_type": "event",
                                     "content":{"event":"nickname",  
-                                               "target":self.subject + "." + light.name,
+                                               "target":self.type + "." + light.name,
                                                "value":light.nickname}})
                             break
+                        
+            elif msg["content"]["response"] == "deletion" :
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug (msg)
+                    sidx=0
+                    doremove=False
+                    for light in self.devices:
+                        if light.name==msg["subject"].split(".")[-1]:
+                            light.conn.transport.close()
+                            self.sending({"subject":self.type,
+                                    "content_type": "event",
+                                    "content":{"event":"deletion",  
+                                               "target":self.type + "." + light.name,
+                                               "value":light.name}})
+                            doremove=True
+                            break
+                        sidx+=1
+                        
+                    if doremove:
+                        del self.devices[sidx]
         else:
             if self.log:
                 self.log.warning("Unknown response {} {} {}".format(msg.subject ,msg["content_type"] ,msg["content"])) 
@@ -595,18 +622,18 @@ class LifxBridge(bl.BuddyBridge):
         self.sending({"subject":"control" + "." + self.target ,
                 "content_type": "request",
                 "content":{"request":"functions", 
-                            "target":self.subject,
-                            "subtype": SUBTYPE,
+                            "target":self.type,
+                            "subtype": self.subtype,
                             #"token": self.target,
                             "value":{"functions":lifx_functions,"configs":[lifx_config,lifx_config_default]}}})
 
-        self.devices=sess.query(bl.light).filter_by(subtype=self.name).all()
+        self.devices=sess.query(bl.light).filter_by(subtype=self.subtype).all()
         for light in self.devices:
             light.present=False
-            self.sending({"subject":self.subject,
+            self.sending({"subject":self.type,
                 "content_type": "event",
                 "content":{"event":"presence", 
-                           "target":self.subject + "." + light.name,
+                           "target":self.type + "." + light.name,
                             "value":"offline",
                             "icon status" : {"bu-fill":{"fill":"transparent"},"bu-not-present":{"opacity":1}}}})
                 
@@ -616,7 +643,7 @@ class LifxBridge(bl.BuddyBridge):
 
     #This is a call back, so we need the right signature
     def newbulb(self,alight,xx):
-        alight.name=self.name+"-"+alight.mac_addr.replace(":","")
+        alight.name=self.subtype+"-"+alight.mac_addr.replace(":","")
         alight.nickname=alight.label
         notseen =  True
         for light in self.devices:
@@ -628,10 +655,10 @@ class LifxBridge(bl.BuddyBridge):
                 ispresent=True
                 if ispresent != light.present:
                     light.present = ispresent
-                    self.sending({"subject":self.subject,
+                    self.sending({"subject":self.type,
                         "content_type": "event",
                         "content":{"event":"presence", 
-                                   "target":self.subject + "." + light.name,
+                                   "target":self.type + "." + light.name,
                                     "value":ispresent and "online" or "offline",
                                     "icon status" : {"bu-fill":{"fill":(ispresent and light.cssColour()) or "transparent"},
                                                      "bu-not-present":{"opacity":(not ispresent and 1) or 0}}}})
@@ -639,14 +666,14 @@ class LifxBridge(bl.BuddyBridge):
                 break
         if notseen:
             self.pending.append(alight)
-            self.sending({"subject":"control" + "." + self.subject,
+            self.sending({"subject":"control" + "." + self.type,
                       "content_type": "request",
                       "content":{"request":"creation", 
-                                 "target":self.subject, #Here we need the type
+                                 "target":self.type, #Here we need the type
                                  #"token": self.target,
-                                 "value":{"name":alight.name, "nickname":alight.nickname or alight.name,"subtype":self.name}}})
+                                 "value":{"name":alight.name, "nickname":alight.nickname or alight.name,"subtype":self.subtype}}})
         else:
-            self.lifxhb[self.name]=self.loop.call_later(self.lifx_config["heartbeat"]+random.randrange(int(self.lifx_config["heartbeat"])), partial(light.lighthb,self.lifx_config["heartbeat"]))
+            self.lifxhb[self.subtype]=self.loop.call_later(self.lifx_config["heartbeat"]+random.randrange(int(self.lifx_config["heartbeat"])), partial(light.lighthb,self.lifx_config["heartbeat"]))
             
     def register(self,alight):
         alight.log=self.log
@@ -666,10 +693,10 @@ class LifxBridge(bl.BuddyBridge):
                     if light.name == alight.name:
                         light.conn = None
                         light.present = False
-                        self.sending({"subject":self.subject ,
+                        self.sending({"subject":self.type ,
                                     "content_type": "event",
                                     "content":{"event":"presence", 
-                                            "target": self.subject + "." + light.name,
+                                            "target": self.type + "." + light.name,
                                             "value":"offline",
                                             "icon status" : {"bu-fill":{"fill":"transparent"},
                                                              "bu-not-present":{"opacity":1}}}})
@@ -702,12 +729,14 @@ iconstr="""
               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
    </svg>
 """
-cfgdefault={"subject":"light.lifx","host":"localhost","port":8745,"credential":"","ssl":""}
+cfgdefault={"type":"light","subtype":SUBTYPE,"host":"localhost","port":8745,"credential":"","ssl":""}
 def configure(): 
     parser = argparse.ArgumentParser(description="Track Lifx light bulbs.")
     #                            version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-s", "--subject", default=cfgdefault["subject"],
-                    help="The subject we are listening to (default \"%s\")." % cfgdefault["subject"])
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                    help="The type of devices we handle. (default  \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                    help="The specific subtype we manage. (default  \"%s\")." % cfgdefault["subtype"])
     parser.add_argument("-a", "--host", default=cfgdefault["host"],
                     help="The host address of the server (default \"%s\")." % cfgdefault["host"])
     parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
@@ -757,14 +786,23 @@ def configure():
         
         cfgdata = json.load(opts.config)
         opts.config.close()
-        if opts.subject != cfgdefault["subject"]:
-            lifxcfg["subject"] = opts.subject
-        elif "subject" in cfgdata:
-            lifxcfg["subject"] = cfgdata["subject"]     
+        if opts.type != cfgdefault["type"]:
+            lifxcfg["type"] = opts.type
+        elif "type" in cfgdata:
+            lifxcfg["type"] = cfgdata["type"]     
         else:
-            lifxcfg["subject"] = opts.subject
+            lifxcfg["type"] = opts.type
         if opts.debug:
-            lightlog.debug("The subject is %s." % lifxcfg["subject"]) 
+            lightlog.debug("The type is %s." % lifxcfg["type"])
+            
+        if opts.subtype != cfgdefault["subtype"]:
+            lifxcfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            lifxcfg["subtype"] = cfgdata["subtype"]     
+        else:
+            lifxcfg["subtype"] = opts.subtype
+        if opts.debug:
+            lightlog.debug("The subtype is %s." % lifxcfg["subtype"]) 
             
         if opts.credential != cfgdefault["credential"]:
             lifxcfg["credential"] = opts.credential
@@ -857,7 +895,7 @@ if __name__ == "__main__":
     else:
         sslcontext=None
     connFuture=aio.Future()
-    fac=loop.create_connection(functools.partial(LifxBridge,SUBTYPE,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    fac=loop.create_connection(functools.partial(LifxBridge,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
     conn,bridgectl = loop.run_until_complete(fac)
     loop.call_soon(bridgectl.configrequest,{"about":{"LifxBuddy":aboutstr},"display":{"Lifx":iconstr}})
 

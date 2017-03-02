@@ -104,17 +104,21 @@ function show_about () {
     var active = " active";
     var haslic = false;
     var keylist = [];
+    
     $.each(abouttext, function(key,val) {
         if (key=="License") {
             haslic=true;
         } else {
-            keylist.push(key);
+            if ( key != "AutoBuddy") {
+                keylist.push(key);
+            }
         }
     })
     keylist.sort();
     if ( haslic ) {
         keylist.push("License");
     }
+    keylist.unshift("AutoBuddy");
     $.each(keylist,function (idx,key) {
         var val = abouttext[key];
         msg+="<li role=\"presentation\" class=\"bu-commandtab"+active+"\"><a href=\"#bu-about-"+key+"\"  data-toggle=\"tab\">"+key+"</a></li>";
@@ -566,14 +570,10 @@ function module_config_bis(e) {
                 className: "btn-close",
                 callback: function () {
                     var cval = buddy.cmd_panel.getValue();
-                    console.log(cval);
                     var etype = buddy.cmd_panel.tgt.split(".")[0];
                     var ename = buddy.cmd_panel.tgt.split(".")[1];
                     var token=buddy.send_command("update config",ename,etype,cval,false,buddy.cmd_panel.tgt);
                     buddy.tokens.splice( $.inArray(token, buddy.tokens), 1 );
-//                     var etype = buddy.cmd_panel.tgt.split(".")[0];
-//                     var estype = buddy.cmd_panel.tgt.split(".")[1];
-//                     buddy.configs[etype][estype][1]=cval;
                     buddy.cmd_panel=null;
                 }
             }
@@ -734,7 +734,10 @@ var BuddyDevice = Class.extend({
         $.each(this.iconstatus, function (eclass,val) {
             if ( eclass != "animation" ) {
                 $.each(val, function (attr,aval) {
-                    document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                    try {
+                        document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                    }
+                    catch (err)  {};
                 })
             }
         });
@@ -1285,6 +1288,8 @@ var BuddyApp = Class.extend({
                     buddy.hevent_command_updt(msg);
                 } else if ( msg.content.event ==  'gui alert' ) {
                     buddy.hevent_gui_alert(msg);
+                } else if ( msg.content.event ==  'deletion' ) {
+                    buddy.hevent_device_deletion(msg);
                 } else if ( msg.content.event ==  'error report' ) {
                     console.log(msg.content.value);
                 }
@@ -1300,18 +1305,20 @@ var BuddyApp = Class.extend({
                     }
                 }
                 //Let's record the event structure
-                var newevents = get_dict_keys(msg.content.value);
-                if ( $.isArray( newevents) ) {
-                    $.each(newevents, function (idx,val) {
-                        buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+val)
-                    })
-                } else if ( newevents=="") {
-                    buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value")
-                } else {
-                    buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+newevents)
+                if ( msg.content.event !=  'gui info' ) {
+                    var newevents = get_dict_keys(msg.content.value);
+                    if ( $.isArray( newevents) ) {
+                        $.each(newevents, function (idx,val) {
+                            buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+val)
+                        })
+                    } else if ( newevents=="") {
+                        buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value")
+                    } else {
+                        buddy.seenevents.push(msg.content.target.split("-")[0]+"  "+msg.content.event+"  value::"+newevents)
+                    }
+                    buddy.seenevents = Array.from(new Set(buddy.seenevents));
+                    buddy.seenevents.sort();
                 }
-                buddy.seenevents = Array.from(new Set(buddy.seenevents));
-                buddy.seenevents.sort();
 
             }
         }
@@ -1437,13 +1444,13 @@ var BuddyApp = Class.extend({
                 pelt = $('<span/>', {class: "nav navbar-text bu-admin-menu", html:"<i class=\"fa fa-trash-o fa-lg\"></i> Delete", id:"bu-delZone"});
                 /*pelt.append($("<i/>",{class: "fa fa-trash-o fa-lg"}))*/
                 pelt.droppable({
-                    accept: ".bu-zone",
+                    accept: ".bu-zone, .bu-device",
                     greedy:true,
                     activeClass: "ui-state-default",
                     hoverClass: "ui-state-hover",
                     tolerance:"pointer",
                     drop: function( event, ui ) {
-                        buddy.drop_delete_zone(event,ui,this);
+                        buddy.drop_delete_zone_dev(event,ui,this);
                     }
                 });
                 pelt.hide();
@@ -1743,16 +1750,22 @@ var BuddyApp = Class.extend({
         bootbox.alert(nzname+" could not be created.");
     },
     
+    drop_delete_zone_dev: function (event,ui,dropin) {
+        $(ui.draggable).addClass('drag-revert');
+        if ( $(ui.draggable[0]).hasClass("bu-zone" )) {
+            $(ui.draggable).hide();
+            this.delete_zone(zoneById[ui.draggable[0].id].name);
+        } else if ( $(ui.draggable[0]).hasClass("bu-device" )) {
+            $(ui.draggable).hide();
+            this.delete_device(deviceById[ui.draggable[0].id]);
+           
+        }
+    },
+    
     delete_zone: function(name) {
         if ( buddy.debug ) { console.log("Deleting "+name); }
         var token = this.send_request("zone deletion", "control.zone", this.subject, {"name":name},name);
         this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_deletion, buddy, token, zoneById), this.timeout);
-    },
-    
-    drop_delete_zone: function (event,ui,dropin) {
-        $(ui.draggable).addClass('drag-revert');
-        $(ui.draggable).hide();
-        this.delete_zone(zoneById[ui.draggable[0].id].name);
     },
      
     handle_zone_deletion: function(msg) {
@@ -1839,6 +1852,34 @@ var BuddyApp = Class.extend({
          };
          this.editmode=mode;
      },
+    
+    delete_device: function(device) {
+        if ( buddy.debug ) { console.log("Deleting "+device.name); }
+        var token = device.name
+        this.send_command("deletion",device.name,device.type,device.name);
+        this.tokento[token]=setTimeout($.proxy(buddy.err_handle_device_deletion, buddy, token, deviceById), this.timeout);
+    },
+    
+    hevent_device_deletion: function(msg) {
+        var type=msg.content.target.split(".")[0];
+        var devid=msg.content.target.split(".")[1];
+        if ( devid in deviceById) {
+            $("#"+devid).remove();
+            delete this.tokento[devid];
+            delete deviceById[devid];
+            return false;
+        }
+    },
+       
+    err_handle_device_deletion: function (token, deviceById) {
+        if ( this.tokento[token]) {
+            var thisapp=this;
+            $("#"+token).show();
+            delete this.tokento[token];
+            return false;
+        };
+    },
+       
 
     hevent_device_status: function(msg) {
         var type=msg.content.target.split(".")[0];

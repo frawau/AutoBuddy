@@ -848,7 +848,7 @@ class SimpleState():
         self._varstate=None
         self._parseval(self.vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
         
@@ -908,7 +908,7 @@ class SimpleState():
             self.sending({"subject":self.target ,
                         "content_type": "event",
                         "content":{"event":"error report", 
-                                    "target":self.subject+".state variable",
+                                    "target":self.type+".state variable",
                                     "value":emsg}})
 
             return False
@@ -948,7 +948,7 @@ class CounterState():
         self._varstate=None
         self._parseval(self.vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def _parseval(self,val):
@@ -1002,7 +1002,7 @@ class CounterState():
             self.sending({"subject":self.target ,
                         "content_type": "event",
                         "content":{"event":"error report", 
-                                    "target":self.subject+".state variable",
+                                    "target":self.type+".state variable",
                                     "value":emsg}})
 
             return False
@@ -1046,7 +1046,7 @@ class EventState():
         self._varstate=None
         self.frozen = False
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def _parseval(self,val):
@@ -1125,7 +1125,7 @@ class EventState():
             self.sending({"subject":self.target ,
                         "content_type": "event",
                         "content":{"event":"error report", 
-                                    "target":self.subject+".state variable",
+                                    "target":self.type+".state variable",
                                     "value":emsg}})
 
             return False
@@ -1179,7 +1179,7 @@ class AccuState():
         self._parseval(self.vardef)
         self.frozen=False
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def _parseval(self,val):
@@ -1283,7 +1283,7 @@ class AccuState():
             self.sending({"subject":self.target ,
                         "content_type": "event",
                         "content":{"event":"error report", 
-                                    "target":self.subject+".state variable",
+                                    "target":self.type+".state variable",
                                     "value":emsg}})
 
             return False
@@ -1338,7 +1338,7 @@ class TimeState():
         self.lasttick=dt.datetime.now().replace(second=0,microsecond=0)
         self._parseval(vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
    
     def __repr__(self):
@@ -1507,7 +1507,7 @@ class Condition():
         self.cval = cval
         self.conditional=conditional
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def __repr__(self):
@@ -1546,7 +1546,7 @@ class EventTrigger():
         self.compval=None
         self._parseval(self.vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
    
     def __repr__(self):
@@ -1649,7 +1649,7 @@ class DiffCond():
         self.compval=None
         self._parseval(self.vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def _parseval(self,val):
@@ -1710,7 +1710,7 @@ class DiffCond():
             self.sending({"subject":self.target ,
                         "content_type": "event",
                         "content":{"event":"error report", 
-                                    "target":self.subject+".state variable",
+                                    "target":self.type+".state variable",
                                     "value":emsg}})
 
             return False
@@ -1735,7 +1735,7 @@ class Rule():
         self.action=[]
         self._parseval(vardef)
         self.sending=bridgectl.sending
-        self.subject=bridgectl.subject
+        self.type=bridgectl.type
         self.target=bridgectl.target
         
     def __repr__(self):
@@ -1804,7 +1804,7 @@ class Rule():
                             {"subject":self.target ,
                                 "content_type": "event",
                                 "content":{"event":acmd['event'], 
-                                            "target":self.subject+".rules",
+                                            "target":self.type+".rules",
                                             "value":acmd['e-value']}},None])
             elif acmd['bu-cvalue'] == "command":
                 mycmd=[acmd['bu-cvalue']]
@@ -1891,7 +1891,7 @@ class Rule():
                     #self.sending({"subject":self.target ,
                                 #"content_type": "event",
                                 #"content":{"event":"error report", 
-                                            #"target":self.subject+".rules",
+                                            #"target":self.type+".rules",
                                             #"value":emsg}})
 
             
@@ -1909,12 +1909,14 @@ class Rule():
         return True
 
 
-cfgdefault={"subject":"action","host":"localhost","port":8745,"credential":"","ssl":""}
+cfgdefault={"type":"action","subtype":"action","host":"localhost","port":8745,"credential":"","ssl":""}
 def configure(): 
     parser = argparse.ArgumentParser(description="Track Lifx action bulbs.")
     #                            version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-s", "--subject", default=cfgdefault["subject"],
-                    help="The subject we are listening to (default \"%s\")." % cfgdefault["subject"])
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                    help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                    help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
     parser.add_argument("-a", "--host", default=cfgdefault["host"],
                     help="The host address of the server (default \"%s\")." % cfgdefault["host"])
     parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
@@ -1967,15 +1969,25 @@ def configure():
                 cfgdata={}
             else:
                 raise e
-        if opts.subject != cfgdefault["subject"]:
-            actioncfg["subject"] = opts.subject
-        elif "subject" in cfgdata:
-            actioncfg["subject"] = cfgdata["subject"]     
-        else:
-            actioncfg["subject"] = opts.subject
-        if opts.debug:
-            actionlog.debug("The subject is %s." % actioncfg["subject"]) 
             
+        if opts.type != cfgdefault["type"]:
+            actioncfg["type"] = opts.type
+        elif "type" in cfgdata:
+            actioncfg["type"] = cfgdata["type"]     
+        else:
+            actioncfg["type"] = opts.type
+        if opts.debug:
+            actionlog.debug("The type is %s." % actioncfg["type"])
+            
+        if opts.subtype != cfgdefault["subtype"]:
+            actioncfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            actioncfg["subtype"] = cfgdata["subtype"]     
+        else:
+            actioncfg["subtype"] = opts.subtype
+        if opts.debug:
+            actionlog.debug("The subtype is %s." % actioncfg["subtype"]) 
+
         if opts.credential != cfgdefault["credential"]:
             actioncfg["credential"] = opts.credential
         elif "credential" in cfgdata:
@@ -2047,8 +2059,8 @@ class Action(bl.BuddyBridge):
     """
     This is the main class
     """
-    def __init__(self, name,loop,future,config,log):
-        super(Action, self).__init__(name,loop,future,config,log)
+    def __init__(self, loop,future,config,log):
+        super(Action, self).__init__(loop,future,config,log)
         self.rules = {}
         self.stateVar = {}
         self.deviceVar = {}
@@ -2057,7 +2069,7 @@ class Action(bl.BuddyBridge):
     @property
     def target(self):
         #When destined to me
-        return self.subject
+        return self.type
     
     
     def process_event(self,msg):
@@ -2088,12 +2100,12 @@ class Action(bl.BuddyBridge):
             
         """
         if msg["content"]["command"] == "update config":
-            if msg["content"]["target"] == self.subject+".state variable":
+            if msg["content"]["target"] == self.type+".state variable":
                 if "state variable" in  msg["content"]["value"]:
                     curnames=list(self.stateVar.keys())
                     needupdate=False
                     for vardef in msg["content"]["value"]["state variable"]:
-                        vname=self.subject+".state variable."+vardef["name"]
+                        vname=self.type+".state variable."+vardef["name"]
                         if vname in curnames:
                             curnames.remove(vname)
                             try:
@@ -2109,22 +2121,22 @@ class Action(bl.BuddyBridge):
                         needupdate = True
                                 
                     if needupdate:
-                        self.sending({"subject":"control." + self.subject,
+                        self.sending({"subject":"control." + self.type,
                                       "content_type": "request",
                                       "content": {"request":"save property",
-                                                  "target":self.subject,
+                                                  "target":self.type,
                                                   "name":"state variable",
                                                   #"token": self.target,
                                                   "value":bl.encrypt([ x.vardef for x in self.stateVar.values()],self.config["buddykey"])}})
                         if self.log:
                             self.log.debug("The new property stored is {}".format([ x.vardef for x in self.stateVar.values()]))
                             
-            if msg["content"]["target"] == self.subject+".rules":
+            if msg["content"]["target"] == self.type+".rules":
                 if "rules" in  msg["content"]["value"]:
                     curnames=list(self.rules.keys())
                     needupdate=False
                     for vardef in msg["content"]["value"]["rules"]:
-                        vname=self.subject+".rules."+vardef["name"]
+                        vname=self.type+".rules."+vardef["name"]
                         if vname in curnames:
                             curnames.remove(vname)
                             try:
@@ -2140,10 +2152,10 @@ class Action(bl.BuddyBridge):
                         needupdate = True
                                 
                     if needupdate:
-                        self.sending({"subject":"control." + self.subject,
+                        self.sending({"subject":"control." + self.type,
                                       "content_type": "request",
                                       "content": {"request":"save property",
-                                                  "target":self.subject,
+                                                  "target":self.type,
                                                   "name":"rules",
                                                   #"token": self.target,
                                                   "value":bl.encrypt([ x.vardef for x in self.rules.values()],self.config["buddykey"])}})
@@ -2163,7 +2175,7 @@ class Action(bl.BuddyBridge):
             #else:
                 #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
                 
-        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.subject:
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.type:
             #Getting the config
             if msg["content"]["configuration"]:
                 try:
@@ -2183,7 +2195,7 @@ class Action(bl.BuddyBridge):
             self.state = "active"
             self.build()
 
-        elif msg["content"]["response"] == "save configuration" and msg["subject"].startswith(self.subject):
+        elif msg["content"]["response"] == "save configuration" and msg["subject"].startswith(self.type):
             if self.state == "active" and  msg["content"]["status"] != "done":
                 #log
                 if self.log:
@@ -2191,13 +2203,13 @@ class Action(bl.BuddyBridge):
                 else:
                     print("Warning: Configuration was not saved.")
                    
-        elif msg["content"]["response"] == "functions" and msg["subject"].startswith(self.subject):
+        elif msg["content"]["response"] == "functions" and msg["subject"].startswith(self.type):
             if msg["content"]["status"] != "done":
                 if self.log:
                     self.log.warning("Configuration definition was not registered.")
                 else:
                     print("Warning: Configuration definition was not registered..")   
-        elif msg["content"]["response"] == "get property" and msg["subject"].startswith(self.subject):
+        elif msg["content"]["response"] == "get property" and msg["subject"].startswith(self.type):
             if msg["content"]["status"]=="done":
                 for prop in ["state variable","rules"]:
                     if prop in msg["content"]["value"]:
@@ -2214,22 +2226,22 @@ class Action(bl.BuddyBridge):
                             for avar in storedprop:
                                 try:
                                     nv=sv_factory(avar)
-                                    self.stateVar[self.subject+"."+prop+"."+nv.name]=nv
+                                    self.stateVar[self.type+"."+prop+"."+nv.name]=nv
                                 except Exception as e:
                                     self.log.warning("The data cannot be parsed into a state variable:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
                                     continue
                                 
-                            self.sending({"subject":"control" + "." + self.subject ,
+                            self.sending({"subject":"control" + "." + self.type ,
                                     "content_type": "request",
                                     "content":{"request":"functions", 
-                                                "target":self.subject,
+                                                "target":self.type,
                                                 "subtype": "state variable",
-                                                #"token": self.subject+".state variable",
+                                                #"token": self.type+".state variable",
                                                 "value":{"configs":[action_statevariable,{"state variable":[ x.vardef for x in self.stateVar.values()]}]}}})
                             self.sending({"subject":self.target ,
                                     "content_type": "event",
                                     "content":{"event":"config updated", 
-                                                "target":self.subject+".state variable",
+                                                "target":self.type+".state variable",
                                                 "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
 
                                 
@@ -2237,40 +2249,40 @@ class Action(bl.BuddyBridge):
                             for avar in storedprop:
                                 try:
                                     nr=Rule(avar)
-                                    self.rules[self.subject+"."+prop+"."+nr.name]=nr
+                                    self.rules[self.type+"."+prop+"."+nr.name]=nr
                                         
                                 except Exception as e:
                                     self.log.warning("The data cannot be parsed into a rule:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
                                     continue 
-                            self.sending({"subject":"control" + "." + self.subject ,
+                            self.sending({"subject":"control" + "." + self.type ,
                                     "content_type": "request",
                                     "content":{"request":"functions", 
-                                                "target":self.subject,
+                                                "target":self.type,
                                                 "subtype": "rules",
-                                                #"token": self.subject+".rules",
+                                                #"token": self.type+".rules",
                                                 "value":{"configs":[action_rules,{"rules":[ x.vardef for x in self.rules.values()]}]}}})
                             self.sending({"subject":self.target ,
                                     "content_type": "event",
                                     "content":{"event":"config updated", 
-                                                "target":self.subject+".rules",
+                                                "target":self.type+".rules",
                                                 "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
             else:
                 if self.log:
                     self.log.warning("Property could not be retrieved")
 
-        elif msg["content"]["response"] == "save property" and msg["subject"].startswith(self.subject):
+        elif msg["content"]["response"] == "save property" and msg["subject"].startswith(self.type):
             if msg["content"]["status"]=="done":
                 if msg["content"]["name"] == "state variable":
                     self.sending({"subject":self.target ,
                             "content_type": "event",
                             "content":{"event":"config updated", 
-                                        "target":self.subject+".state variable",
+                                        "target":self.type+".state variable",
                                         "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
                 if msg["content"]["name"] == "rules":
                     self.sending({"subject":self.target ,
                             "content_type": "event",
                             "content":{"event":"config updated", 
-                                        "target":self.subject+".rules",
+                                        "target":self.type+".rules",
                                         "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
         else:
             if self.log:
@@ -2281,9 +2293,9 @@ class Action(bl.BuddyBridge):
 
                                     
     def build(self):
-        newmsg={"content_type":"request","subject":"control."+self.subject,"content":{}}
+        newmsg={"content_type":"request","subject":"control."+self.type,"content":{}}
         newmsg["content"]["request"]="get property"
-        newmsg["content"]["target"]= self.subject
+        newmsg["content"]["target"]= self.type
         #newmsg["content"]["token"] = bl.genid()
         self.sending(newmsg)
         self.timer=aio.ensure_future(self.periodic())
@@ -2304,18 +2316,18 @@ class Action(bl.BuddyBridge):
             los.append("day")
         if tcheck[3]==0:
             los.append("hour")
-        self.process_event({"subject":self.subject,
+        self.process_event({"subject":self.type,
                 "content_type": "event",
                 "content":{"event":"time tick", 
-                           "target":self.subject,
+                           "target":self.type,
                            "starts":los,
                             "value":tstmp}})
         
         if self.config["debug"]:
-            self.log.debug("Time event scheduled at {}  {}.".format(second,{"subject":self.subject,
+            self.log.debug("Time event scheduled at {}  {}.".format(second,{"subject":self.type,
                 "content_type": "event",
                 "content":{"event":"time tick", 
-                           "target":self.subject,
+                           "target":self.type,
                            "starts":los,
                             "value":tstmp}}))
 
@@ -2334,7 +2346,7 @@ if __name__ == "__main__":
     else:
         sslcontext=None
     connFuture=aio.Future()
-    fac=loop.create_connection(functools.partial(Action,"action",loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    fac=loop.create_connection(functools.partial(Action,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
     conn,bridgectl = loop.run_until_complete(fac)
     loop.call_soon(bridgectl.configrequest,{"about":{"ActionBuddy":aboutstr}})
 

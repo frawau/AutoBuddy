@@ -188,6 +188,8 @@ class BuddyPartner(aio.Protocol):
 
     def connection_lost(self, error):
         self.state="Closed"
+        if self.log:
+            self.log.warning("Lost Connection with {}".format(self.addr))
         super().connection_lost(error)
 
 
@@ -207,11 +209,11 @@ class Controller():
 
 
     def configure(self):
-        self.default={"subject":"#","host":"","port":8745,"credential":"","ssl":""}
+        self.default={"type":"control","host":"","port":8745,"credential":"","ssl":""}
         parser = argparse.ArgumentParser(description="Track the overall Buddy Home Automation ecosystem.")
         #                            version="%prog " + __version__ + "/" + bl.__version__) 
-        parser.add_argument("-s", "--subject", default=self.default["subject"],
-                        help="The subject we are listening to (default \"%s\")." % self.default["subject"])
+        parser.add_argument("-t", "--type", default=self.default["type"],
+                        help="The type we are listening to (default \"%s\")." % self.default["type"])
         parser.add_argument("-a", "--host", default=self.default["host"],
                         help="The host address used by the server (default \"%s\")." % self.default["host"])
         parser.add_argument("-p", "--port", type=int, default=self.default["port"],
@@ -322,14 +324,14 @@ class Controller():
             if opts.debug:
                 self.log.debug("The heartbeat interval is %r" %buddycfg["hb"]) 
                 
-            if opts.subject != self.default["subject"]:
-                buddycfg["subject"] = opts.subject
-            elif "subject" in cfgdata:
-                buddycfg["subject"] = cfgdata["subject"]
+            if opts.type != self.default["type"]:
+                buddycfg["type"] = opts.type
+            elif "type" in cfgdata:
+                buddycfg["type"] = cfgdata["type"]
             else:
-                buddycfg["subject"] = self.default["subject"]
+                buddycfg["type"] = self.default["type"]
             if opts.debug:
-                self.log.debug("The subject is %s"%buddycfg["subject"]) 
+                self.log.debug("The type is %s"%buddycfg["type"]) 
                 
             if opts.credential != self.default["credential"]:
                 buddycfg["credential"] = opts.credential
@@ -613,11 +615,11 @@ class Controller():
                     elif msg["content"]["request"] == "save property":
                         try:
                             myprop = sess.query(bl.BuddyProperty)
-                            myprop = myprop.filter_by(entity=msg["subject"].split(".")[1])
+                            myprop = myprop.filter_by(entity=msg["content"]["target"])
                             myprop = myprop.filter_by(name=msg["content"]["name"]).one()
                         except:
                             myprop = bl.BuddyProperty()
-                            myprop.entity = msg["subject"].split(".")[1]
+                            myprop.entity = msg["content"]["target"]
                             myprop.name = msg["content"]["name"]
                             sess.add(myprop)
                         myprop.values = msg["content"]["value"]
@@ -626,7 +628,7 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
+                        self.sending({"subject":msg["subject"].split(".")[1]+"."+msg["content"]["target"],
                                     "content_type":"response",
                                     "content": {"response":"save property",
                                                 "name": myprop.name,
@@ -644,7 +646,7 @@ class Controller():
                             if x.name != "configuration":
                                 result[x.name]=x.values
 
-                        self.sending({"subject":msg["content"]["target"]+"."+msg["subject"].split(".")[1],
+                        self.sending({"subject":msg["subject"].split(".")[1]+"."+msg["content"]["target"],
                                     "content_type":"response",
                                     "content": {"response":"get property",
                                                 "token": msg["content"]["token"],
@@ -677,7 +679,7 @@ class Controller():
                             sts=True
                         except:
                             sts=False
-                        self.sending({"subject":msg["content"]["target"]+"."+newent.name,
+                        self.sending({"subject":msg["content"]["target"]+"."+msg["content"]["value"],
                                     "content_type":"response",
                                     "content": {"response":"deletion",
                                                 "token": msg["content"]["token"],
@@ -743,7 +745,8 @@ class Controller():
                         if "configs" in msg["content"]["value"]:
                             self.allConfigs[msg["content"]["target"]][msg["content"]["subtype"]]=msg["content"]["value"]["configs"]
                         if "module commands" in msg["content"]["value"]:
-                            self.allCommands[msg["content"]["subtype"]]=msg["content"]["value"]["module commands"]
+                            for k in msg["content"]["value"]["module commands"]:
+                                self.allCommands[msg["content"]["subtype"]][k]=msg["content"]["value"]["module commands"][k]
                         self.sending({"subject":msg["content"]["target"]+".functions",
                                     "content_type":"response",
                                     "content": {"response":"functions",
@@ -800,8 +803,9 @@ class Controller():
                         if sts:
                             self.sending({"subject":"zone"+"."+czone.name,
                                         "content_type":"event",
-                                        "target":"zone."+czone.name,
-                                        "content": {"event":msg["content"]["request"]}})
+                                        "content": {"event":msg["content"]["request"],
+                                                    "target":"zone."+czone.name,
+                                                    "value":czone.name}})
                                         
                     
                     elif msg["content"]["request"] in ["zone location"]:
