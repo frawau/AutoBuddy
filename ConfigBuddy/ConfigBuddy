@@ -32,6 +32,7 @@ debug=False
 
 #BUDDYLOCATION="/home/autobuddy/AutoBuddy"
 BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
+currentowner=os.stat(BUDDYLOCATION)
 
 def passgen():
     from random import shuffle,randrange
@@ -302,13 +303,25 @@ choice = input(" Press '<enter>' to continue")
 certdir=BUDDYLOCATION+"/.tls"
 try:
     os.mkdir(certdir,mode=0o700)
-except:
+except FileExistsError:
     pass
+
+os.chown(certdir,currentowner.st_uid,currentowner.st_gid)
 
 try:
     os.mkdir(BUDDYLOCATION+"/.buddyconfig",mode=0o700)
-except:
+except FileExistsError:
     pass
+
+os.chown((BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
+
+try:
+    os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
+except FileExistsError:
+    pass
+
+os.chown((BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
+
 
 subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
 
@@ -332,6 +345,7 @@ fn=BUDDYLOCATION+"/.buddyconfig/config.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -344,6 +358,7 @@ fn=BUDDYLOCATION+"/.buddyconfig/lifx.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -358,6 +373,7 @@ fn=BUDDYLOCATION+"/.buddyconfig/flic.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 
 mycfg={}
 mycfg["tls"]=certdir
@@ -374,6 +390,7 @@ fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -386,6 +403,7 @@ fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 
 mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
 
@@ -416,6 +434,9 @@ nprop.name="configuration"
 nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
 sess.add(nprop)
 sess.commit()
+
+subprocess.run(["/sbin/setcap", "cap_net_admin=ep", BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*"])
+
 print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
 print ("If you plan to connect remote buddies, you'll need enable remote access to PostgreSQL and use the credential {}".format(credential))
 choice = input(" Press '<enter>' to reboot")
