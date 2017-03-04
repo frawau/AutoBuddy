@@ -372,7 +372,7 @@ mycfg["tls"]=certdir
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
 mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
-mycfg["host"] = "autobuddy.local"
+mycfg["host"] = "*"
 mycfg["port"] = 8090
 mycfg["type"] = "guibridge"
 mycfg["broker"] = "localhost"
@@ -416,7 +416,7 @@ os.chmod(BUDDYLOCATION+"/LifxBuddy/LifxBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
-"""
+    """
 mycmd+=BUDDYLOCATION+"/LifxBuddy/LifxBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/30-lifx"
@@ -447,7 +447,7 @@ os.chmod(BUDDYLOCATION+"/FlicBuddy/FlicBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
-"""
+    """
 mycmd+=BUDDYLOCATION+"/FlicBuddy/FlicBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/30-flic"
@@ -465,7 +465,7 @@ mycfg["type"] = "action"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
-
+actionkey=mycfg["buddykey"]
 fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
@@ -475,7 +475,7 @@ os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
-"""
+    """
 mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/50-action"
@@ -522,6 +522,16 @@ nprop=bl.BuddyProperty()
 nprop.entity="System"
 nprop.name="configuration"
 nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
+sess.add(nprop)
+nprop=bl.BuddyProperty()
+nprop.entity="action"
+nprop.name="rules"
+nprop.values=bl.encrypt({},actionkey)
+sess.add(nprop)
+nprop=bl.BuddyProperty()
+nprop.entity="action"
+nprop.name="state variable"
+nprop.values=bl.encrypt({},actionkey)
 sess.add(nprop)
 sess.commit()
 

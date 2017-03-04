@@ -231,7 +231,7 @@ class Controller():
         parser.add_argument("-i", "--initial", action="store_true", default=False,
                         help="create the Zone if it does not exist.")
         parser.add_argument("-r", "--dbronly", default="",
-                        help="credentials for readonly access to DB")
+                        help="credentials for readonly access to DB (<name>:<password>")
         parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the files %s and %s can be found."%(KEYFILE,CERTFILE))
         parser.add_argument("-v", "--verbose", action="store_true", default=False,
@@ -302,7 +302,11 @@ class Controller():
                 self.log.debug("The database is %r" %buddycfg["database"])     
                     
             if opts.dbronly:
-                buddycfg["dbronly"] = opts.dbronly
+                buddycfg["dbronly"] = cfgdata["database"]["driver"] + "://"+opts.dbronly
+                buddycfg["dbronly"] += "@"+cfgdata["database"]["host"]
+                if "port" in cfgdata["database"] and cfgdata["database"]["port"]:
+                    buddycfg["dbronly"] += ":"+ str(cfgdata["dbronly"]["port"])
+                buddycfg["dbronly"] += "/" + cfgdata["database"]["db"]
             else:
                 buddycfg["dbronly"] = cfgdata["database"]["driver"] + "://"
                 if "user" in cfgdata["dbronly"] and cfgdata["dbronly"]["user"]:
@@ -570,7 +574,7 @@ class Controller():
                                     "content_type":"response",
                                     "content": {"response":"configuration",
                                                 "token": msg["content"]["token"],
-                                                "database":self.config["database"],
+                                                "database":self.config["dbronly"],
                                                 "status": "done",
                                                 "system configuration":system_config_default,
                                                 "configuration":cfgdata}})
