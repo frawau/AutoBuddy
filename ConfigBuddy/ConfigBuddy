@@ -178,7 +178,7 @@ os.system('clear')
 print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
 choice = input(" Press '<enter>' to proceed")
 try:
-    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp"])
+    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp","python3-ephem","python3-dateutil"])
     print("Allright, it looks like we are done.")
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -228,6 +228,7 @@ GRANT CONNECT ON DATABASE autobuddy TO readbuddy;
 GRANT USAGE ON SCHEMA public TO readbuddy;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readbuddy;
 GRANT SELECT ON ALL TABLES IN SCHEMA public to readbuddy;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readbuddy;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readbuddy;
 """
 pgmainuser="""
