@@ -374,9 +374,10 @@ mycfg["buddykey"] = keygen()
 mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
 mycfg["host"] = "autobuddy.local"
 mycfg["port"] = 8090
-mycfg["type"] = ["guibridge"]
-mycfg["broker"] = ["localhost"]
-
+mycfg["type"] = "guibridge"
+mycfg["broker"] = "localhost"
+mycfg["credential"] = credential
+socketkey = mycfg["buddykey"]
 
 fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
 with open(fn,"w") as cfile:
@@ -515,7 +516,7 @@ sess.add(nzone)
 nprop=bl.BuddyProperty()
 nprop.entity="guibridge"
 nprop.name="users"
-nprop.values=bl.encrypt({"admin":["password","admin"]},mycfg["buddykey"])
+nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
 sess.add(nprop)
 nprop=bl.BuddyProperty()
 nprop.entity="System"
