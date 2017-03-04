@@ -174,7 +174,7 @@ print("\n\n\n\n Time zone was set to %s"%choice)
 choice = input(" Press '<enter>' to continue")
 
 os.system('clear')
-print("\n\n\n\nNow we shall install the packages we need... You had better be on Ubuntu with apt for this to work %s"%choice)
+print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
 choice = input(" Press '<enter>' to proceed")
 try:
     subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2"])
@@ -182,6 +182,19 @@ try:
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
 choice = input(" Press '<enter>' to continue")
+
+
+os.system('clear')
+print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
+choice = input(" Press '<enter>' to proceed")
+try:
+    subprocess.run(["tar","xvfj",BUDDYLOCATION+"alltherest.tar.bz2","-C", BUDDYLOCATION])
+    print("Allright, it looks like we are done.")
+except:
+    print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+choice = input(" Press '<enter>' to continue")
+
+
 os.system('clear')
 weredone=False
 newpasswd=""
