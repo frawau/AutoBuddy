@@ -352,6 +352,7 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ControlBuddy/ControlBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     """
@@ -364,11 +365,13 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd="#!/bin/bash\ntmux new-session -s AutoBuddy -d "+fn
 
+print ("Stlll working!")
+
 mycfg={}
 mycfg["tls"]=certdir
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
-mycfg["application"] = "/home/autobuddy/AutoBuddy/WebBuddy/buddyctrl.html"
+mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
 mycfg["host"] = "autobuddy.local"
 mycfg["port"] = 8090
 mycfg["type"] = ["guibridge"]
@@ -380,6 +383,7 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 12
@@ -393,6 +397,7 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
 
+print ("Stlll working!")
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -406,6 +411,7 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/LifxBuddy/LifxBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
@@ -418,6 +424,9 @@ with open(fn,"w") as cfile:
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
+
+print ("Patience!")
+
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -433,6 +442,7 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/FlicBuddy/FlicBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
@@ -446,6 +456,8 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
 
+print ("Just a little longer!")
+
 mycfg={}
 mycfg["host"]= "localhost"
 mycfg["type"] = "action"
@@ -458,6 +470,7 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
     sleep 10
@@ -489,6 +502,8 @@ bdb += mycfg["database"]["host"]
 if "port" in mycfg["database"] and mycfg["database"]["port"]:
     bdb += ":"+ str(mycfg["database"]["port"])
 bdb += "/" + mycfg["database"]["db"]
+
+print ("Almost there!")
 
 #print "Connecting with",bdb
 sess=bl.getSession(bdb)
