@@ -21,7 +21,7 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-import subprocess,os,json,sys
+import subprocess,os,json,sys,glob
 
 from collections import defaultdict
 from getpass import getpass
@@ -297,7 +297,7 @@ else:
     topzone=choice
  
 os.system('clear')
-print ("\n\n\n\n Thank you, I will now proceed and finalize the configuration.\n\n")
+print ("\n\n\n\n Thank you, I will now proceed and finalize the configuration before asking you what to run.\n\n")
 choice = input(" Press '<enter>' to continue")
    
 certdir=BUDDYLOCATION+"/.tls"
@@ -313,14 +313,14 @@ try:
 except FileExistsError:
     pass
 
-os.chown((BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
+os.chown(BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
 
 try:
     os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
 except FileExistsError:
     pass
 
-os.chown((BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
+os.chown(BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
 
 
 subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
@@ -328,12 +328,16 @@ subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"
 subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey", "rsa:2048", "-keyout", BUDDYLOCATION+"/.tls/autobuddy.key", "-out",
                 BUDDYLOCATION+"/.tls/autobuddy.crt", "-subj", subj])
 print("Self-signed certificate was created")
+
+os.chown(BUDDYLOCATION+"/.tls/autobuddy.key",currentowner.st_uid,currentowner.st_gid)
+os.chown(BUDDYLOCATION+"/.tls/autobuddy.crt",currentowner.st_uid,currentowner.st_gid)
+
 credential=passgen()
 print ("Credential will be {}.".format(credential))
 mycfg={}
 mycfg["zone"]=topzone
 mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
-mycfg["dbronly"] = {"user": "autobuddy","password":ropasswd}
+mycfg["dbronly"] = {"user": "readbuddy","password":ropasswd}
 mycfg["type"] = "control"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
@@ -346,34 +350,16 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-
-mycfg={}
-mycfg["host"]= "localhost"
-mycfg["type"] = "light"
-mycfg["credential"] = credential
-mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
-
-fn=BUDDYLOCATION+"/.buddyconfig/lifx.cfg"
+mycmd="""#!/bin/bash
+while [ 1 ]; do
+    """
+mycmd+=BUDDYLOCATION+"/ControlBuddy/ControlBuddy -c "+fn
+mycmd+="\n    sleep 10\ndone\n"
+fn=BUDDYLOCATION+"/.run/01-control"
 with open(fn,"w") as cfile:
-    json.dump(mycfg,cfile)
-os.chmod(fn,0o600)
+    cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-
-mycfg={}
-mycfg["host"]= "localhost"
-mycfg["type"] = "switch"
-mycfg["credential"] = credential
-mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
-mycfg["flichost"] = "localhost"
-mycfg["flicpath"] = BUDDYLOCATION + "/FlicBuddy/flicd/"
-
-fn=BUDDYLOCATION+"/.buddyconfig/flic.cfg"
-with open(fn,"w") as cfile:
-    json.dump(mycfg,cfile)
-os.chmod(fn,0o600)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
 
 mycfg={}
 mycfg["tls"]=certdir
@@ -391,6 +377,68 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+mycmd="""#!/bin/bash
+while [ 1 ]; do
+    sleep 12
+"""
+mycmd+=BUDDYLOCATION+"/SocketBuddy/SocketBuddy -c "+fn
+mycmd+="\ndone\n"
+fn=BUDDYLOCATION+"/.run/99-socket"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "light"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+
+fn=BUDDYLOCATION+"/.buddyconfig/lifx.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+mycmd="""#!/bin/bash
+while [ 1 ]; do
+    sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/LifxBuddy/LifxBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/30-lifx"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "switch"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+mycfg["flichost"] = "localhost"
+mycfg["flicpath"] = BUDDYLOCATION + "/FlicBuddy/flicd/"
+
+fn=BUDDYLOCATION+"/.buddyconfig/flic.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+mycmd="""#!/bin/bash
+while [ 1 ]; do
+    sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/FlicBuddy/FlicBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/30-flic"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -404,6 +452,18 @@ with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
 os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+mycmd="""#!/bin/bash
+while [ 1 ]; do
+    sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/50-action"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+
 
 mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
 
@@ -435,9 +495,10 @@ nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":my
 sess.add(nprop)
 sess.commit()
 
-subprocess.run(["/sbin/setcap", "cap_net_admin=ep", BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*"])
+for fn in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
+    subprocess.run("/sbin/setcap cap_net_admin=ep "+ fn)
 
 print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
-print ("If you plan to connect remote buddies, you'll need enable remote access to PostgreSQL and use the credential {}".format(credential))
+print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
 choice = input(" Press '<enter>' to reboot")
 #os.system("reboot")
