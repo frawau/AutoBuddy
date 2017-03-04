@@ -178,7 +178,7 @@ os.system('clear')
 print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
 choice = input(" Press '<enter>' to proceed")
 try:
-    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2"])
+    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp"])
     print("Allright, it looks like we are done.")
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -330,7 +330,9 @@ subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey",
 print("Self-signed certificate was created")
 
 os.chown(BUDDYLOCATION+"/.tls/autobuddy.key",currentowner.st_uid,currentowner.st_gid)
+os.mod(BUDDYLOCATION+"/.tls/autobuddy.key",0o600)
 os.chown(BUDDYLOCATION+"/.tls/autobuddy.crt",currentowner.st_uid,currentowner.st_gid)
+os.mod(BUDDYLOCATION+"/.tls/autobuddy.crt",0o600)
 
 credential=passgen()
 print ("Credential will be {}.".format(credential))
@@ -360,6 +362,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
+bustartcmd="#!/bin/bash\ntmux new-session -s AutoBuddy -d "+fn
 
 mycfg={}
 mycfg["tls"]=certdir
@@ -388,6 +391,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
+bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
 
 
 mycfg={}
@@ -413,6 +417,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
+bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -439,6 +444,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
+bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -461,6 +467,14 @@ mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/50-action"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+bustartcmd+="\ntmux new-window -t AutoBuddy -d "+fn
+
+
+fn=BUDDYLOCATION+"/.start-autobuddy"
+with open(fn,"w") as cfile:
+    cfile.write(bustartcmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 
@@ -495,8 +509,10 @@ nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":my
 sess.add(nprop)
 sess.commit()
 
-for fn in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
-    subprocess.run("/sbin/setcap cap_net_admin=ep "+ fn)
+
+
+for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
+    subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
 
 print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
 print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
