@@ -388,7 +388,7 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
-    sleep 12
+sleep 12
 """
 mycmd+=BUDDYLOCATION+"/SocketBuddy/SocketBuddy -c "+fn
 mycmd+="\ndone\n"
@@ -416,10 +416,10 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/LifxBuddy/LifxBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
-    sleep 10
-    """
+sleep 10
+"""
 mycmd+=BUDDYLOCATION+"/LifxBuddy/LifxBuddy -c "+fn
-mycmd+="\n    sleep 2\ndone\n"
+mycmd+="\nsleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/30-lifx"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
@@ -447,8 +447,8 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/FlicBuddy/FlicBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
-    sleep 10
-    """
+sleep 10
+"""
 mycmd+=BUDDYLOCATION+"/FlicBuddy/FlicBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/30-flic"
@@ -475,8 +475,8 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
 mycmd="""#!/bin/bash
 while [ 1 ]; do
-    sleep 10
-    """
+sleep 10
+"""
 mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
 fn=BUDDYLOCATION+"/.run/50-action"
