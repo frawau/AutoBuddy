@@ -285,7 +285,7 @@ else:
     d_out=chpass.communicate(input=newconfig)
     
 os.system('clear')
-print("\n\n\n\n Postgres passwords were set.\n\n")
+print("\n\n\n\n Database was created, so were users and passwords were set.\n\n")
 choice = input(" Press '<enter>' to continue")
     
 os.system('clear')
@@ -330,9 +330,9 @@ subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey",
 print("Self-signed certificate was created")
 
 os.chown(BUDDYLOCATION+"/.tls/autobuddy.key",currentowner.st_uid,currentowner.st_gid)
-os.mod(BUDDYLOCATION+"/.tls/autobuddy.key",0o600)
+os.chmod(BUDDYLOCATION+"/.tls/autobuddy.key",0o600)
 os.chown(BUDDYLOCATION+"/.tls/autobuddy.crt",currentowner.st_uid,currentowner.st_gid)
-os.mod(BUDDYLOCATION+"/.tls/autobuddy.crt",0o600)
+os.chmod(BUDDYLOCATION+"/.tls/autobuddy.crt",0o600)
 
 credential=passgen()
 print ("Credential will be {}.".format(credential))
