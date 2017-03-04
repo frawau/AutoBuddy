@@ -583,6 +583,70 @@ function module_config_bis(e) {
     buddy.cmd_panel.setValue(buddy.configs[etype][estype][1])
 }
 
+function module_export_config() {
+    var msg = "<div id=\"bu-mod-config-choice\">";
+    msg+='<label for="bu-fileinput">Save to</label><input type="file" id="bu-fileinput" /><br />'
+    var ordered = {};
+    Object.keys(buddy.configs).sort().forEach(function(key) {
+        ordered[key] = buddy.configs[key];
+    });
+    buddy.configs=ordered;
+    $.each(buddy.configs, function ( dtype, sub ) {
+       msg+="<button type = \"button\" class = \"btn btn-default bu-mod-config-export-button\"  id=\"bu-mod-config-"+dtype+"\">Export "+dtype+"</button>";
+    });
+    msg+="</div>";
+    bootbox.dialog({
+        title: "Select what to export.",
+        value: "conf",
+        message:msg,
+        buttons: {
+        }
+    });
+    $(".bu-mod-config-export-button").on("click", module_export_config_bis);
+}
+
+function module_export_config_bis(e) {
+    bootbox.hideAll();
+    var elt = e.target.id.split("-").slice(-1)[0];
+    var fn = $("#bu-fileinput").val();
+    console.log(elt);
+    console.log(fn);
+}
+
+
+
+function module_import_config() {
+    var msg = "<div id=\"bu-mod-config-choice\">";
+    msg+='<label for="bu-fileinput">Read from</label><input type="file" id="bu-fileinput" /><br />';
+    msg+="</div>";
+    bootbox.dialog({
+        title: "Select file to import.",
+        value: "conf",
+        message:msg,
+        buttons: {
+            close: {
+                label: "Import",
+                className: "btn-close",
+                callback: function () {
+                    module_import_config_bis();
+                }
+            }
+        }
+    });
+    $(".bu-mod-config-export-button").on("click", module_import_config_bis);
+}
+
+function module_import_config_bis() {
+    bootbox.hideAll();
+    var fn = $("#bu-fileinput").files[0];
+    var reader = new FileReader();
+    reader.readAsText(fn);
+    console.log(fn);
+    reader.onload = function(e) {
+        // browser completed reading file - display it
+        alert(e.target.result);
+    };
+}
 
 function module_command() {
     var msg = "<div id=\"bu-mod-cmd-choice\">";

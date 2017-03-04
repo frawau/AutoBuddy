@@ -21,7 +21,7 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-import subprocess,os,json
+import subprocess,os,json,sys
 
 from collections import defaultdict
 from getpass import getpass
@@ -29,7 +29,9 @@ import buddylib as bl
 from urllib.request import urlopen
 
 debug=False
-BUDDYLOCATION="/home/autobuddy/AutoBuddy"
+
+#BUDDYLOCATION="/home/autobuddy/AutoBuddy"
+BUDDYLOCATION="/"+"/".join(os.path.realpath(__file__).split("/")[:-2])
 
 def passgen():
     from random import shuffle,randrange
@@ -68,8 +70,7 @@ gotit=False
 while not gotit:
     print ("\n\nOK, me think your time zone is %s"%mylocation["timezone"])
     for x in ["Yes","No"]:
-        print("\t %s"%x
-        idx+=1
+        print("\t %s"%x)
     print()
     choice = input(" Your choice: ")
     try:
@@ -87,7 +88,7 @@ while not gotit:
         
 if not choice:    
     print ("\n\nOoops, I got it wrong, my bad! Let's try another way.")
-    lotz=subprocess.check_output(["timedatectl", "--no-pager","list-timezones"])
+    lotz=subprocess.check_output(["timedatectl", "--no-pager","list-timezones"]).decode()
     tzlist=defaultdict(list)
     for rawzone in lotz.split("\n"):
         if not rawzone:
@@ -97,7 +98,7 @@ if not choice:
             tzlist[zone[0]]=None
         else:
             tzlist[zone[0]].append("/".join(zone[1:]))        
-    lotopz=tzlist.keys()
+    lotopz=list(tzlist.keys())
     lotopz.sort()
     os.system('clear')
     gotit=False
@@ -111,7 +112,7 @@ if not choice:
                 for x in lotopz:
                     print ("   %d\t %s"%(idx,x))
                     idx+=1
-                print
+                print()
                 choice = input(" Your choice: ")
                 try:
                     choice=int(choice)
@@ -134,7 +135,7 @@ if not choice:
                 print ("\n\n\nPlease do select the number corresponding to your time zone")
                 idx=0
                 while idx< min(maxidx,len(tzlist[topzone])-sidx):
-                    print "   ",idx,"\t %s/%s"%(topzone,tzlist[topzone][sidx+idx])
+                    print ("   %d\t %s/%s"%(idx,topzone,tzlist[topzone][sidx+idx]))
                     idx+=1
                 print ("\n\nUse 'b' to go back to the previous screen. 'n' to go to the next one.\n")
                 choice = input(" Your choice: ")
@@ -176,7 +177,7 @@ os.system('clear')
 print("\n\n\n\nNow we shall install the packages we need... You had better be on Ubuntu with apt for this to work %s"%choice)
 choice = input(" Press '<enter>' to proceed")
 try:
-    subprocess.run(["apt","-y","install","postgressql","python3-sqlalchemy","python3-crypto","python3-psycopg2"])
+    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2"])
     print("Allright, it looks like we are done.")
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -193,12 +194,12 @@ while not weredone:
         newpasswd=passwd
     else:
         os.system('clear')
-        print "\n\n The passwords did not match."
+        print ("\n\n The passwords did not match.")
 
 if debug:
     print ("New password is %d"%newpasswd)
 else:
-    chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
     d_out=chpass.communicate(input="autobuddy:%s"%newpasswd)[0]
     
     
@@ -224,8 +225,8 @@ os.system('clear')
 weredone=False
 newpasswd=""
 while not weredone:
-    print "\n\n\n We will now create and set a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n"
-    print " If you leave the password empty, I will generate the password automatically.\n\n"
+    print ("\n\n\n We will now create and set a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n")
+    print (" If you leave the password empty, I will generate the password automatically.\n\n")
     passwd = getpass(" Password: ")
     if passwd:
         confirm = getpass(" Confirm Password: ")
@@ -262,15 +263,15 @@ while not weredone:
 #of=file("/tmp/cmd.sql","w")
 #of.write("ALTER USER autobuddy PASSWORD '%s';\n"%dbpasswd)
 #of.write("ALTER USER readbuddy PASSWORD '%s';\n"%ropasswd)
-newconfig=createdb+%dbpasswd + pgreadonlyuser%ropasswd
+newconfig=createdb+pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
 if debug:
     print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
 else:
-    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
     d_out=chpass.communicate(input=newconfig)
     
 os.system('clear')
-print "\n\n\n\n Postgres passwords were set.\n\n"
+print("\n\n\n\n Postgres passwords were set.\n\n")
 choice = input(" Press '<enter>' to continue")
     
 os.system('clear')
@@ -299,8 +300,8 @@ except:
 subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
 
 subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey", "rsa:2048", "-keyout", BUDDYLOCATION+"/.tls/autobuddy.key", "-out",
-                BUDDYLOCATION+"/.tls/autobuddy.key", "-subj", subj])
-print("Self-signed cerificate was created")
+                BUDDYLOCATION+"/.tls/autobuddy.crt", "-subj", subj])
+print("Self-signed certificate was created")
 credential=passgen()
 print ("Credential will be {}.".format(credential))
 mycfg={}
@@ -312,10 +313,12 @@ mycfg["credential"] = credential
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
 
+controlkey=mycfg["buddykey"]
+
 fn=BUDDYLOCATION+"/.buddyconfig/config.cfg"
-with file(fn,"w") as cfile:
+with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
-os.chmod(fn,0600)
+os.chmod(fn,0o600)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -325,9 +328,9 @@ mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
 
 fn=BUDDYLOCATION+"/.buddyconfig/lifx.cfg"
-with file(fn,"w") as cfile:
+with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
-os.chmod(fn,0600)
+os.chmod(fn,0o600)
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -339,9 +342,9 @@ mycfg["flichost"] = "localhost"
 mycfg["flicpath"] = BUDDYLOCATION + "/FlicBuddy/flicd/"
 
 fn=BUDDYLOCATION+"/.buddyconfig/flic.cfg"
-with file(fn,"w") as cfile:
+with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
-os.chmod(fn,0600)
+os.chmod(fn,0o600)
 
 mycfg={}
 mycfg["tls"]=certdir
@@ -355,9 +358,21 @@ mycfg["broker"] = ["localhost"]
 
 
 fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
-with file(fn,"w") as cfile:
+with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
-os.chmod(fn,0600)
+os.chmod(fn,0o600)
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "action"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+
+fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
 
 mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
 
@@ -381,6 +396,11 @@ nprop=bl.BuddyProperty()
 nprop.entity="guibridge"
 nprop.name="users"
 nprop.values=bl.encrypt({"admin":["password","admin"]},mycfg["buddykey"])
+sess.add(nprop)
+nprop=bl.BuddyProperty()
+nprop.entity="System"
+nprop.name="configuration"
+nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
 sess.add(nprop)
 sess.commit()
 print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
