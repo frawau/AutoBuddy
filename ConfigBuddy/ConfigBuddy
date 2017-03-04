@@ -226,13 +226,11 @@ pgreadonlyuser="""
 CREATE USER readbuddy WITH ENCRYPTED PASSWORD '%s';
 GRANT CONNECT ON DATABASE autobuddy TO readbuddy;
 GRANT USAGE ON SCHEMA public TO readbuddy;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readbuddy;
+GRANT SELECT ON ALL TABLES IN SCHEMA public to readbuddy;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readbuddy;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readbuddy;
 """
-#"""
-#GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readbuddy;
-#GRANT SELECT ON ALL TABLES IN SCHEMA public to readbuddy;
-#ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readbuddy;
-#ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readbuddy;
-#"""
 pgmainuser="""
 CREATE USER autobuddy WITH ENCRYPTED PASSWORD '%s';
 GRANT ALL PRIVILEGES ON DATABASE autobuddy TO autobuddy;
@@ -368,7 +366,7 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n ControlBuddy -d "+fn
 
-print ("Stlll working!")
+print ("Still working!")
 
 mycfg={}
 mycfg["tls"]=certdir
@@ -401,7 +399,7 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SocketBuddy "+fn
 
-print ("Stlll working!")
+print ("Still working!")
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -539,11 +537,10 @@ sess.add(nprop)
 sess.commit()
 
 #Bloddy grant select!
-newconfig="""\c autobuddy
-GRANT SELECT TO TABLE device TO readbuddy;
-GRANT SELECT TO TABLE zone TO readbuddy;
+newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
+GRANT SELECT ON TABLE zone TO readbuddy;
 """
-chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
 d_out=chpass.communicate(input=newconfig)
 
 for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
