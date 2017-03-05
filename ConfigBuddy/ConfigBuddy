@@ -21,10 +21,11 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-import subprocess,os,json,sys,glob
+import subprocess,os,json,sys,glob,pwd
 
 BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
 currentowner=os.stat(BUDDYLOCATION)
+username=pwd.getpwuid(currentowner.st_uid)
 sys.path.append(BUDDYLOCATION+"/Buddylib")
 
 from collections import defaultdict
@@ -565,7 +566,20 @@ d_out=chpass.communicate(input=newconfig)
 for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
     subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
 
-print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
-print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
-choice = input(" Press '<enter>' to reboot")
-#os.system("reboot")
+try:
+    from crontab import CronTab
+    cron=CronTab(user=username)
+    job  = cron.new(command=BUDDYLOCATION+"/.start-autobuddy")
+    job.every_reboot()
+    cron.write()
+    print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+    print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
+    choice = input(" Press '<enter>' to reboot")
+    #os.system("reboot")
+except:
+    print ("\n\n\n\n We are done. We are about to reboot but ...")
+    print ("For some reason we were not able to schedule the start of the AutoBuddy system. In the terminal, please do:")
+    print ("\n          (crontab -l 2>/dev/null; echo \"@reboot "+BUDDYLOCATION+"/.start-autobuddy\") | crontab -\n")
+    print ("Cut and paste if possible. After that you should reboot with \"sudo reboot\"")
+    print("\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+
