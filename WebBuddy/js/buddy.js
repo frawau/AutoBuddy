@@ -12,9 +12,7 @@
  ^                    
 */
 
-
-var colourSchemes = [["hsl(180,100%,90%)", "hsl(260,30%,40%)"],["hsl(270,100%,90%)", "hsl(350,30%,40%)"],["hsl(0,100%,90%)", "hsl(80,30%,40%)"],["hsl(90,100%,90%)", "hsl(170,30%,40%)"]]
-var nbScheme = colourSchemes.length;
+var colourSchemes = [340,300,270,220] //hue 
 var maxchild = 12;
 var childstep = 4;
 var zoneById={};
@@ -37,19 +35,21 @@ String.prototype.repeat = function(count) {
   };
 
 function generate_bg_class() {
-    var cssstr = "<style>\n.bu-layer-colour-0-0 { border-bottom-color: #C63D0F; border-right-color: #C63D0F;}\n";
-    
+    var cssstr = "<style>\n.bu-layer-colour-0-0 { border-bottom-color: hsl(11,80%,60%); border-right-color: hsl(11,80%,60%);}\n";
     
     for (var i=0; i < colourSchemes.length; i++) {
-        var color = d3.scale.linear(d3.interpolateHsl)
-                .domain([0, maxchild])
-                .range(colourSchemes[i]);
+        var hue=colourSchemes[i];
+        var sat=80;
+        var light=40;
+        var step=5; //60 / 12
         for (var k=0; k < childstep; k++) {
-            for (var j=k; j < maxchild; j+=childstep) {
-                cssstr+=".bu-layer-colour-"+(i+1)+"-"+j+" {border-bottom-color: "+color(j)+"; border-right-color: "+color(j)+";}\n";
-            }
+            var cstring="hsl("+hue+","+sat+"%,"+light+"%)";
+            cssstr+=".bu-layer-colour-"+(i+1)+"-"+k+" {border-bottom-color: "+cstring+"; border-right-color: "+cstring+";}\n";
+            sat-=step;
+            light+=step;
         }
     };
+
     $('html > head').append(cssstr);
 }
 
@@ -585,7 +585,7 @@ function module_config_bis(e) {
 
 function module_export_config() {
     var msg = "<div id=\"bu-mod-config-choice\">";
-    msg+='<label for="bu-fileinput">Save to</label><input type="file" id="bu-fileinput" /><br />'
+    msg+='<label for="bu-filename">Save to</label><input type="text" id="bu-filename" value="autobuddy.txt" placeholder="autobuddy.txt" /><br />'
     var ordered = {};
     Object.keys(buddy.configs).sort().forEach(function(key) {
         ordered[key] = buddy.configs[key];
@@ -608,9 +608,20 @@ function module_export_config() {
 function module_export_config_bis(e) {
     bootbox.hideAll();
     var elt = e.target.id.split("-").slice(-1)[0];
-    var fn = $("#bu-fileinput").val();
-    console.log(elt);
-    console.log(fn);
+    var fn = $("#bu-filename").val();
+    var exportval={}
+    exportval[elt]={}
+    $.each(buddy.configs[elt], function(key,val) {
+        exportval[elt][key]=val[1];
+    });
+    
+    blob = new Blob([JSON.stringify(exportval)], {type: "text/plain"}),
+    url = window.URL.createObjectURL(blob);
+    var anchor=$("<a/>").attr('href',url).attr("style","display: none").attr("download",fn);
+    $("body").append(anchor);
+    anchor[0].click();
+    window.URL.revokeObjectURL(url);
+    anchor.remove();
 }
 
 
@@ -638,13 +649,46 @@ function module_import_config() {
 
 function module_import_config_bis() {
     bootbox.hideAll();
-    var fn = $("#bu-fileinput").files[0];
+    var fn = $("#bu-fileinput")[0].files[0];
     var reader = new FileReader();
     reader.readAsText(fn);
-    console.log(fn);
     reader.onload = function(e) {
-        // browser completed reading file - display it
-        alert(e.target.result);
+        var notimp = "";
+        var wasimp = "";
+        var isep = "";
+        var nsep = "";
+        try {
+            impval=JSON.parse(e.target.result);
+            $.each(impval, function(tkey,tval) {
+                if ( tkey in buddy.configs ) {
+                    $.each(tval, function(stkey,stval) {
+                        if ( stkey in buddy.configs[tkey] ) {
+                            buddy.configs[tkey][stkey][1]=stval;
+                            wasimp+=isep +tkey+"::"+stkey;
+                            isep = ", ";
+                            var token=buddy.send_command("update config",stkey,tkey,buddy.configs[tkey][stkey][1],false,tkey+"."+stkey);
+                        } else {
+                            notimp+=nsep +tkey+"::"+stkey;
+                            nsep = ", ";
+                        }
+                    })
+                } else {
+                    notimp+=nsep +tkey;
+                    nsep = ", ";
+                }
+            })
+            if ( notimp == "" ) {
+                bootbox.alert("Good! Everything was imported alright.");
+            } else if ( wasimp == "" ) {
+                bootbox.alert("Well... nothing was imported. Could be that the relevant buddies are not connected.");
+            } else {
+                
+                bootbox.alert("Well... we imported this: "+wasimp+", but we failed to import this: "+notimp);
+            }
+        }
+        catch (err) {
+            bootbox.alert("Seems like the file you tried to import is just garbage: "+err.message);
+        }
     };
 }
 
@@ -1438,6 +1482,7 @@ var BuddyApp = Class.extend({
                 this.topzone=msg.content.zone
             }
             buddy.build_panel();
+            $("#bu-navbar-menu > li").removeClass("disabled");
         }
     },
     

@@ -19,11 +19,9 @@
         <!--<link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" /> -->
         <script type="text/javascript" src="js/jquery.js"></script>
         <script type="text/javascript" src="js/jquery-ui.min.js"></script>
-        <script type="text/javascript" src="js/d3.min.js"></script>
         <script type="text/javascript" src="js/jclass.js"></script>
         <script type="text/javascript" src="js/bootstrap.min.js"></script>
         <script type="text/javascript" src="js/bootbox.min.js"></script>
-        <script type="text/javascript" src="js/Colour.js"></script>
         <script type="text/javascript" src="js/mousehold.min.js"></script>
         <script type="text/javascript" src="js/jquery.ba-throttle-debounce.js"></script>
         <script type="text/javascript" src="js/bootstrap-switch.min.js"></script>
@@ -80,18 +78,18 @@
                 </li>
                 <li class="dropdown">
                     <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Menu <span class="caret"></span></a>
-                    <ul class="dropdown-menu">
-                        <li><a href="#" onclick="logout()"><i class="fa fa-sign-out fa-fw"></i>&nbsp; Logout</a></li>
-                        <li><a href="#" onclick="change_password()"><i class="fa fa-pencil fa-fw"></i>&nbsp; Change Password</a></li>
+                    <ul class="dropdown-menu" id="bu-navbar-menu">
+                        <li class="disabled" ><a href="#" onclick="logout()"><i class="fa fa-sign-out fa-fw"></i>&nbsp; Logout</a></li>
+                        <li class="disabled" ><a href="#" onclick="change_password()"><i class="fa fa-pencil fa-fw"></i>&nbsp; Change Password</a></li>
                         <li role="separator" class="divider"></li>
-                        <li><a href="#" onclick="module_config()"><i class="fa fa-cog fa-fw"></i>&nbsp; Configure</a></li>
+                        <li class="disabled" ><a href="#" onclick="module_config()"><i class="fa fa-cog fa-fw"></i>&nbsp; Configure</a></li>
                         <li role="separator" class="divider"></li>
-                        <li><a href="#" onclick="explore_events()"><i class="fa fa-eye fa-fw"></i>&nbsp; Explore Events</a></li>
+                        <li class="disabled" ><a href="#" onclick="explore_events()"><i class="fa fa-eye fa-fw"></i>&nbsp; Explore Events</a></li>
                         <li role="separator" class="divider"></li>
-                        <li><a href="#" onclick="module_command()"><i class="fa fa-bolt fa-fw"></i>&nbsp; Commands</a></li>
+                        <li class="disabled" ><a href="#" onclick="module_command()"><i class="fa fa-bolt fa-fw"></i>&nbsp; Commands</a></li>
                         <li role="separator" class="divider"></li>
-                        <li><a href="#" onclick="module_export_config()"><i class="fa fa-upload fa-fw"></i>&nbsp; Export</a></li>
-                        <li><a href="#" onclick="module_import_config()"><i class="fa fa-download fa-fw"></i>&nbsp; Import</a></li>
+                        <li class="disabled" ><a href="#" onclick="module_export_config()"><i class="fa fa-upload fa-fw"></i>&nbsp; Export</a></li>
+                        <li class="disabled" ><a href="#" onclick="module_import_config()"><i class="fa fa-download fa-fw"></i>&nbsp; Import</a></li>
                         <li role="separator" class="divider"></li>
                         <li><a href="#" onclick="show_about()" id="bu-about"><i class="fa fa-home fa-fw"></i>&nbsp; About AutoBuddy</a></li>
                     </ul>

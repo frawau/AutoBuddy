@@ -355,10 +355,13 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/ControlBuddy/ControlBuddy",0o775)
 mycmd="""#!/bin/bash
+PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
 while [ 1 ]; do
-    """
+"""
 mycmd+=BUDDYLOCATION+"/ControlBuddy/ControlBuddy -c "+fn
-mycmd+="\n    sleep 10\ndone\n"
+mycmd+="\nsleep 10\ndone\n"
 fn=BUDDYLOCATION+"/.run/01-control"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
@@ -387,6 +390,9 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
 mycmd="""#!/bin/bash
+PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
 while [ 1 ]; do
 sleep 12
 """
@@ -415,6 +421,9 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/LifxBuddy/LifxBuddy",0o775)
 mycmd="""#!/bin/bash
+PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
 while [ 1 ]; do
 sleep 10
 """
@@ -446,6 +455,9 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/FlicBuddy/FlicBuddy",0o775)
 mycmd="""#!/bin/bash
+PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
 while [ 1 ]; do
 sleep 10
 """
@@ -474,6 +486,9 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
 mycmd="""#!/bin/bash
+PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
 while [ 1 ]; do
 sleep 10
 """
