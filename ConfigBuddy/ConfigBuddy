@@ -23,6 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 import subprocess,os,json,sys,glob
 
+BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
+currentowner=os.stat(BUDDYLOCATION)
+sys.path.append(BUDDYLOCATION+"/Buddylib")
+
 from collections import defaultdict
 from getpass import getpass
 import buddylib as bl
@@ -355,7 +359,7 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/ControlBuddy/ControlBuddy",0o775)
 mycmd="""#!/bin/bash
-PYTHONPATH="""
+export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
@@ -390,7 +394,7 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
 mycmd="""#!/bin/bash
-PYTHONPATH="""
+export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
@@ -421,7 +425,7 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/LifxBuddy/LifxBuddy",0o775)
 mycmd="""#!/bin/bash
-PYTHONPATH="""
+export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
@@ -455,7 +459,7 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/FlicBuddy/FlicBuddy",0o775)
 mycmd="""#!/bin/bash
-PYTHONPATH="""
+export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
@@ -486,7 +490,7 @@ os.chmod(fn,0o600)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
 mycmd="""#!/bin/bash
-PYTHONPATH="""
+export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
