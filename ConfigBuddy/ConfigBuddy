@@ -25,7 +25,7 @@ import subprocess,os,json,sys,glob,pwd
 
 BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
 currentowner=os.stat(BUDDYLOCATION)
-username=pwd.getpwuid(currentowner.st_uid)
+username=pwd.getpwuid(currentowner.st_uid)[0]
 sys.path.append(BUDDYLOCATION+"/Buddylib")
 
 from collections import defaultdict
