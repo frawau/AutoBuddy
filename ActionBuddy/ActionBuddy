@@ -2273,12 +2273,26 @@ class Action(bl.BuddyBridge):
         elif msg["content"]["response"] == "save property" and msg["subject"].startswith(self.type):
             if msg["content"]["status"]=="done":
                 if msg["content"]["name"] == "state variable":
+                    self.sending({"subject":"control" + "." + self.type ,
+                            "content_type": "request",
+                            "content":{"request":"functions", 
+                                        "target":self.type,
+                                        "subtype": "state variable",
+                                        #"token": self.type+".state variable",
+                                        "value":{"configs":[action_statevariable,{"state variable":[ x.vardef for x in self.stateVar.values()]}]}}})
                     self.sending({"subject":self.target ,
                             "content_type": "event",
                             "content":{"event":"config updated", 
                                         "target":self.type+".state variable",
                                         "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
                 if msg["content"]["name"] == "rules":
+                    self.sending({"subject":"control" + "." + self.type ,
+                            "content_type": "request",
+                            "content":{"request":"functions", 
+                                        "target":self.type,
+                                        "subtype": "rules",
+                                        #"token": self.type+".rules",
+                                        "value":{"configs":[action_rules,{"rules":[ x.vardef for x in self.rules.values()]}]}}})
                     self.sending({"subject":self.target ,
                             "content_type": "event",
                             "content":{"event":"config updated", 

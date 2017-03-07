@@ -502,6 +502,18 @@ class LifxBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
+                self.sending({"subject":"control" + "." + self.target ,
+                        "content_type": "request",
+                        "content":{"request":"functions", 
+                                    "target":self.type,
+                                    "subtype": self.subtype,
+                                    #"token": self.target,
+                                    "value":{"configs":[lifx_config,lifx_config_default]}}})
+                self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"config updated", 
+                                    "target":self.target,
+                                    "value":lifx_config_default}})
             #if savenew or ("configonly" in self.config and self.config["configonly"]):
                 #self.sending({"subject":"control" + "." + self.subtype,
                                 #"content_type": "request",

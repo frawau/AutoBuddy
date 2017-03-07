@@ -38,6 +38,20 @@ def intround(x):
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
+flic_commands="""
+<buddyui version="0.1">
+    <command  name="flic">
+        <controlgroup  type="grouplist" name="click" label="Click" rteffect="1">
+            <controlgroup type="choice" name="type" label="Type">
+                <item value="single" label="Single" />
+                <item value="double" label="Double" />
+                <item value="long" label="Long" />
+            </controlgroup>
+        </controlgroup>
+    </command>
+</buddyui>
+"""
+
 flic_config="""
 <buddyui version="0.1">
     <configuration  name="flic">
@@ -103,6 +117,12 @@ def flic_process(self,msg):
                             "target": self.controller.type,
                             "value":self.name}})
         
+    elif msg["content"]["command"] == "click":
+        bridgectl.sending({"subject":msg["subject"],
+                        "content_type": "event",
+                        "content":{"event":"click", 
+                                    "target":msg["subject"],
+                                    "value":msg["content"]["value"]["type"]["bu-cvalue"]}})
     return None
 
 
@@ -403,7 +423,7 @@ class FlicBridge(bl.BuddyBridge):
                             "target":self.type,
                             "subtype": self.subtype,
                             #"token": self.target,
-                            "value":{"functions":"","module commands":flic_module_commands,"configs":[flic_config,flic_config_default]}}})
+                            "value":{"functions":flic_commands,"module commands":flic_module_commands,"configs":[flic_config,flic_config_default]}}})
         
         self.sending({"subject":self.target ,
                 "content_type": "event",

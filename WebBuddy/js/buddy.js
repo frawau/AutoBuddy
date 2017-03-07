@@ -832,7 +832,7 @@ var BuddyDevice = Class.extend({
         this.parent=parent;
     },
     
-    match_status: function(cmd) {
+    match_status: function() {
         var self = this;
         $("#"+this.name).removeClass("run-animation")
         if ("animation" in this.iconstatus ) {
@@ -1272,7 +1272,7 @@ var BuddyZone = Class.extend({
             });
             $("#"+oname+"-power").bootstrapSwitch();
             $("#"+oname+"-power").on("switchChange.bootstrapSwitch",function (ev,state) {
-                buddy.send_command("power",oname,otype,(state && "on") || "off",$("#"+oname+"-propagate").is(':checked'))
+                buddy.send_command("power",oname,otype,{"power":(state && "on") || "off"},$("#"+oname+"-propagate").is(':checked'))
             })
         } 
         return false
@@ -1400,16 +1400,19 @@ var BuddyApp = Class.extend({
                     buddy.hevent_device_deletion(msg);
                 } else if ( msg.content.event ==  'error report' ) {
                     console.log(msg.content.value);
+                } else {
+                    var device=msg.content.target.split(".")[1];
+                    //Let's just check if this device's status is affected
+                    if ( device in deviceById && msg.content.event in deviceById[device].status && "value" in msg.content ) {
+                        //Should we check if it is a command for that?
+                        deviceById[device].status[msg.content.event] = msg.content.value;
+                    }
                 }
                 if ( "icon status" in msg.content ) {
                     if ("target" in msg.content) {
                         var device=msg.content.target.split(".")[1];
                         deviceById[device].iconstatus=msg.content["icon status"];
-                        deviceById[device].match_status(msg.content.subject);
-                        if ( msg.content.event in deviceById[device].status && "value" in msg.content ) {
-                            //Should we check if it is a command for that?
-                            deviceById[device].status[msg.content.subject] = msg.content.value;
-                        }
+                        deviceById[device].match_status();
                     }
                 }
                 //Let's record the event structure
@@ -1999,11 +2002,11 @@ var BuddyApp = Class.extend({
                 $.each(msg.content.value,function(key,value) {
                     deviceById[device].status[key]=value;
                 })
-                if ( "icon status" in msg.content ) {
-                    deviceById[device].iconstatus=msg.content["icon status"];
-                }
+                //if ( "icon status" in msg.content ) {
+                //    deviceById[device].iconstatus=msg.content["icon status"];
+                //}
             }
-            deviceById[device].match_status();
+            //deviceById[device].match_status();
         }
     },
     
@@ -2012,15 +2015,15 @@ var BuddyApp = Class.extend({
         var device=msg.content.target.split(".")[1];
         if ( deviceById[device]) {
              if ( deviceById[device].type == type ) {
-                if ( "icon status" in msg.content ) {
-                    deviceById[device].iconstatus=msg.content["icon status"];
-                }
+//                 if ( "icon status" in msg.content ) {
+//                     deviceById[device].iconstatus=msg.content["icon status"];
+//                 }
                 deviceById[device].presence= ( msg.content.value == "online" )
                 if ( msg.content.value == "online" ) {
                     buddy.send_command("status",deviceById[device].name,deviceById[device].type,"");
-                } else {
+                } /*else {
                     deviceById[device].match_status();
-                }
+                }*/
             }
         }
     },

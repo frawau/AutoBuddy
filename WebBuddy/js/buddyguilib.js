@@ -391,7 +391,7 @@ var grouplistCG = Class.extend({
         if ( this.realtime ) {
             tabmsg = "<div id=\""+this.jsid+"\" class=\"bu-grouplist\">";
             tabmsg +=this.list.render(classes)
-            tabmsg += "<div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bapply\" class=\"btn btn-primary\" type=\"button\" value=\"Apply\"></div></div>";
+            tabmsg += "<div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bapply\" class=\"btn btn-primary\" type=\"button\" value=\""+(this.part.attr("label")||"Apply")+"\"></div></div>";
         } else {
             tabmsg=this.list.render(classes)
         }
