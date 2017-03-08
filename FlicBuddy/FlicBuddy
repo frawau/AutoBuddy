@@ -741,7 +741,7 @@ if __name__ == "__main__":
         flicdpid=os.fork()
         if flicdpid == 0:
             try:
-                os.execl(config["flicpath"]+"/flicd",config["flicpath"]+"/flicd","-f",config["flicpath"]+"/flic.db","-p",str(config["flicport"]),"-h",config["btiface"],"-d", '-l','/tmp/flic.log')
+                os.execl(config["flicpath"]+"/flicd",config["flicpath"]+"/flicd","-f",config["flicpath"]+"/flic.db","-p",str(config["flicport"]),"-h",config["btiface"], '-l','/tmp/flic.log')
             except:
                 sys.exit(0)
         

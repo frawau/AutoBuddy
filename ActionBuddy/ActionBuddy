@@ -1386,7 +1386,7 @@ class TimeState():
                 aval=aval["timedef"]
                 if aval["bu-cvalue"]=="sunrise":
                     self.istart=sunrise(self._varstate)
-                elif avaval == self.lastone and l["bu-cvalue"]=="sunset":
+                elif aval["bu-cvalue"]=="sunset":
                     self.istart=sunset(self._varstate)
                 elif aval["bu-cvalue"]=="time":
                     self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
@@ -1773,6 +1773,8 @@ class Rule():
                 self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],None,acond['condition']["compare"]['bu-cvalue']))
             elif acond['condition']['bu-cvalue'] == 'differential':
                 self.condition.append(DiffCond(acond["cond name"],acond['condition']))
+            elif acond['condition']["compare"]['bu-cvalue'] in ['frozen','not frozen']:
+                self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],False,acond['condition']["compare"]['bu-cvalue']))
             else:
                 if "bu-cvalue" in acond['condition']["compare"]["compval"]:
                     self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],acond['condition']["compare"]["compval"]["bu-cvalue"],acond['condition']["compare"]['bu-cvalue']))
@@ -1801,10 +1803,10 @@ class Rule():
                 self.action.append([acmd['bu-cvalue'],acmd['delay'],None])
             elif acmd['bu-cvalue'] == "event":
                 self.action.append([acmd['bu-cvalue'],
-                            {"subject":self.target ,
+                            {"subject": "action.synthetic" ,
                                 "content_type": "event",
                                 "content":{"event":acmd['event'], 
-                                            "target":self.type+".rules",
+                                            "target":"action.rules",
                                             "value":acmd['e-value']}},None])
             elif acmd['bu-cvalue'] == "command":
                 mycmd=[acmd['bu-cvalue']]
@@ -1822,8 +1824,7 @@ class Rule():
             elif acmd['bu-cvalue'] == "command tracker":
                 
                 mycmd=[acmd['bu-cvalue']]
-                acmd=acmd["variable"]
-                mycmd.append(acmd['bu-cvalue'])
+                mycmd.append(acmd["variable"]['bu-cvalue'])
                 tcmd=acmd['command']['bu-cvalue']
                 tcmdval=acmd['command'][tcmd]
                 mycmd.append({"subject":None,
