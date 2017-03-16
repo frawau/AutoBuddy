@@ -277,8 +277,9 @@ var listCG = Class.extend({
          //size is an array with 2 values, 
          // call back is an actual call back for widget, True or false otherwise
          if ( this.widget_name ) {
-             this.widget = new buwidgetRegistry[this.widget_name]($("#"+this.jsid)[0],size[0],size[1])
-             
+             if ( this.widget == undefined ) {
+                this.widget = new buwidgetRegistry[this.widget_name]($("#"+this.jsid)[0],size[0],size[1])
+             }
          } else { 
             $.each(this.locontrols, function (elt, actrl) {
                 actrl.activate(size);
@@ -345,8 +346,6 @@ var listCG = Class.extend({
                 resu = this.widget.setValue(vals[thiscmd]);
             } else {
                 $.each(this.locontrols, function (idx, actrl) {
-                    var xx = actrl.part.attr("name");
-                    var yy = self.part.attr("name");
                     if ( actrl.widget_name ) {
                         if ( actrl.part.attr("name") ==  thiscmd ){
                             actrl.widget.setValue(vals[thiscmd]);

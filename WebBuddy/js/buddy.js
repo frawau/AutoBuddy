@@ -1411,8 +1411,10 @@ var BuddyApp = Class.extend({
                 if ( "icon status" in msg.content ) {
                     if ("target" in msg.content) {
                         var device=msg.content.target.split(".")[1];
-                        deviceById[device].iconstatus=msg.content["icon status"];
-                        deviceById[device].match_status();
+                        if ( device in deviceById) {
+                            deviceById[device].iconstatus=msg.content["icon status"];
+                            deviceById[device].match_status();
+                        }
                     }
                 }
                 //Let's record the event structure
@@ -1580,6 +1582,7 @@ var BuddyApp = Class.extend({
             $.each(deviceById,function(idx,device) {
                 buddy.send_command("status",device.name,device.type,"")
             })
+            buddy.send_event("gui refresh","","refresh");
             $(".bu-zonelabel").click(zoneById[buddy.currenttop].zone_click);
                 
         }
@@ -1677,10 +1680,6 @@ var BuddyApp = Class.extend({
     
     build_panel: function() {
         $('#top-container').append($('<div/>', {class: "no-gutter col-xs-12 col-md-12", id: "bu-topzonec"}));
-        //var ctrldiv=$('<div/>',{ class: "col-md-4", id: "bu-tools" });
-        //ctrldiv.append($('<div/>', {class: "bu-nldevs", id: "bu-nldevs"}));
-        //ctrldiv.append($('<div/>', {class: "bu-controls ", id: "bu-controls"}));
-        //$('#top-container').append(ctrldiv);
         var zinfo=""
         if (this.topzone) {
             zinfo={"zone":this.topzone}

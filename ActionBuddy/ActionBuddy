@@ -50,7 +50,7 @@ action_statevariable="""
                         <item value="year" label="Year" />
                     </controlgroup>
                     <control name="entity" expand="device" exopt="any withtype" label="What to track" type="text" length="16" />
-                    <control name="event" label="Event to track" type="text" length="16" />
+                    <control name="event" label="Event to track" type="text" length="32" />
                     <control name="subval" label="Part of value" type="text" length="32" >
                         <default>value</default>
                     </control>
@@ -87,12 +87,12 @@ action_statevariable="""
                         <item value="year" label="Year" />
                     </controlgroup>
                     <control name="entity" expand="device" exopt="any withtype" label="What to track" type="text" length="16" />
-                    <control name="event" label="Event to track" type="text" length="16" />
+                    <control name="event" label="Event to track" type="text" length="32" />
                     <control name="subval" label="Part of value" type="text" length="32" >
                         <default>value</default>
                     </control>
                     <control name="add" label="Increment values" type="text" length="64" help="Comma separated list of values" />
-                    <control name="devent" label="Event to track (decrement)" type="text" length="16" />
+                    <control name="devent" label="Event to track (decrement)" type="text" length="32" />
                     <control name="dsubval" label="Part of value" type="text" length="32" >
                         <default>value</default>
                     </control>
@@ -454,8 +454,8 @@ action_rules="""
                         </controlgroup>
                     </item>
                     <item value="event" label="Event">
-                        <control name="name" expand="device" exopt="any withtype" label="What to track?" type="text" length="16" />
-                        <control name="event" label="Event to track" type="text" length="16" />
+                        <control name="name" expand="device" exopt="any withtype" label="What to track?" type="text" length="32" />
+                        <control name="event" label="Event to track" type="text" length="32" />
                         <control name="subval" label="Part of value" type="text" length="32" >
                             <default>value</default>
                         </control>
@@ -1877,6 +1877,7 @@ class Rule():
                 await aio.sleep(v)
             elif c == 'event':
                 self.sending(v)
+                bridgectl.process_event(v)
             elif c == 'command':
                 self.sending(v)
             elif c == 'command tracker':

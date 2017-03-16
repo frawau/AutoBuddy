@@ -1,0 +1,775 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application listen for events and process them according 
+# to a set of rules. Commands and/or state changes may ensue.
+# 
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse, sys, traceback,json,os,ssl,logging,subprocess
+import ipaddress,datetime as dt, asyncio as aio, colorsys
+import aioarping as aping
+import aiobtname as btping
+import buddylib as bl
+from functools import partial
+
+SUBTYPE="" #more than 1 subtypes, male,female, trans? dog? cat?
+__version__="0.10"
+CERTFILE="autobuddy.crt"
+presence_function="""
+"""
+
+presence_config="""
+<buddyui version="0.1">
+    <configuration  name="presence">
+        <controlgroup type="listmaker"  name="entity" label="People and pets">
+            <control type="text" name="nickname" label="Name" length="32"/>
+            <controlgroup type="choice"  name="type" label="Type">  
+                <item value="female" label="Woman" />
+                <item value="male" label="Man" />
+                <item value="cat" label="Cat" />
+                <item value="dog" label="Dog" />
+                <item value="robot" label="Robot" />
+            </controlgroup>
+            <control type="text" name="mac" label="MAC address(es)" length=""/>
+            <control type="text" name="btmac" label="Bluetooth MAC address(es)" length=""/>
+            <controlgroup type="choice"  name="compare" label="Comparison method"> 
+                <item value="any" label="Any MAC address means presence" />
+                <item value="all" label="All MAC addresses needed for presence" />
+                <item value="nof" label="n MAC addresses needed for presence" >
+                    <control type="text" name="compval" itype="number" label="value of n" length="2"/>
+                </item>
+            </controlgroup> 
+            <controlgroup type="list" name="colour" label="Icon Colour" widget="colourpicker">
+                <control type="slider" name="hue" label="Hue">
+                    <start>0</start>
+                    <end>360</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="saturation" label="Saturation">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="value" label="Brightness">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+            </controlgroup>
+        </controlgroup>
+        <control type="spinner" name="probe" label="Check for presence interval">
+            <start>30</start>
+            <end>600</end>
+            <increment>1</increment>
+            <postfix>secs</postfix>
+            <default>180</default>
+        </control>
+        <control type="spinner" name="miss" label="Nb of misses">
+            <start>0</start>
+            <end>10</end>
+            <increment>1</increment>
+            <default>2</default>
+        </control>
+    </configuration>
+</buddyui>
+"""
+presence_config_default={"probe":180,"entity":[],"miss":2}
+
+
+
+class TrackedEntity(bl.BuddyDevice):
+    #Here we don't want to save in the db.... it should be transient
+    def __init__(self,ctrl,vardef):
+        """
+        Creating a Buddy entity is simply definig its controller
+        and passing the XML generated definition to parse
+        """
+        self.parent = ctrl
+        self.vardef = None
+        self.name = None
+        self.nickname = None
+        self.type=ctrl.type
+        self.subtype = None
+        self.macs=None
+        self.wifimacs=None
+        self.btmacs=None
+        self.seen_macs=[]
+        self.comparison =None
+        self.compval = None
+        self.present=False
+        self.colour = {"hue":30,"saturation":90,"value":89}
+        super().__init__()
+        self._parseval(vardef)
+         
+    def _parseval(self,val):
+        self.vardef = val
+        self.subtype = val["type"]["bu-cvalue"]
+        self.name = self.subtype+"-"+val["nickname"]
+        self.nickname = val["nickname"]
+        self.wifimacs = [x.strip().lower() for x in val["mac"].split(",") if x.strip() and len(x.strip())==17] #A proper MAC address has exactly 17 chars
+        if "btmac" in val:
+            self.btmacs = [x.strip().lower() for x in val["btmac"].split(",") if x.strip() and len(x.strip())==17] #A proper MAC address has exactly 17 chars
+        else:
+            self.btmacs = []
+        self.macs=list(set(self.wifimacs+self.btmacs)) 
+        if val["compare"]["bu-cvalue"]=="any":
+            self.comparison= lambda : len(self.seen_macs)>=1
+        elif val["compare"]["bu-cvalue"]=="all":
+            self.comparison= lambda : len(self.seen_macs)==len(self.macs)
+        else:
+            self.compval = int(val["compare"]["compval"])
+            self.comparison= lambda : len(self.seen_macs)>=self.compval
+        self.colour = val["colour"]
+       
+    @property
+    def cssColour(self):
+        return'#%02x%02x%02x' % tuple([int((x*255)+0.5) for x in colorsys.hsv_to_rgb(self.colour["hue"]/360.0,
+                                                                         self.colour["saturation"]/100.0,
+                                                                         self.colour["value"]/100.0)])
+ 
+    def _process(self,msg):
+        #Would be good if we vould have "shut up", "shag", "sleep", "do homework" and the like
+        return None
+    
+    def update(self,newval):
+        """Update an entity if needs be. Returns True if it was
+        this entity, False if not this entity"""
+        if self.nickname != newval["nickname"]:
+            #Not me
+            return False
+        
+        if self.vardef != newval:
+            self._parseval(newval)
+            nottracked=[x for x in self.seen_macs if x not in self.macs]
+            for x in nottracked:
+                self.process_mac({"mac":x,"status":"offline","ip":"0.0.0.0"})
+            if self.present:
+                #Colour change maybe
+                self.parent.sending({"subject":self.type,
+                            "content_type": "event",
+                            "content":{"event":"presence", 
+                                        "target":self.type + "." + self.name,
+                                        "value":"online",
+                                        "icon status" : {"bu-fill":{"fill":self.cssColour}}}})
+        return True
+
+    def process_mac(self,data):
+        """date is the info from aioarping"""
+        print("Checking {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
+        if data["status"] == "online":
+            if data["mac"].lower() in self.macs and data["mac"] not in self.seen_macs:
+                print("Checking online {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
+                #we've got a live one
+                self.seen_macs.append(data["mac"])
+                if self.comparison() and not self.present:
+                    #Let's "create" the bugger
+                    self.parent.sending({"subject":self.type,
+                            "content_type": "event",
+                            "content":{"event":"new device", 
+                                "target":self.type + "." + self.name,
+                                "value":{"type":self.type,"subtype":self.subtype,
+                                        "name":self.name,"nickname":self.nickname}}})
+                    self.present=True
+                    
+                    self.parent.sending({"subject":self.type,
+                                "content_type": "event",
+                                "content":{"event":"presence", 
+                                            "target":self.type + "." + self.name,
+                                            "value":"online",
+                                            "icon status" : {"bu-fill":{"fill":self.cssColour}}}})
+        else: #offline
+            if data["mac"] in self.macs and data["mac"] in self.seen_macs:
+                print("Checking offline {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
+                self.seen_macs.remove(data["mac"])
+                if not self.comparison() and self.present:
+                    #destroy the poor sucker
+                    self.parent.sending({"subject":self.type,
+                                    "content_type": "event",
+                                    "content":{"event":"deletion",  
+                                               "target":self.type + "." + self.name,
+                                               "value":self.name}})
+                    self.parent.sending({"subject":self.type,
+                                "content_type": "event",
+                                "content":{"event":"presence", 
+                                            "target":self.type + "." + self.name,
+                                            "value":"offline"}})
+                self.present=False
+                
+
+
+class PresenceBridge(bl.BuddyBridge):
+    """
+    This is the bridge application. It will check for the current list  of presence bulb.
+    It will report any new bulb
+    """
+    def __init__(self,loop,future,config,log):
+        super(PresenceBridge, self).__init__(loop,future,config,log)
+        self.probe_mac = None
+        self.bt_macs = set()
+        self.presence_config = presence_config_default
+        self.tracked_mac = set()
+        self.mac_score = {}
+
+
+    def process_command(self,msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k,v in msg["content"]["value"].items():
+                    presence_config_default[k]=v
+                print ("{}".format(self.config))
+                self.sending({"subject":"control" + "." + self.subtype,
+                                    "content_type": "request",
+                                    "content": {"request":"save configuration",
+                                                "target":self.type,
+                                                #"token": self.target,
+                                            "value":bl.encrypt(presence_config_default,self.config["buddykey"])}})
+        #else:
+            #for aconn in self.devices:
+                #aconn.process(msg)
+
+    def process_response(self,msg):
+        #if msg["content"]["token"] != self.target:
+            #if self.log:
+                #self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            #else:
+                #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            #Getting the config
+            newconfig={}
+            fromconfig=[]
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug("The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig={}
+                    savenew=True
+                    #log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.presence_config[x]=storedconfig[x]
+                #Now let's create 
+                for x in self.presence_config["entity"]:
+                    newent=TrackedEntity(self,x)
+                    self.register(newent)
+            
+            self.config["database"]= msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+                self.sending({"subject":"control" + "." + self.target ,
+                        "content_type": "request",
+                        "content":{"request":"functions", 
+                                    "target":self.type,
+                                    "subtype": self.subtype,
+                                    #"token": self.target,
+                                    "value":{"configs":[presence_config,self.presence_config]}}})
+                self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"config updated", 
+                                    "target":self.target,
+                                    "value":self.presence_config}})
+                                
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and  msg["content"]["status"] != "done":
+                #log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            elif self.state == "wait config save":
+                if msg["content"]["status"] == "done":
+                    raise bl.Exit(0,"Configuration was saved")
+                else:
+                    raise bl.Exit(2,"Error: Configuration was not saved")
+            else:
+                self.sending({"subject":"control" + "." + self.target ,
+                        "content_type": "request",
+                        "content":{"request":"functions", 
+                                    "target":self.type,
+                                    "subtype": self.subtype,
+                                    #"token": self.target,
+                                    "value":{"configs":[presence_config,self.presence_config]}}})
+                self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"config updated", 
+                                    "target":self.target,
+                                    "value":self.presence_config}})
+                new_ent=[]
+                unseen_ent=list([x for x in self.devices]) #copy essentially
+                for entdef in self.presence_config["entity"]:
+                    seen=False
+                    for ent in self.devices:
+                        seen = seen or ent.update(entdef)
+                        if seen:
+                            unseen_ent.remove(ent)
+                            break
+                    if not seen:
+                        new_ent.append(entdef)
+                #remove those deleted
+                for ent in unseen_ent:
+                    self.unregister(ent)
+                for entdef in new_ent:
+                    newent=TrackedEntity(self,entdef)
+                    self.register(newent)
+
+
+        else:
+            if self.log:
+                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+            else:
+                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+
+
+    def process_event(self,msg):
+        #We can react to 2 events. "dhcp" events on devices and "gui info" info requests
+        #TODO
+        if msg["content"]["event"]=="dhcp" and "mac" in msg["content"]["value"]:
+            macmsg={"mac":msg["content"]["value"]["mac"].lower()}
+            macmsg["ip"]=ipaddress.IPv4Address(msg["content"]["value"]["ip"])
+            macmsg["status"]=msg["content"]["value"]["status"].lower()
+            for x in self.devices:
+                x.process_mac(macmsg)
+        elif msg["content"]["event"]=="gui refresh":
+            for x in self.devices:
+                if x.present:
+                    self.sending({"subject":x.type,
+                            "content_type": "event",
+                            "content":{"event":"new device", 
+                                "target":x.type + "." + x.name,
+                                "value":{"type":x.type,"subtype":x.subtype,
+                                        "name":x.name,"nickname":x.nickname},
+                                "icon status" : {"bu-fill":{"fill":x.cssColour}}}})
+                                    
+    def build(self):
+        self.sending({"subject":"control" + "." + self.target ,
+                "content_type": "request",
+                "content":{"request":"functions", 
+                            "target":self.type,
+                            "subtype": self.subtype,
+                            #"token": self.target,
+                            "value":{"functions":"","configs":[presence_config,self.presence_config]}}})
+                
+        coro=partial(PresenceBridge.probe_presence,self)
+        self.probe_mac = aio.ensure_future(coro(), loop=self.loop)
+
+    async def probe_presence(self):
+        #Give time for things to settle
+        await aio.sleep(2)
+        #Here we actually start the probe
+        while True:
+            #Till the end of time
+            lop=[]
+            for x in self.mac_score:
+                self.mac_score[x]-=1
+                
+            timetowait = 10
+            #Launch ARP 
+            for dev,net in self.config["networks"].values():
+                if self.log:
+                    self.log.debug("Probing {} on {}".format(net,dev)) 
+                sock=aping.create_raw_socket(dev)
+                fac=self.loop.create_connection(aping.ArpRequester,sock=sock)
+                conn,arpctrl = await self.loop.create_task(fac)
+                arpctrl.process=self.process_mac
+                lop.append(conn)
+                arpctrl.request(net) 
+                
+            #Star BT but gently
+            if "btdev" in self.config and  self.config["btdev"] is not None:
+                if self.log:
+                    self.log.debug("Probing BT  for {}".format(self.bt_macs)) 
+                sock=btping.create_bt_socket(self.config["btdev"])
+                fac=self.loop.create_connection(btping.BTNameRequester,sock=sock)
+                conn,btctrl = await self.loop.create_task(fac)
+                btctrl.process=self.process_btmac
+                lop.append(conn)
+                btctrl.request(self.bt_macs) 
+                await aio.sleep(2)
+                timetowait-=2
+                
+
+            if timetowait>0:
+                await aio.sleep(timetowait) #Time for the devices to reply
+            
+            for x in lop:
+                x.close()#No need to keep listening
+            #
+            for mac in [ x for x in self.mac_score if self.mac_score[x]==0]:
+                data={"mac": mac,"ip": "0.0.0.0", "status": "offline"}
+                for ent in self.devices:
+                    ent.process_mac(data)
+                del(self.mac_score[mac])
+                    
+            await aio.sleep(self.presence_config["probe"])
+        
+    def process_mac(self,data):
+        #this runs when an ARP reply is received
+        #if self.log:
+            #self.log.debug("Response from {} at {}\n\n".format(data["mac"],data["ip"])) 
+        if data["mac"] in self.tracked_mac:
+            self.mac_score[data["mac"]]=self.presence_config["miss"]
+            
+            data["status"]="online"
+            for x in self.devices:
+                x.process_mac(data)
+                
+    def process_btmac(self,btdata):
+        #this runs when an name reply is received
+        if self.log:
+            self.log.debug("BT response from {} against {}\n\n".format(btdata,self.tracked_mac)) 
+        if btdata in self.tracked_mac:
+            self.mac_score[btdata]=self.presence_config["miss"]
+            data={"ip":"0.0.0.0"}
+            data["status"]="online"
+            data["mac"]=btdata
+            for x in self.devices:
+                x.process_mac(data)
+                
+
+    def register(self,entity):
+        self.devices.append(entity)
+        #Now let's figureout a few things
+        print("Registering {} with {}".format(entity.nickname,entity.macs))
+        for mac in entity.macs:
+            self.tracked_mac.add(mac)
+        for mac in entity.btmacs:
+            self.bt_macs.add(mac)
+         
+    def unregister(self,entity):
+        for mac in entity.macs:
+            try:
+                self.tracked_mac.remove(mac)
+            except:
+                pass
+            try:
+                del(self.mac_score[mac])
+            except:
+                pass
+        for mac in entity.btmacs:
+            try:
+                self.bt_macs.remove(mac)
+            except:
+                pass
+            
+        self.devices = [ x for x in self.devices if x.name!=entity.name]
+            
+
+
+
+aboutstr="""<p>PresenceBuddy is an application tracking on the LAN devices associated with transient entities... mostly people,pets.</p>
+<p>Some icons taken from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a></p>
+<p>Also <a target='_blank' href='https://www.vexels.com/vectors/png-svg/139891/cat-sitting '> Cat sitting </a> | Designed by Vexels.com </a>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr={}
+iconstr["male"]="""
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1100 1792" xmlns="http://www.w3.org/2000/svg">
+     <g transform="scale(1,-1)">     
+     <g transform="translate(0, -1510)">
+     <path class="bu-fill"  d="M1024 832v-416q0 -40 -28 -68t-68 -28t-68 28t-28 68v352h-64v-912q0 -46
+           -33 -79t-79 -33t-79 33t-33 79v464h-64v-464q0 -46 -33 -79t-79 -33t-79 33t-33 79v912h-64v-352q0 -40 -28 -68t-68 -28t-68 
+           28t-28 68v416q0 80 56 136t136 56h640q80 0 136 -56t56 -136z M736 1280q0 -93 -65.5 -158.5t-158.5 -65.5t-158.5 65.5t-65.5 
+           158.5t65.5 158.5t158.5 65.5t158.5 -65.5t65.5 -158.5z" fill="black"/></g></g>
+   </svg>
+"""
+iconstr["female"]="""
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1300 1792" xmlns="http://www.w3.org/2000/svg">
+     <g transform="scale(1,-1)">     
+     <g transform="translate(0, -1510)">
+     <path class="bu-fill"   d="M1280 480q0 -40 -28 -68t-68 -28q-51 0 -80 43l-227 341h-45v-132l247 -411q9 -15 9 -33q0 -26 -19
+           -45t-45 -19h-192v-272q0 -46 -33 -79t-79 -33h-160q-46 0 -79 33t-33 79v272h-192q-26 0 -45 19t-19 45q0 18 9 33l247 411v132h-45l-227
+           -341q-29 -43 -80 -43 q-40 0 -68 28t-28 68q0 29 16 53l256 384q73 107 176 107h384q103 0 176 -107l256 -384q16 -24 16 -53zM864 1280q0 -93
+           -65.5 -158.5t-158.5 -65.5t-158.5 65.5t-65.5 158.5t65.5 158.5t158.5 65.5t158.5 -65.5t65.5 -158.5z" fill="black"/> </g></g>
+   </svg>
+"""
+iconstr["robot"]="""
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1500 1792" xmlns="http://www.w3.org/2000/svg">
+     <g transform="scale(1,-1)">     
+     <g transform="translate(0, -1510)">
+     <path class="bu-fill"  d="M493 1053q16 0 27.5 11.5t11.5 27.5t-11.5 27.5t-27.5 11.5t-27 -11.5t-11
+           -27.5t11 -27.5t27 -11.5zM915 1053q16 0 27 11.5t11 27.5t-11 27.5t-27 11.5t-27.5 -11.5t-11.5 -27.5t11.5
+           -27.5t27.5 -11.5zM103 869q42 0 72 -30t30 -72v-430q0 -43 -29.5 -73t-72.5 -30 t-73 30t-30 73v430q0 42 30
+           72t73 30zM1163 850v-666q0 -46 -32 -78t-77 -32h-75v-227q0 -43 -30 -73t-73 -30t-73 30t-30 73v227h-138v-227q0
+           -43 -30 -73t-73 -30q-42 0 -72 30t-30 73l-1 227h-74q-46 0 -78 32t-32 78v666h918zM931 1255q107 -55 171 -153.5t64
+           -215.5 h-925q0 117 64 215.5t172 153.5l-71 131q-7 13 5 20q13 6 20 -6l72 -132q95 42 201 42t201 -42l72 132q7 12 20 6q12
+           -7 5 -20zM1408 767v-430q0 -43 -30 -73t-73 -30q-42 0 -72 30t-30 73v430q0 43 30 72.5t72 29.5q43 0 73 -29.5t30 -72.5z" fill="black"/> </g></g>
+
+   </svg>
+   """
+iconstr["cat"]="""
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1300 1300" xmlns="http://www.w3.org/2000/svg">
+     <path class="bu-fill" d="M557.084,404.283c0,0-134.891-95.047-116.493-196.21c0,0-58.277-150.222,39.845-125.698
+    c0,0,39.849,24.526,58.249,55.187c0,0,85.837-21.451,101.162-9.199c0,0,116.493-91.974,147.16-76.638
+    c0,0-21.462,113.435-36.799,122.612c0,0,0,70.534-3.062,82.797c0,0,85.837-3.085,137.943,58.227c0,0,91.98,82.774,122.653,122.646
+    c30.638,39.839,61.311,144.075,64.375,214.587c3.062,70.534,3.062,187.01-6.131,248.333c-9.205,61.313-52.129,82.775-49.056,107.287
+    c3.068,24.526,39.85,45.988,55.187,82.763c15.319,36.799-3.063,21.474-21.479,24.524c-18.383,3.075-67.438-9.176-88.889,3.075
+    c-21.451,12.273-85.837,42.935-122.624,21.451c0,0-174.736,3.085-214.603,0c0,0-410.791,49.072-478.229-70.5
+    c0,0-52.135-116.498-3.097-125.687c0,0,27.605-6.126,49.056,52.124c0,0,9.194,42.913,45.992,55.175
+    c0,0,125.687,24.514,171.674,15.337c45.992-9.199,73.597-42.924,95.048-67.449c21.451-24.526,24.514-85.825,27.593-150.223
+    c3.062-64.386,42.907-128.761,67.449-159.411C600.008,689.393,504.966,480.909,557.084,404.283z" fill="black"/>
+
+   </svg>
+   """
+iconstr["dog"]="""   
+  <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
+     <g transform="scale(2.9,2.9)" >
+     <path class="bu-fill" d="M533.477,595.188v0.685c0,7.849-6.36,14.21-14.21,14.21h-40.02c-18.154,0-33.361-13.601-35.376-31.639l-9.955-88.852
+        l-1.381,2.086c-0.642,0.972-1.401,sock=aping.create_raw_socket(dev)1.859-2.259,2.646l-63.201,57.784l10.242,1.384c20.592,2.788,36.243,20.189,37.004,40.807
+        c0.057,0.517,0.082,1.04,0.082,1.572c0,7.849-6.36,14.209-14.209,14.209c-0.014,0.003-0.037,0.003-0.057,0H169.217
+        c-0.011,0-0.023-0.003-0.037-0.003c-0.011,0-0.023,0.003-0.037,0.003c-1.691,0-41.799-0.091-74.29-7.966
+        c-8.165-1.978-17.543-6.133-28.672-12.698c-20.189-11.913-37.513-28.078-51.492-48.048l-0.77-1.103
+        c-3.038-4.34-3.407-10.009-0.961-14.71c0.287-0.548,0.605-1.074,0.952-1.574L2.744,508.729c-4.396-6.002-3.413-14.386,2.251-19.211
+        c2.791-2.396,5.914-5.721,7.574-7.971c-9.165-27.024-9.165-28.604-9.165-31.153c0-8.381,5.158-12.513,12.499-15.034l-3.908-12.507
+        c-1.449-4.632-0.429-9.682,2.697-13.394c3.129-3.714,7.92-5.556,12.743-4.928l4.374,0.583l10.021-40.952
+        c1.418-5.803,6.32-10.1,12.26-10.748c5.905-0.637,11.652,2.49,14.289,7.852l1.734,3.524l7.193-12.746
+        c3.174-5.621,9.728-8.398,15.986-6.758c6.244,1.64,10.597,7.284,10.597,13.743v2.606l9.429-3.331
+        c6.823-2.416,14.366,0.688,17.52,7.199s0.915,14.354-5.204,18.214c-1.998,1.287-50.171,33.193-41.327,100.654
+        c6.275,47.846,47.798,69.74,71.326,78.408c0.463-9.253,1.208-20.172,2.399-32.446c7.42-76.461,35.569-149.939,81.403-212.483
+        c10.748-14.661,21.354-28.089,31.522-39.909c29.536-34.324,55.653-59.356,72.366-74.31c3.274-2.93,6.076-6.266,8.432-9.873
+        l178.892,58.918l0.921,34.197c0.838,31.127-7.528,61.479-24.196,87.775c-4.516,7.127-6.872,15.613-6.809,24.543l1.103,161.096
+        C519.487,561.935,533.477,576.958,533.477,595.188z M609.629,99.269c-2.535-3.82-6.752-6.181-11.331-6.343l-74.827-2.671
+        l-17.989-27.581c-2.12-3.254-5.479-5.496-9.296-6.207l-79.911-14.9L398.948,9.394c-2.984-5.542-9.253-8.472-15.429-7.17
+        c-6.164,1.293-10.74,6.488-11.245,12.763l-12.226,151.587l169.795,55.923l-1.168-43.39l23.997-3.282
+           c22.249-3.047,41.031-17.981,49.009-38.971l9.387-24.676C612.704,107.897,612.164,103.088,609.629,99.269z" fill="black"/></g>
+   </svg>
+"""
+
+cfgdefault={"type":"presence","subtype":"mac","host":"localhost","port":8745,"credential":"","ssl":"","btdev":None}
+def configure(): 
+    parser = argparse.ArgumentParser(description="Track presence of people/pet/devices over the LAN.")
+    #                            version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                    help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                    help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/presence.cfg", type=argparse.FileType('r'),
+                    help="Config file to use (default \"/etc/autobuddy/presence.cfg\")")
+    
+    parser.add_argument("-b", "--btdev", type=int, default=cfgdefault["btdev"],
+                    help="The Bluetooth device to use (default \"%s\")." % cfgdefault["btdev"])
+    
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-S", "--ssl", default="",
+                    help="The directory where the file %s can be found."%(CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Log warning messages")
+    
+    parser.add_argument("-C", "--configonly", default="",
+                    help="Exit after the the configuration has been saved")
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                    help="Log debug information (default False)")
+    
+    try:
+        opts=parser.parse_args()
+    except Exception as e:
+        parser.error("Error: "+str(e))
+        
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    presencelog = logging.getLogger('')
+    presencecfg = {"debug":opts.debug}
+    try:
+    #if True:
+        if opts.configonly:
+            try:
+                cfgdata = json.load(opts.config)
+                opts.config.close()
+            except:
+                cfgdata={}
+        else:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+
+        #Definition
+        if opts.type != cfgdefault["type"]:
+            presencecfg["type"] = opts.type
+        elif "type" in cfgdata:
+            presencecfg["type"] = cfgdata["type"]     
+        else:
+            presencecfg["type"] = opts.type
+        if opts.debug:
+            presencelog.debug("The type is %s." % presencecfg["type"]) 
+            
+        if opts.subtype != cfgdefault["subtype"]:
+            if "-" in opts.subtype:
+                raise Exception("Subtype may not contain a dash (\"-\")")
+            presencecfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            presencecfg["subtype"] = cfgdata["subtype"]     
+        else:
+            presencecfg["subtype"] = opts.subtype
+        if opts.debug:
+            presencelog.debug("The subtype is %s." % presencecfg["subtype"]) 
+            
+        #Controller
+        if opts.host != cfgdefault["host"]:
+            presencecfg["host"] = opts.host
+        elif "host" in cfgdata:
+            presencecfg["host"] = cfgdata["host"]
+        else:
+            presencecfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            presencelog.debug("The host is %s"%presencecfg["host"])
+    
+        if opts.port != cfgdefault["port"]:
+            presencecfg["port"] = opts.port
+        elif "port" in cfgdata:
+            presencecfg["port"] = cfgdata["port"]
+        else:
+            presencecfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            presencelog.debug("The port is %s" % (presencecfg["port"]))      
+        
+        #Bluetooth
+        if opts.btdev != cfgdefault["btdev"]:
+            presencecfg["btdev"] = opts.btdev
+        elif "btdev" in cfgdata:
+            presencecfg["btdev"] = cfgdata["btdev"]
+        else:
+            presencecfg["btdev"] = cfgdefault["btdev"]
+        if opts.debug:
+            presencelog.debug("The Bluetooth device is %s" % (presencecfg["btdev"]))      
+           
+        #Authentication and encryption
+        if opts.credential != cfgdefault["credential"]:
+            presencecfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            presencecfg["credential"] = cfgdata["credential"]
+        else:
+            presencecfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            presencelog.debug("The credential is %s"%presencecfg["credential"])         
+            
+        if opts.ssl != cfgdefault["ssl"]:
+            presencecfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            presencecfg["ssl"] = cfgdata["ssl"]
+        else:
+            presencecfg["ssl"] = cfgdefault["ssl"]
+        if presencecfg["ssl"] and not ( os.path.isfile(presencecfg["ssl"]+"/"+CERTFILE)):
+            presencelog.critical("Encryption: Could not find {} .".format(
+                presencecfg["ssl"]+"/"+CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if presencecfg["ssl"]:
+                presencelog.debug("The ssl certificates can be found in %s"%presencecfg["ssl"]) 
+            else:
+                presencelog.debug("The connection is not encrypted") 
+        
+        if "buddykey" in cfgdata:
+            presencecfg["buddykey"] = cfgdata["buddykey"]
+            
+        #Save hings
+        if opts.configonly:
+
+            if "buddykey" not in presencecfg:
+                if opts.debug:
+                    presencelog.debug("Generating random key")   
+                presencecfg["buddykey"] = bl.keygen()
+            try:
+                del(presencecfg["debug"])
+            except:
+                pass
+            with open(opts.configonly,"w") as cfile:
+                json.dump(presencecfg,cfile)
+            os.chmod(opts.configonly,384) # 0600
+            sys.exit()
+        
+    except Exception as e:
+        presencelog.error("Error: %r" % e)
+        sys.exit(-2)
+    
+    return (presencelog,presencecfg)
+
+         
+if __name__ == "__main__":
+    log,config=configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+    
+    #Let's find out what network and interface we have Linux
+    config["networks"]={}
+    p1 = subprocess.getoutput("ip route | sed '/via/d' | sed '/dev/!d' | sed '/src/!d'")
+    if config["debug"]:
+        log.debug("Received from the shell: {}".format(p1))
+    for aroute in p1.split("\n"):
+        allofit = [z for z in [y.strip() for y in aroute.split(" ")] if z!=""]
+        netadd = ipaddress.IPv4Address(allofit[allofit.index("src")+1])
+        network = ipaddress.IPv4Network(allofit[0])
+        dev = allofit[allofit.index("dev")+1]
+        config["networks"][netadd] = [ dev, network ]
+        
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+            cafile=config["ssl"]+'/'+CERTFILE)
+        
+        sslcontext.check_hostname = False
+    else:
+        sslcontext=None
+    connFuture=aio.Future()
+    fac=loop.create_connection(partial(PresenceBridge,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    conn,bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(bridgectl.configrequest,{"about":{"PresenceBuddy":aboutstr},"display":iconstr})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        
+        bridgectl.probe_mac.set_result('done')
+        conn.close()
+        loop.close()
+            

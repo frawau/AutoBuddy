@@ -441,9 +441,7 @@ class LifxBridge(bl.BuddyBridge):
     """
     def __init__(self,loop,future,config,log):
         super(LifxBridge, self).__init__(loop,future,config,log)
-        self.lifx = None
         self.probelights = None
-        self.probe = None
         self.lifxhb={}
         self.lifx_config = lifx_config_default
 
@@ -592,7 +590,7 @@ class LifxBridge(bl.BuddyBridge):
                     if self.log:
                         self.log.debug (msg)
                     for light in self.devices:
-                        if light.name==msg.subject.split(".")[-1]:
+                        if light.name==msg["subject"].split(".")[-1]:
                             light.nickname=msg["content"]["value"] 
                             self.sending({"subject":self.type,
                                     "content_type": "event",
@@ -623,9 +621,9 @@ class LifxBridge(bl.BuddyBridge):
                         del self.devices[sidx]
         else:
             if self.log:
-                self.log.warning("Unknown response {} {} {}".format(msg.subject ,msg["content_type"] ,msg["content"])) 
+                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
             else:
-                print ("Unknown response {} {} {}".format(msg.subject ,msg["content_type"] ,msg["content"])) 
+                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
 
 
                                     
@@ -795,9 +793,15 @@ def configure():
     lifxcfg = {"debug":opts.debug}
     try:
     #if True:
-        
-        cfgdata = json.load(opts.config)
-        opts.config.close()
+        if opts.configonly:
+            try:
+                cfgdata = json.load(opts.config)
+                opts.config.close()
+            except:
+                cfgdata={}
+        else:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
         if opts.type != cfgdefault["type"]:
             lifxcfg["type"] = opts.type
         elif "type" in cfgdata:
