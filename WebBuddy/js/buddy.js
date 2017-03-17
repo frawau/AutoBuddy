@@ -1978,8 +1978,8 @@ var BuddyApp = Class.extend({
             $("#"+devid).remove();
             delete this.tokento[devid];
             delete deviceById[devid];
-            return false;
         }
+        return false;
     },
        
     err_handle_device_deletion: function (token, deviceById) {
@@ -1987,8 +1987,8 @@ var BuddyApp = Class.extend({
             var thisapp=this;
             $("#"+token).show();
             delete this.tokento[token];
-            return false;
         };
+        return false;
     },
        
 

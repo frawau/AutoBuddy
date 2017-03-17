@@ -173,10 +173,8 @@ class TrackedEntity(bl.BuddyDevice):
 
     def process_mac(self,data):
         """date is the info from aioarping"""
-        print("Checking {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
         if data["status"] == "online":
             if data["mac"].lower() in self.macs and data["mac"] not in self.seen_macs:
-                print("Checking online {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
                 #we've got a live one
                 self.seen_macs.append(data["mac"])
                 if self.comparison() and not self.present:
@@ -197,7 +195,6 @@ class TrackedEntity(bl.BuddyDevice):
                                             "icon status" : {"bu-fill":{"fill":self.cssColour}}}})
         else: #offline
             if data["mac"] in self.macs and data["mac"] in self.seen_macs:
-                print("Checking offline {} against {} with {}".format(data["mac"], self.macs, self.seen_macs))
                 self.seen_macs.remove(data["mac"])
                 if not self.comparison() and self.present:
                     #destroy the poor sucker
@@ -211,7 +208,7 @@ class TrackedEntity(bl.BuddyDevice):
                                 "content":{"event":"presence", 
                                             "target":self.type + "." + self.name,
                                             "value":"offline"}})
-                self.present=False
+                    self.present=False
                 
 
 
@@ -226,6 +223,7 @@ class PresenceBridge(bl.BuddyBridge):
         self.bt_macs = set()
         self.presence_config = presence_config_default
         self.tracked_mac = set()
+        self.untracked_mac={}
         self.mac_score = {}
 
 
@@ -234,7 +232,6 @@ class PresenceBridge(bl.BuddyBridge):
             if msg["content"]["target"] == self.target:
                 for k,v in msg["content"]["value"].items():
                     presence_config_default[k]=v
-                print ("{}".format(self.config))
                 self.sending({"subject":"control" + "." + self.subtype,
                                     "content_type": "request",
                                     "content": {"request":"save configuration",
@@ -337,6 +334,7 @@ class PresenceBridge(bl.BuddyBridge):
                 for entdef in new_ent:
                     newent=TrackedEntity(self,entdef)
                     self.register(newent)
+                self.untracked_mac={}
 
 
         else:
@@ -353,8 +351,7 @@ class PresenceBridge(bl.BuddyBridge):
             macmsg={"mac":msg["content"]["value"]["mac"].lower()}
             macmsg["ip"]=ipaddress.IPv4Address(msg["content"]["value"]["ip"])
             macmsg["status"]=msg["content"]["value"]["status"].lower()
-            for x in self.devices:
-                x.process_mac(macmsg)
+            self.process_mac(macmsg)
         elif msg["content"]["event"]=="gui refresh":
             for x in self.devices:
                 if x.present:
@@ -387,7 +384,13 @@ class PresenceBridge(bl.BuddyBridge):
             lop=[]
             for x in self.mac_score:
                 self.mac_score[x]-=1
-                
+            
+            self.sending({"subject":"presence.debug",
+                "content_type": "event",
+                "content":{"event":"mac score start", 
+                    "target":"presence.mac",
+                    "value":{"mac scores":self.mac_score}}})
+            
             timetowait = 10
             #Launch ARP 
             for dev,net in self.config["networks"].values():
@@ -397,6 +400,7 @@ class PresenceBridge(bl.BuddyBridge):
                 fac=self.loop.create_connection(aping.ArpRequester,sock=sock)
                 conn,arpctrl = await self.loop.create_task(fac)
                 arpctrl.process=self.process_mac
+                arpctrl.skip_list=list(self.untracked_mac.values())
                 lop.append(conn)
                 arpctrl.request(net) 
                 
@@ -414,12 +418,21 @@ class PresenceBridge(bl.BuddyBridge):
                 timetowait-=2
                 
 
-            if timetowait>0:
+            if timetowait>3:
                 await aio.sleep(timetowait) #Time for the devices to reply
+            else:
+                await aio.sleep(3) #Time for the devices to reply
             
             for x in lop:
                 x.close()#No need to keep listening
             #
+            
+            self.sending({"subject":"presence.debug",
+                "content_type": "event",
+                "content":{"event":"mac score end", 
+                    "target":"presence.mac",
+                    "value":{"mac scores":self.mac_score}}})
+                
             for mac in [ x for x in self.mac_score if self.mac_score[x]==0]:
                 data={"mac": mac,"ip": "0.0.0.0", "status": "offline"}
                 for ent in self.devices:
@@ -431,23 +444,39 @@ class PresenceBridge(bl.BuddyBridge):
     def process_mac(self,data):
         #this runs when an ARP reply is received
         #if self.log:
-            #self.log.debug("Response from {} at {}\n\n".format(data["mac"],data["ip"])) 
+            #self.log.debug("ARP Response from {} at {}\n\n".format(data["mac"],data["ip"])) 
+        
+        self.sending({"subject":"lan.mac",
+                "content_type": "event",
+                "content":{"event":"mac presence", 
+                    "target":"lan.mac",
+                    "value":{"mac":data["mac"],"ip":str(data["ip"])}}})
+                
         if data["mac"] in self.tracked_mac:
             self.mac_score[data["mac"]]=self.presence_config["miss"]
             
             data["status"]="online"
             for x in self.devices:
                 x.process_mac(data)
+        else:
+            self.untracked_mac[data["mac"]]=data["ip"]
                 
     def process_btmac(self,btdata):
         #this runs when an name reply is received
-        if self.log:
-            self.log.debug("BT response from {} against {}\n\n".format(btdata,self.tracked_mac)) 
-        if btdata in self.tracked_mac:
-            self.mac_score[btdata]=self.presence_config["miss"]
+        #if self.log:
+            #self.log.debug("BT response from {} against {}\n\n".format(btdata,self.tracked_mac)) 
+        self.sending({"subject":"bluetooth.mac",
+                "content_type": "event",
+                "content":{"event":"mac presence", 
+                    "target":"bluetooth.mac",
+                    "value":{"mac":btdata["mac"],"name":btdata["name"]}}}) 
+
+        if btdata["mac"] in self.tracked_mac:
+            self.mac_score[btdata["mac"]]=self.presence_config["miss"]
             data={"ip":"0.0.0.0"}
             data["status"]="online"
-            data["mac"]=btdata
+            data["mac"]=btdata["mac"]
+            data["name"]=btdata["name"]
             for x in self.devices:
                 x.process_mac(data)
                 
@@ -455,7 +484,6 @@ class PresenceBridge(bl.BuddyBridge):
     def register(self,entity):
         self.devices.append(entity)
         #Now let's figureout a few things
-        print("Registering {} with {}".format(entity.nickname,entity.macs))
         for mac in entity.macs:
             self.tracked_mac.add(mac)
         for mac in entity.btmacs:
@@ -561,7 +589,7 @@ iconstr["dog"]="""
    </svg>
 """
 
-cfgdefault={"type":"presence","subtype":"mac","host":"localhost","port":8745,"credential":"","ssl":"","btdev":None}
+cfgdefault={"type":"presence","subtype":"mac","host":"localhost","port":8745,"credential":"","ssl":"","btdev":None,"lan":True}
 def configure(): 
     parser = argparse.ArgumentParser(description="Track presence of people/pet/devices over the LAN.")
     #                            version="%prog " + __version__ + "/" + bl.__version__)
@@ -580,6 +608,10 @@ def configure():
     
     parser.add_argument("-b", "--btdev", type=int, default=cfgdefault["btdev"],
                     help="The Bluetooth device to use (default \"%s\")." % cfgdefault["btdev"])
+    
+    parser.add_argument('--lan', dest='lan', action='store_true',help="Whether or not to use ARP request for presence (default: \"lan\")")
+    parser.add_argument('--no-lan', dest='lan', action='store_false')
+    parser.set_defaults(lan=True)
     
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
                     help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
@@ -680,6 +712,15 @@ def configure():
         if opts.debug:
             presencelog.debug("The Bluetooth device is %s" % (presencecfg["btdev"]))      
            
+        if opts.lan != cfgdefault["lan"]:
+            presencecfg["lan"] = opts.lan
+        elif "lan" in cfgdata:
+            presencecfg["lan"] = cfgdata["lan"]
+        else:
+            presencecfg["lan"] = cfgdefault["lan"]
+        if opts.debug:
+            presencelog.debug("Thelan option is %s" % (presencecfg["lan"]))
+            
         #Authentication and encryption
         if opts.credential != cfgdefault["credential"]:
             presencecfg["credential"] = opts.credential
@@ -741,15 +782,16 @@ if __name__ == "__main__":
     
     #Let's find out what network and interface we have Linux
     config["networks"]={}
-    p1 = subprocess.getoutput("ip route | sed '/via/d' | sed '/dev/!d' | sed '/src/!d'")
-    if config["debug"]:
-        log.debug("Received from the shell: {}".format(p1))
-    for aroute in p1.split("\n"):
-        allofit = [z for z in [y.strip() for y in aroute.split(" ")] if z!=""]
-        netadd = ipaddress.IPv4Address(allofit[allofit.index("src")+1])
-        network = ipaddress.IPv4Network(allofit[0])
-        dev = allofit[allofit.index("dev")+1]
-        config["networks"][netadd] = [ dev, network ]
+    if  config["lan"]:
+        p1 = subprocess.getoutput("ip route | sed '/via/d' | sed '/dev/!d' | sed '/src/!d'")
+        if config["debug"]:
+            log.debug("Received from the shell: {}".format(p1))
+        for aroute in p1.split("\n"):
+            allofit = [z for z in [y.strip() for y in aroute.split(" ")] if z!=""]
+            netadd = ipaddress.IPv4Address(allofit[allofit.index("src")+1])
+            network = ipaddress.IPv4Network(allofit[0])
+            dev = allofit[allofit.index("dev")+1]
+            config["networks"][netadd] = [ dev, network ]
         
     if config["ssl"]:
         sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
