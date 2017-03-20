@@ -107,7 +107,7 @@ while not gotit:
 os.system('clear')
 #Starting with time zone
 if not iamsuper:
-    print ("We believe you timezone is %s"%mylocation["timezone"])
+    print ("\nWe believe you timezone is %s"%mylocation["timezone"])
     print ("If somehow we got that wrong, please be sure to update your location")
     print ("once you have access to AutoBuddy. In Menu > Configure > System Configuration")
     remindmeattheend+=" Check you location in Menu > Configure > System Configuration\n\n"
@@ -823,7 +823,7 @@ try:
     cron.write()
     print ("\n\n\n\n We are done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
     print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
-    choice = input(" Press '<enter>' to reboot")
+    #choice = input(" Press '<enter>' to reboot")
     #os.system("reboot")
 except:
     print ("\n\n\n\n We are done. We are about to reboot but ...")
