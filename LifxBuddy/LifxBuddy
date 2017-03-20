@@ -922,7 +922,7 @@ if __name__ == "__main__":
     finally:
         for x in bridgectl.lifxhb.values():
             x.cancel()
-        bridgectl.probelights.cleanup()
+        bridgectl.probelights.cancel()
         conn.close()
         loop.close()
 

@@ -1977,6 +1977,8 @@ var BuddyApp = Class.extend({
         if ( devid in deviceById) {
             $("#"+devid).remove();
             delete this.tokento[devid];
+            //remove from parent...
+            deviceById[devid].parent.devices.splice($.inArray(deviceById[devid], deviceById[devid].parent.devices),1);
             delete deviceById[devid];
         }
         return false;

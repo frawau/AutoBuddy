@@ -385,11 +385,12 @@ class PresenceBridge(bl.BuddyBridge):
             for x in self.mac_score:
                 self.mac_score[x]-=1
             
-            self.sending({"subject":"presence.debug",
-                "content_type": "event",
-                "content":{"event":"mac score start", 
-                    "target":"presence.mac",
-                    "value":{"mac scores":self.mac_score}}})
+            #Debug only
+            #self.sending({"subject":"presence.debug",
+                #"content_type": "event",
+                #"content":{"event":"mac score start", 
+                    #"target":"presence.mac",
+                    #"value":{"mac scores":self.mac_score}}})
             
             timetowait = 10
             #Launch ARP 
@@ -426,12 +427,12 @@ class PresenceBridge(bl.BuddyBridge):
             for x in lop:
                 x.close()#No need to keep listening
             #
-            
-            self.sending({"subject":"presence.debug",
-                "content_type": "event",
-                "content":{"event":"mac score end", 
-                    "target":"presence.mac",
-                    "value":{"mac scores":self.mac_score}}})
+            #Debug only
+            #self.sending({"subject":"presence.debug",
+                #"content_type": "event",
+                #"content":{"event":"mac score end", 
+                    #"target":"presence.mac",
+                    #"value":{"mac scores":self.mac_score}}})
                 
             for mac in [ x for x in self.mac_score if self.mac_score[x]==0]:
                 data={"mac": mac,"ip": "0.0.0.0", "status": "offline"}

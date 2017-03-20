@@ -34,10 +34,7 @@ import buddylib as bl
 from urllib.request import urlopen
 
 debug=False
-
-#BUDDYLOCATION="/home/autobuddy/AutoBuddy"
-BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
-currentowner=os.stat(BUDDYLOCATION)
+lobtdevs=["hci0","hci1","hci2","hci3"]
 
 def passgen():
     from random import shuffle,randrange
@@ -68,164 +65,243 @@ try:
     mylocation=json.loads(urlopen("http://ip-api.com/json").read().decode())
 except:
     pass
+remindmeattheend=""
+import os
+user = os.getenv("SUDO_USER")
+if user is None:
+    iamsuper = False
+else:
+    iamsuper = True
+    
+os.system('clear')
+print("\n\nWelcome to AutoBuddy configuration tool.")
+if iamsuper:
+    print ("It looks like you are running with root priviledges. Good!")
+    print ("Be forwarned though, we will be setting your time zone, install some needed")
+    print ("packages and will access PostgreSQL by masquerading as user 'postgres'.")
+    print ("If you do not want this, or if you think it won't work, get out now and run")
+    print ("this config tool as an unpriviledged users.")
+else:
+    print ("It looks like you are running without root priviledges. This means that")
+    print ("there will be a number of tasks we will not be able to perform. What we")
+    print ("will do it tell you what you  need to do when this config tool is done")
+    print ("for AutoBuddy to work smoothly. We will also ask you for the user name and")
+    print ("password of a PostgreSQL superusers so we can setup the database")
+ 
 
-#Starting with time zone
-print("\n\nWelcome to AutoBuddy configuration tool.\nWe have been trying to figure out your location")
-print("\nWe will start by updating your time zone.")
 gotit=False
 while not gotit:
-    print ("\n\nOK, me think your time zone is %s"%mylocation["timezone"])
-    for x in ["Yes","No"]:
-        print("\t %s"%x)
-    print()
-    choice = input(" Your choice: ")
-    try:
-        if choice.strip().lower() in ['y',"yes","yay","sure","yep","affirmative"]:
-            gotit=True
-            choice=mylocation["timezone"]
-        elif choice.strip().lower() in ['n','no','nope','nay','negative','wrong']:
-            gotit=True
-            choice=""
-        else:
-            raise Exception
-    except:
-        os.system('clear')
-        print ("\n\nInput not recognized. Please pay attention.")
-        
-if not choice:    
-    print ("\n\nOoops, I got it wrong, my bad! Let's try another way.")
-    lotz=subprocess.check_output(["timedatectl", "--no-pager","list-timezones"]).decode()
-    tzlist=defaultdict(list)
-    for rawzone in lotz.split("\n"):
-        if not rawzone:
-            continue
-        zone=rawzone.split("/")
-        if len(zone) == 1:
-            tzlist[zone[0]]=None
-        else:
-            tzlist[zone[0]].append("/".join(zone[1:]))        
-    lotopz=list(tzlist.keys())
-    lotopz.sort()
-    os.system('clear')
+    choice = input("\n  Do you want to continue? [yes/no] : ")
+    if choice.strip().lower() in ["n", "no", "no way","hell no"]:
+        try:
+            print ("\nAt your request, we will now perform ritual 切腹. さよなら")
+        except:
+            print ("\nAt your request, we will now perform ritual seppuku. Sayonara.")
+            print ("        BTW, you really should use UTF-8.")
+        sys.exit(0)
+    elif choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+        gotit=True
+    else:
+        print ("\nJust answer Yes or No. How difficult is that?")
+
+os.system('clear')
+#Starting with time zone
+if not iamsuper:
+    print ("We believe you timezone is %s"%mylocation["timezone"])
+    print ("If somehow we got that wrong, please be sure to update your location")
+    print ("once you have access to AutoBuddy. In Menu > Configure > System Configuration")
+    remindmeattheend+=" Check you location in Menu > Configure > System Configuration\n\n"
+else:
+    print("\nLet's start by updating your time zone.")
     gotit=False
-    mode="init"
-    weredone=False
-    while not weredone:
-        if mode=="init":
-            while not gotit:
-                idx=0
-                print ("\n\nPlease do select the number corresponding to your time zone")
-                for x in lotopz:
-                    print ("   %d\t %s"%(idx,x))
-                    idx+=1
-                print()
-                choice = input(" Your choice: ")
-                try:
-                    choice=int(choice)
-                    if choice < 0 or choice >= len(lotopz):
-                        raise Exception
-                    gotit=True
-                except:
-                    os.system('clear')
-                    print ("\n\nInput not recognized. Please pay attention.")
-                    
-        mode="sub"
+    while not gotit:
+        print ("\n\nOK, me think your time zone is %s"%mylocation["timezone"])
+        for x in ["Yes","No"]:
+            print("\t %s"%x)
+        print()
+        choice = input(" Your choice: ")
+        try:
+            if choice.strip().lower() in ['y',"yes","yay","sure","yep","affirmative"]:
+                gotit=True
+                choice=mylocation["timezone"]
+            elif choice.strip().lower() in ['n','no','nope','nay','negative','wrong']:
+                gotit=True
+                choice=""
+            else:
+                raise Exception
+        except:
+            os.system('clear')
+            print ("\n\nInput not recognized. Please pay attention.")
+            
+    if not choice:    
+        print ("\n\nOoops, I got it wrong, my bad! Let's try another way.")
+        lotz=subprocess.check_output(["timedatectl", "--no-pager","list-timezones"]).decode()
+        tzlist=defaultdict(list)
+        for rawzone in lotz.split("\n"):
+            if not rawzone:
+                continue
+            zone=rawzone.split("/")
+            if len(zone) == 1:
+                tzlist[zone[0]]=None
+            else:
+                tzlist[zone[0]].append("/".join(zone[1:]))        
+        lotopz=list(tzlist.keys())
+        lotopz.sort()
         os.system('clear')
-        topzone=lotopz[choice]    
-        if tzlist[topzone]:
-            #Find more
-            sidx=0
-            maxidx=10
-            gotit=False
-            while not gotit:
-                print ("\n\n\nPlease do select the number corresponding to your time zone")
-                idx=0
-                while idx< min(maxidx,len(tzlist[topzone])-sidx):
-                    print ("   %d\t %s/%s"%(idx,topzone,tzlist[topzone][sidx+idx]))
-                    idx+=1
-                print ("\n\nUse 'b' to go back to the previous screen. 'n' to go to the next one.\n")
-                choice = input(" Your choice: ")
-                try:
-                    if choice.strip().lower()=='b':
-                        if sidx == 0:
-                            mode="init"
-                            os.system('clear')
-                            break
-                        else:
-                            sidx-=maxidx
-                            os.system('clear')
-                    elif choice.strip().lower()=='n':
-                        if sidx+maxidx < len(tzlist[topzone]):
-                            sidx+=maxidx
-                        os.system('clear')
-                    else:
+        gotit=False
+        mode="init"
+        weredone=False
+        while not weredone:
+            if mode=="init":
+                while not gotit:
+                    idx=0
+                    print ("\n\nPlease do select the number corresponding to your time zone")
+                    for x in lotopz:
+                        print ("   %d\t %s"%(idx,x))
+                        idx+=1
+                    print()
+                    choice = input(" Your choice: ")
+                    try:
                         choice=int(choice)
-                        if choice < 0 or choice >= min(maxidx,len(tzlist[topzone])-sidx):
+                        if choice < 0 or choice >= len(lotopz):
                             raise Exception
                         gotit=True
-                        weredone=True
-                        choice=topzone+"/"+tzlist[topzone][choice+sidx]
-                except:
-                    os.system('clear')
-                    print ("Input not recognized. Please pay attention.")
+                    except:
+                        os.system('clear')
+                        print ("\n\nInput not recognized. Please pay attention.")
                         
-                    
-if debug:
-    print ("We got %s"%choice)
-else:
-    lotz=subprocess.check_output(["timedatectl", "set-timezone",choice])    
-
-os.system('clear')
-print("\n\n\n\n Time zone was set to %s"%choice)
-choice = input(" Press '<enter>' to continue")
-
-os.system('clear')
-print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
-choice = input(" Press '<enter>' to proceed")
-try:
-    subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp","python3-ephem","python3-dateutil"])
-    print("Allright, it looks like we are done.")
-except:
-    print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
-choice = input(" Press '<enter>' to continue")
-
-
-os.system('clear')
-print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
-choice = input(" Press '<enter>' to proceed")
-try:
-    subprocess.run(["tar","xvfj",BUDDYLOCATION+"/alltherest.tar.bz2","-C", BUDDYLOCATION])
-    print("Allright, it looks like we are done.")
-except:
-    print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
-choice = input(" Press '<enter>' to continue")
-
-
-os.system('clear')
-weredone=False
-newpasswd=""
-while not weredone:
-    print ("\n\n\n We will now set a new password for the default user 'autobuddy'.\n\n")
-    passwd = getpass(" Password: ")
-    confirm = getpass(" Confirm Password: ")
-    if passwd == confirm :
-        weredone = True
-        newpasswd=passwd
+            mode="sub"
+            os.system('clear')
+            topzone=lotopz[choice]    
+            if tzlist[topzone]:
+                #Find more
+                sidx=0
+                maxidx=10
+                gotit=False
+                while not gotit:
+                    print ("\n\n\nPlease do select the number corresponding to your time zone")
+                    idx=0
+                    while idx< min(maxidx,len(tzlist[topzone])-sidx):
+                        print ("   %d\t %s/%s"%(idx,topzone,tzlist[topzone][sidx+idx]))
+                        idx+=1
+                    print ("\n\nUse 'b' to go back to the previous screen. 'n' to go to the next one.\n")
+                    choice = input(" Your choice: ")
+                    try:
+                        if choice.strip().lower()=='b':
+                            if sidx == 0:
+                                mode="init"
+                                os.system('clear')
+                                break
+                            else:
+                                sidx-=maxidx
+                                os.system('clear')
+                        elif choice.strip().lower()=='n':
+                            if sidx+maxidx < len(tzlist[topzone]):
+                                sidx+=maxidx
+                            os.system('clear')
+                        else:
+                            choice=int(choice)
+                            if choice < 0 or choice >= min(maxidx,len(tzlist[topzone])-sidx):
+                                raise Exception
+                            gotit=True
+                            weredone=True
+                            choice=topzone+"/"+tzlist[topzone][choice+sidx]
+                    except:
+                        os.system('clear')
+                        print ("Input not recognized. Please pay attention.")
+                            
+                        
+    if debug:
+        print ("We got %s"%choice)
     else:
-        os.system('clear')
-        print ("\n\n The passwords did not match.")
+        lotz=subprocess.check_output(["timedatectl", "set-timezone",choice])    
 
-if debug:
-    print ("New password is %d"%newpasswd)
-else:
-    chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-    d_out=chpass.communicate(input="autobuddy:%s"%newpasswd)[0]
+    os.system('clear')
+    print("\n\n\n\n Time zone was set to %s"%choice)
     
-    
-os.system('clear')
-print ("\n\n\n\n Password was set.\n\n")
 choice = input(" Press '<enter>' to continue")
+os.system('clear')
+if not iamsuper:
+    print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
+    print ("On a Debian/Ubuntu type of distribution, the following 2 command should be run:\n")
+    print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip")
+    print("\tsudo pip3 install aiolifx aioarping aiobtname\n")
+    remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
+    remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip"
+    remindmeattheend+="\tsudo pip3 install aiolifx aioarping aiobtname\n\n"
+else:
+    print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
+    choice = input(" Press '<enter>' to proceed")
+    try:
+        subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp","python3-ephem","python3-dateutil","python3-crontab","python3-bitstring"])
+        subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx"])
+        print("Allright, it looks like we are done.")
+    except:
+        print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+    choice = input(" Press '<enter>' to continue")
 
+
+    os.system('clear')
+    print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
+    choice = input(" Press '<enter>' to proceed")
+    try:
+        subprocess.run(["tar","xvfj",BUDDYLOCATION+"/alltherest.tar.bz2","-C", BUDDYLOCATION])
+        print("Allright, it looks like we are done.")
+    except:
+        print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+   
+choice = input(" Press '<enter>' to continue")
+os.system('clear')
+if os.path.isfile("/home/autobuddy/.autobuddyneedconfig"):
+    weredone=False
+    newpasswd=""
+    while not weredone:
+        print ("\n\n\n We will now set a new password for the default user 'autobuddy'.\n\n")
+        passwd = getpass(" Password: ")
+        confirm = getpass(" Confirm Password: ")
+        if passwd == confirm :
+            weredone = True
+            newpasswd=passwd
+        else:
+            os.system('clear')
+            print ("\n\n The passwords did not match.")
+
+    if debug:
+        print ("New password is %d"%newpasswd)
+    else:
+        chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+        d_out=chpass.communicate(input="autobuddy:%s"%newpasswd)[0]
+    
+    os.unlink("/home/autobuddy/.autobuddyneedconfig")
+    os.system('clear')
+    
+    print ("\n\n\n\n Password was set.\n\n")
+    choice = input(" Press '<enter>' to continue")
+
+
+if not iamsuper:
+    psqldbok=False
+    print ("\nWe now need to setup PostgreSQL, create a database and 2 users.")
+    print ("If you want I can perform these operation but I need a username and password with adequate permissions.")
+    print ("\nWould you like to setup the database by providing a user name and password?")
+    gotit=False
+    while not gotit:
+        choice = input("\n Your choice? [yes/no] : ")
+        if choice.strip().lower() in ["n", "no", "no way","hell no"]:
+            gotit=True
+            print("Ok, we'll tell you what needs to be done.")      
+        elif choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+            gotit=True
+            psqldbok=True
+            psqluser=input("\n Please input the username : ")
+            psqlpasswd=input("\n Please input the password : ")
+            print("Ok, we'll use user %s with password %s"%(psqluser,psqlpasswd))
+        else:
+            print ("Just answer Yes or No. How difficult is that?")    
+else:
+    psqldbok=True
+    psqluser=None
+                    
 createdb="CREATE DATABASE autobuddy ENCODING 'UTF8';"
 pgreadonlyuser="""
 CREATE USER readbuddy WITH ENCRYPTED PASSWORD '%s';
@@ -240,12 +316,12 @@ pgmainuser="""
 CREATE USER autobuddy WITH ENCRYPTED PASSWORD '%s';
 GRANT ALL PRIVILEGES ON DATABASE autobuddy TO autobuddy;
 """
-
+xx=input("\n Press Enter to continue...")
 os.system('clear')
 weredone=False
 newpasswd=""
 while not weredone:
-    print ("\n\n\n We will now create and set a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n")
+    print ("\n\n\n We will now define a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n")
     print (" If you leave the password empty, I will generate the password automatically.\n\n")
     passwd = getpass(" Password: ")
     if passwd:
@@ -265,7 +341,7 @@ os.system('clear')
 weredone=False
 newpasswd=""
 while not weredone:
-    print ("\n\n\n We will now create and set a password for the \"readbuddy\"  user in PostgreSQL.\n This user has read-only access to the \"autobuddy\" database.\n\n")
+    print ("\n\n\n We will now define a password for the \"readbuddy\"  user in PostgreSQL.\n This user has read-only access to the \"autobuddy\" database.\n\n")
     print (" If you leave the password empty, I will generate the password automatically.\n\n")
     passwd = getpass(" Password: ")
     if passwd:
@@ -280,22 +356,28 @@ while not weredone:
         ropasswd=passgen()
         weredone = True
           
-#of=file("/tmp/cmd.sql","w")
-#of.write("ALTER USER autobuddy PASSWORD '%s';\n"%dbpasswd)
-#of.write("ALTER USER readbuddy PASSWORD '%s';\n"%ropasswd)
-newconfig=createdb+pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
-if debug:
-    print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
+if psqldbok:
+    newconfig=createdb+pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
+    if debug:
+        print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
+    else:
+        if psqluser:
+            sqlproc=subprocess.Popen(["/usr/bin/psql","-U",psqluser,"-W"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+            sqlproc.communicate(input=psqlpasswd)
+        else:
+            sqlproc=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+        d_out=sqlproc.communicate(input=newconfig)
+        
+    os.system('clear')
+    print("\n\n\n\n Database was created, so were users and passwords were set.\n\n")
+    choice = input(" Press '<enter>' to continue")
 else:
-    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-    d_out=chpass.communicate(input=newconfig)
+    remindmeattheend+="You need to create database and users with:\n"
+    remindmeattheend+=createdb+"\n"
+    remindmeattheend+=pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
     
 os.system('clear')
-print("\n\n\n\n Database was created, so were users and passwords were set.\n\n")
-choice = input(" Press '<enter>' to continue")
-    
-os.system('clear')
-print ("\n\n\n\n Last but not least, I need to know the name of the top zone.\n\n")
+print ("\n\n\n\n I need to know the name of the top zone.\n\n")
 choice = input(" Top Zone Name [Home]: ")
 if not choice:
     topzone="Home"
@@ -303,7 +385,70 @@ else:
     topzone=choice
  
 os.system('clear')
-print ("\n\n\n\n Thank you, I will now proceed and finalize the configuration before asking you what to run.\n\n")
+
+dolifx=False
+doflic=False
+dopresence=False
+dopresencelan=False
+dopresencebt=False
+
+print("Finaly, we need to know which optional modules you want to run.")
+print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dolifx=True
+
+print("\n\nPresenceBuddy allows you to detect people's presence by monitory their devices")
+print("(like smartphone) over LAN and/or over Bluetooth.")
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dopresence=True
+    
+if dopresence:
+    choice = input("\n  Do you want to use ARPing over the LAN for presence (not recommended)? [yes/NO] : ")
+    if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+        dopresencelan=True
+    else:
+        dopresencelan=False
+    choice = input("\n  Do you want to use Bluetooth for  presence (recommended)? [yes/NO] : ")
+    if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+        dopresencebt=lobtdevs[0]
+        lobtdevs=lobtdevs[1:]
+    else:
+        dopresencelan=False
+
+print("\n\nFlicBuddy allows you to receive click event from your flic buttons.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doflic=lobtdevs[0]
+    lobtdevs=lobtdevs[1:]
+
+print("\nYou have decided:")
+if dolifx:
+    print("\tto run LifxBuddy")
+else:
+    print("\tnot to run LifxBuddy")
+
+if dopresence and (dopresencebt or dopresencelan):
+    if dopresencebt and dopresencelan:
+        print("\tto run PresenceBuddy over LAN and Bluetooth")
+    elif dopresencebt:
+        print("\tto run PresenceBuddy over Bluetooth")
+    else:
+        print("\tto run PresenceBuddy over LAN")
+else:    
+    print("\tnot to run PresenceBuddy")
+    
+if doflic:
+    print("\tto run FlicBuddy")
+else:
+    print("\tnot to run FlicBuddy")
+
+if doflic and dopresencebt:
+    print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
+print ("\n\n\n\n Thank you, I will now proceed and finalize the configuration.\n\n")
 choice = input(" Press '<enter>' to continue")
    
 certdir=BUDDYLOCATION+"/.tls"
@@ -439,7 +584,10 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
-bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n LifxBuddy "+fn
+if dolifx:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n LifxBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n LifxBuddy "+fn
 
 print ("Patience!")
 
@@ -452,6 +600,7 @@ mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
 mycfg["flichost"] = "localhost"
 mycfg["flicpath"] = BUDDYLOCATION + "/FlicBuddy/flicd/"
+mycfg["btiface"] = doflic or "hci0"
 
 fn=BUDDYLOCATION+"/.buddyconfig/flic.cfg"
 with open(fn,"w") as cfile:
@@ -473,7 +622,10 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
-bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n FlicBuddy "+fn
+if doflic:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n FlicBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n FlicBuddy "+fn
 
 print ("Just a little longer!")
 
@@ -506,6 +658,51 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ActionBuddy "+fn
 
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "presence"
+mycfg["subtype"] = "mac"
+if dopresence and dopresencelan:
+    mycfg["lan"] = "true"
+else:
+    mycfg["lan"] = "false"
+if dopresencebt:
+    mycfg["btdev"] = int(dopresencebt[-1])
+elif not dopresence:
+    mycfg["btdev"] = 0
+                
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+actionkey=mycfg["buddykey"]
+fn=BUDDYLOCATION+"/.buddyconfig/presence.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/PresenceBuddy/PresenceBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/PresenceBuddy/PresenceBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/50-presence"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dopresence:
+    bustartcmd+="\n    tmux new-window -t PresenceBuddy -d -n PresenceBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t PresenceBuddy -d -n PresenceBuddy "+fn
+
+
+
+
 
 fn=BUDDYLOCATION+"/.start-autobuddy"
 with open(fn,"w") as cfile:
@@ -526,53 +723,105 @@ if "port" in mycfg["database"] and mycfg["database"]["port"]:
 bdb += "/" + mycfg["database"]["db"]
 
 print ("Almost there!")
+if psqldbok:
+    #print "Connecting with",bdb
+    sess=bl.getSession(bdb)
+    bl.initialize(sess)
+    nzone=bl.Zone()
+    nzone.name="zone-BuddyRoot"
+    nzone.nickname=topzone
+    sess.add(nzone)
+    nprop=bl.BuddyProperty()
+    nprop.entity="guibridge"
+    nprop.name="users"
+    nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
+    sess.add(nprop)
+    nprop=bl.BuddyProperty()
+    nprop.entity="System"
+    nprop.name="configuration"
+    nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
+    sess.add(nprop)
+    nprop=bl.BuddyProperty()
+    nprop.entity="action"
+    nprop.name="rules"
+    nprop.values=bl.encrypt({},actionkey)
+    sess.add(nprop)
+    nprop=bl.BuddyProperty()
+    nprop.entity="action"
+    nprop.name="state variable"
+    nprop.values=bl.encrypt({},actionkey)
+    sess.add(nprop)
+    sess.commit()
 
-#print "Connecting with",bdb
-sess=bl.getSession(bdb)
-bl.initialize(sess)
-nzone=bl.Zone()
-nzone.name="zone-BuddyRoot"
-nzone.nickname=topzone
-sess.add(nzone)
-nprop=bl.BuddyProperty()
-nprop.entity="guibridge"
-nprop.name="users"
-nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
-sess.add(nprop)
-nprop=bl.BuddyProperty()
-nprop.entity="System"
-nprop.name="configuration"
-nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
-sess.add(nprop)
-nprop=bl.BuddyProperty()
-nprop.entity="action"
-nprop.name="rules"
-nprop.values=bl.encrypt({},actionkey)
-sess.add(nprop)
-nprop=bl.BuddyProperty()
-nprop.entity="action"
-nprop.name="state variable"
-nprop.values=bl.encrypt({},actionkey)
-sess.add(nprop)
-sess.commit()
-
-#Bloddy grant select!
-newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
-GRANT SELECT ON TABLE zone TO readbuddy;
-"""
-chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-d_out=chpass.communicate(input=newconfig)
-
+if iamsuper:
+    #Bloddy grant select!
+    newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
+    GRANT SELECT ON TABLE zone TO readbuddy;
+    """
+    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+    d_out=chpass.communicate(input=newconfig)
+else:
+    remindmeattheend+="\n"+newconfig+"\n"
+if not iamsuper:
+    remindmeattheend+="\nYou must permit access to bluetooth adapter with:\n"
+    
 for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
-    subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
+    if iamsuper:
+        subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
+    else:
+        remindmeattheend+="\t/sbin/setcap cap_net_admin=ep" + fname +"\n"
 
+if not psqldbok:
+    remindmeattheend+="\n\nAfter creating the database you will also need to run the python script to bootstrap that database:\n\n"
+    remindmeattheend+="import buddylib as bl\n"
+    remindmeattheend+="sess=bl.getSession(\"%s\")\n"%bdb
+    remindmeattheend+="bl.initialize(sess)\n"
+    remindmeattheend+="nzone=bl.Zone()\n"
+    remindmeattheend+="nzone.name=\"zone-BuddyRoot\"\n"
+    remindmeattheend+="nzone.nickname=topzone\n"
+    remindmeattheend+="sess.add(nzone)\n"
+    remindmeattheend+="nprop=bl.BuddyProperty()\n"
+    remindmeattheend+="nprop.entity=\"guibridge\"\n"
+    remindmeattheend+="nprop.name=\"users\"\n"
+    remindmeattheend+="nprop.values=bl.encrypt({\"admin\":[\"password\",\"admin\"]},\"%s\")\n"%socketkey
+    remindmeattheend+="sess.add(nprop)\n"
+    remindmeattheend+="nprop=bl.BuddyProperty()\n"
+    remindmeattheend+="nprop.entity=\"System\"\n"
+    remindmeattheend+="nprop.name=\"configuration\"\n"
+    remindmeattheend+="nprop.values=bl.encrypt({\"location\":{\"longitude\":%.8f,\"latitude\":%.8f,\"altitude\":4}},\"%s\")\n"%(mylocation["lon"],mylocation["lat"],controlkey)
+    remindmeattheend+="sess.add(nprop)\n"
+    remindmeattheend+="nprop=bl.BuddyProperty()\n"
+    remindmeattheend+="nprop.entity=\"action\"\n"
+    remindmeattheend+="nprop.name=\"rules\"\n"
+    remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
+    remindmeattheend+="sess.add(nprop)\n"
+    remindmeattheend+="nprop=bl.BuddyProperty()\n"
+    remindmeattheend+="nprop.entity=\"action\"\n"
+    remindmeattheend+="nprop.name=\"state variable\"\n"
+    remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
+    remindmeattheend+="sess.add(nprop)\n"
+    remindmeattheend+="sess.commit()\n"
+    remindmeattheend+="\n\n"
+    
+#Update in BuddyTools
+for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
+    with open(fn, 'r') as file :
+        filedata = file.read()
+        # Replace the target string
+        for val,newval in [("<AUTOBUDDYHOST/>",os.uname()[1]),
+                        ("<AUTOBUDDYPORT/>","8745"),
+                        ("<AUTOBUDDYCREDENTIAL/>",credential)]:
+            filedata = filedata.replace(val, newval)
+    
+    with open(fn, 'w') as file :
+        file.write(filedata)
 try:
     from crontab import CronTab
     cron=CronTab(user=username)
     job  = cron.new(command=BUDDYLOCATION+"/.start-autobuddy")
     job.every_reboot()
     cron.write()
-    print ("\n\n\n\n We are done. We are about to reboot. \n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+    print ("\n\n\n\n We are done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
     print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
     choice = input(" Press '<enter>' to reboot")
     #os.system("reboot")
@@ -583,3 +832,6 @@ except:
     print ("Cut and paste if possible. After that you should reboot with \"sudo reboot\"")
     print("\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
 
+if remindmeattheend:
+    print("\n\nHere is a reminder of what you still need to do before you can reboot:")
+    print(remindmeattheend)
