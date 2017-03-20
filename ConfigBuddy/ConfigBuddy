@@ -239,20 +239,19 @@ else:
     except:
         print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
     choice = input(" Press '<enter>' to continue")
-
-
     os.system('clear')
-    print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
-    choice = input(" Press '<enter>' to proceed")
-    try:
-        subprocess.run(["tar","xvfj",BUDDYLOCATION+"/alltherest.tar.bz2","-C", BUDDYLOCATION])
-        print("Allright, it looks like we are done.")
-    except:
-        print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
-   
+    
+print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
+choice = input(" Press '<enter>' to proceed")
+try:
+    subprocess.run(["tar","xvfj",BUDDYLOCATION+"/alltherest.tar.bz2","-C", BUDDYLOCATION])
+    print("Allright, it looks like we are done.")
+except:
+    print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+
 choice = input(" Press '<enter>' to continue")
 os.system('clear')
-if os.path.isfile("/home/autobuddy/.autobuddyneedconfig"):
+if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     weredone=False
     newpasswd=""
     while not weredone:
@@ -272,7 +271,7 @@ if os.path.isfile("/home/autobuddy/.autobuddyneedconfig"):
         chpass=subprocess.Popen(["chpasswd"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
         d_out=chpass.communicate(input="autobuddy:%s"%newpasswd)[0]
     
-    os.unlink("/home/autobuddy/.autobuddyneedconfig")
+    os.unlink(BUDDYLOCATION+"/.autobuddyneedconfig")
     os.system('clear')
     
     print ("\n\n\n\n Password was set.\n\n")
@@ -399,7 +398,7 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dolifx=True
 
-print("\n\nPresenceBuddy allows you to detect people's presence by monitory their devices")
+print("\n\nPresenceBuddy allows you to detect people's presence by monitoring their devices")
 print("(like smartphone) over LAN and/or over Bluetooth.")
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
@@ -753,12 +752,17 @@ if psqldbok:
     sess.add(nprop)
     sess.commit()
 
-if iamsuper:
-    #Bloddy grant select!
-    newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
-    GRANT SELECT ON TABLE zone TO readbuddy;
-    """
-    chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+
+#Bloddy grant select!
+newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
+GRANT SELECT ON TABLE zone TO readbuddy;
+"""         
+if psqldbok:
+    if psqluser:
+        sqlproc=subprocess.Popen(["/usr/bin/psql","-U",psqluser,"-W","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+        sqlproc.communicate(input=psqlpasswd)
+    else:
+        chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
     d_out=chpass.communicate(input=newconfig)
 else:
     remindmeattheend+="\n"+newconfig+"\n"
