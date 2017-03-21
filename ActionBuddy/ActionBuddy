@@ -489,7 +489,7 @@ action_rules="""
                     </item> 
                 </controlgroup>
             </controlgroup>
-            <controlgroup type="listmaker"  name="condition" label="Conditions" newtab="true" key="cond name" > 
+            <controlgroup type="listmaker"  name="condition" label="Conditions" newtab="true" key="cond name"  alabel="Add Condition" dlabel="Delete Condition"> 
                 <control type="text" name="cond name" length="32" label="Name" />
                 <controlgroup type="choice"  name="condition" label=" ">
                     <item value="t-variable" label="Target Variable">
@@ -621,7 +621,7 @@ action_rules="""
                     </item>
                 </controlgroup>
             </controlgroup>
-            <controlgroup type="listmaker"  name="commands" label="Commands" newtab="true" dflname="Command" >
+            <controlgroup type="listmaker"  name="commands" label="Commands" newtab="true" dflname="Command" alabel="Add Command" dlabel="Delete Command">
                 <control type="text" name="command name" length="32"/>
                 <controlgroup type="choice"  name="command" label=" ">
                     <item value="set variable" label="Set Variable">

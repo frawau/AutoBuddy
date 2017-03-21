@@ -572,8 +572,16 @@ var listmakerCG = Class.extend({
         if ( !active ) {
             tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
         }
-        tabmsg += "</div><div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__badd\" class=\"btn btn-primary\" type=\"button\" value=\"Commit\">";
-        tabmsg += "<input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bdel\"class=\"btn btn-danger\" type=\"button\" value=\"Delete\"></div> ";
+        var addlbl="Commit";
+        if (this.part.attr("alabel")) {
+            addlbl = this.part.attr("alabel");
+        }
+        var dellbl="Delete";
+        if (this.part.attr("dlabel")) {
+            dellbl = this.part.attr("dlabel");
+        }
+        tabmsg += "</div><div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__badd\" class=\"btn btn-primary\" type=\"button\" value=\""+addlbl+"\">";
+        tabmsg += "<input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bdel\"class=\"btn btn-danger\" type=\"button\" value=\""+dellbl+"\"></div> ";
         return tabmsg;
     },
             
