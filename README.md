@@ -1,41 +1,105 @@
 # AutoBuddy
 
-AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.io/AutoBuddy/ for some description and a screenshot.
+AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.io/AutoBuddy/ for some description and some screenshots.
 
 # Installation
 
-## Appliance
+Soon there will be a Raspberry 2/3 images to be downloaded.... in the meantime....
 
-By far the easiest way to install AutoBuddy is to use the appliance and run it as a virtual
-machine in your network. At ths time the appliance is for KVM
+## Requirements
 
-The appliance can be downloaded from:
+AutoBuddy depends on a quite a few softwares. To start, you must have Python 3.5 or newer, so you need a fairly 
+recent distribution. On Raspberry Pi, you can use Jessie and use Stretch to update the Python sub-system.
+
+To install all the needed packages, on a recent Ubuntu/Debian distro, you could run
+
+    sudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \
+                        python3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip git
+    sudo pip3 install aiolifx aioarping aiobtname
+
+You must make sure that Postgres is running! Currently (03/17), the configuration tool will blissfully
+ignore any error when trying to set up the datanase (If asked to that is).
+
+On a Ubuntu/Debian distro, you can test that Postgres is running OK by doing, in a terminal:
+
+    sudo bash
+          Type your passwordif asked to
+    su postgres
+    psql
+
+If you get something like
+
+    psql (9.6.2)
+    Type "help" for help.
+
+    postgres=# 
+
+You are all set. This also means you can use "sudo" to run the configuration script, which will make your life
+a lot easier.
+
+To get out of there use:
+
+    \q
+    ctrl-d
+    ctrl-d
+
+
+##Installing AutoBuddy
+
+Just clone frome github:
+
+    git clone https://github.com/frawau/AutoBuddy
     
-       https://mega.nz/#!1IUzGRyC
-      
-To install on a Linux host with libvirt:
-    
-    `virt-install --virt-type kvm --name AutoBuddy --ram 1024 \
-        --disk path=<path to>/AutoBuddy.qcow2,format=qcow2 \
-        --network=bridge=br0 \
-        --graphics vnc,listen=<my ip> --noautoconsole \
-        --os-type=linux --os-variant=ubuntutrusty --boot hd --autostart`
-    
-    here, <path to> is the directory where you downloaded/moved the appliance file.,
-    <my ip> is your ip address
+Once the repository has been cloned, you can run the installation script. If you could access Postgres using the method
+described above AND if you trust the script, you can do
 
-Access the console of the VM (e.g. with VNC) and answer the questions. At the end, the
-VM should reboot and after a short while, you should be able to access AutoBuddy via WebBuddy,
-its Web interface, at
+    sudo AutoBuddy/ConfigBuddy/ConfigBuddy
+    
+If not, either you can provide a postgres "superuser" name and password, or the configuration script
+will do what it can and tell you, at the end, what you still need to do (SQL command, python script...).
+Simply run the script as:
 
-    https://autobuddy.local:8090
+    AutoBuddy/ConfigBuddy/ConfigBuddy
+
+WARNING: Running the configuration script with sudo will automatically grant "raw socket" privileges to
+the python interpreter. Some people may object to this.
+
+
+BuddyConfig will ask you a few question and proceed to create a number of files.
+    
+    AutoBuddy/.tls              for certificates
+    AutoBuddy/.buddyconfig      for the json configuration files
+    AutoBuddy/.run              for the various starting files
+    AutoBuddy/.start-autobuddy  the file starting the applications in tmux sessions.
+
+At the end it will also schedule AutoBuddy/.start-autobuddy to start on boot in the user
+crontab.
+
+If you did not run under sudo, or did not provide username and password for Postgres, ConfigBuddy
+will list all the actions that need to be done:
+    
+    - Database creation. SQL commands
+    - Database user, password and privileges. SQL commands
+    - Bootstrap the AutoBuddy database. Python script
+    - Needed 'setcap'. Shell commands
+    
+If you provided the wrong username/password for Postgres, you'll have to run ConfigBuddy again.
+
+
+If everything went OK, you can run AutoBuddy by either:
+
+    1- rebooting
+    2- run AutoBuddy/.start-autobuddy
+
+After 10/15 seconds, you can access WebBuddy at:
+    
+    https://localhost:8090
     
 Use "admin" with password "password" to access. It is recommended to change the password 
 quickly (in the right menu)
 
-You can also access the appliance using ssh. The username is "autobuddy", the password is what 
-you set it during installation.
 
+### How To
 
 In WebBuddy you have two modes:
         
@@ -47,8 +111,6 @@ In WebBuddy you have two modes:
                         
         User Mode:      You can send command to devices. Change your zone view.
         
-
-### How To
 
 Here is how you do a few things:
     In User Mode
@@ -64,106 +126,16 @@ Here is how you do a few things:
         Label a device: double-click the device
         Label a zone: double-click the zone
         
-### Caveat
+The Menu also contains quite a few things. 
 
-For the VM to work, it needs to be on your network, not on some NAT'ed network. On my
-Ubuntu 14.04 host machine, my /etc/network/interface file is
-
-        auto lo
-        iface lo inet loopback
-
-        auto br0
-        iface br0 inet static
-                address 192.168.0.1
-                network 192.168.0.0
-                netmask 255.255.255.0
-                broadcast 192.168.0.255
-                gateway 192.168.0.254
-                dns-nameservers 192.168.0.254
-                dns-search doma.com domb.net
-                bridge_ports eth0
-                bridge_fd 9
-                bridge_hello 2
-                bridge_maxage 12
-                bridge_stp off
-
-If you use DHCP you could have
-
-        auto br0
-        iface br0 inet dhcp
-                bridge_ports eth0
-                bridge_fd 9
-                bridge_hello 2
-                bridge_maxage 12
-                bridge_stp off
-                
-                
-This is why you have "--network=bridge=br0" in the command to create the VM
-
-## Manual Install
-
-This is the begining. Installation is not for the faint of heart. I plan to soon have
-an appliance image that will be easy to boot and configue using, for instance, KVM.
-
-### What is needed
-
-You need
- - python3
- - Postgres
- - SQLAlchemy (Python module), 
- - asyncio (Python module),
- - aiohttp (Python module),
- - ephem  (Python module)
- - dateutil (Python module),
- - lifxlan (Python module)
- 
-For WebBuddy you also need:
-    
- - jquery.js
- - jquery-ui.min.js
- - d3.min.js  (Should be removed soon)
- - bootstrap.min.js
- - bootbox.min.js
- - Colour.js
- - bootstrap-switch.min.js
- - bootstrap-slider.min.js
- - jquery.ba-throttle-debounce.js
- - BuddyWheel.js
- 
-and their associated CSS files. You also need Awesome Font.
-
-After this you need to configure all 3 components with the "-C" option
-followed by the config file you want to create. For instance
-
-    `./ControlBuddy -C /etc/autobuddy/ControlBuddy.cfg -a "autobuddy/#" \
-        -b me:mypass@localhost:5672  -D postgres://me:mypass@localhost/autobuddy
-        -r postgres://ro-me:passwd@localhost/autobuddy -i -z Home`
-
-This would create a config file /etc/autotbuddy/ControlBuddy.cfg.
-
-The address to use with AMQP would be autobuddy/# i.e. all messages for topic "autobuddy"
-
-The AMQP broker would be on localhost at port 5672. Access with given user and password.
-
-The Read/Write database is postgres://me:mypass@localhost/autobuddy
-
-The read-only database access is postgres://ro-me:passwd@localhost/autobuddy. Note that these credentials
-may be send to all client in case they want to access the DB directly.
-
-The top zone nickname is "Home" and we ask the system to create it (-i)
-
-Once this is done, you can start the ControlBuddy with
-
-    `ControlBuddy -c /etc/autobuddy/ControlBuddy.cfg`
-    
-Try the "-h" option for help.
+    Commands (for instance to associate a flic button with FlicBuddy)
+    Configurations (Who's presence to look for, what rules for automation,...)
+        
 
 # Known Problems
 
-At this time, only Google Chrome seems to work fully.
 
-Firefox can not access Secure WebSocket with a self-signed certificate.
+BuddyWheel is sometimes jumpy, meaning that it jumps to a position nowhere near the mouse.
 
-Safari and IE, status unknown, but they cannot display the colour gradient in BuddyWheel
-
-WebSocket over IPv6 does not work. 
+In "Condition" and "Command" associated with Rules, it sometimes happen that one or more 
+empty Condition/Command are created and needs to be deleted

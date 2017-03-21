@@ -84,7 +84,7 @@ if iamsuper:
 else:
     print ("It looks like you are running without root priviledges. This means that")
     print ("there will be a number of tasks we will not be able to perform. What we")
-    print ("will do it tell you what you  need to do when this config tool is done")
+    print ("will do is tell you what you  need to do when this config tool is done")
     print ("for AutoBuddy to work smoothly. We will also ask you for the user name and")
     print ("password of a PostgreSQL superusers so we can setup the database")
  
@@ -106,8 +106,8 @@ while not gotit:
 
 os.system('clear')
 #Starting with time zone
-if not iamsuper:
-    print ("\nWe believe you timezone is %s"%mylocation["timezone"])
+if not iamsuper or not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
+    print ("\nWe believe your timezone is %s"%mylocation["timezone"])
     print ("If somehow we got that wrong, please be sure to update your location")
     print ("once you have access to AutoBuddy. In Menu > Configure > System Configuration")
     remindmeattheend+=" Check you location in Menu > Configure > System Configuration\n\n"
@@ -221,14 +221,14 @@ else:
     
 choice = input(" Press '<enter>' to continue")
 os.system('clear')
-if not iamsuper:
+if not iamsuper or not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
     print ("On a Debian/Ubuntu type of distribution, the following 2 command should be run:\n")
     print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip")
     print("\tsudo pip3 install aiolifx aioarping aiobtname\n")
     remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
     remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip"
-    remindmeattheend+="\tsudo pip3 install aiolifx aioarping aiobtname\n\n"
+    remindmeattheend+="\n\tsudo pip3 install aiolifx aioarping aiobtname\n\n"
 else:
     print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
     choice = input(" Press '<enter>' to proceed")
@@ -280,6 +280,7 @@ if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
 
 if not iamsuper:
     psqldbok=False
+    psqluser=None
     print ("\nWe now need to setup PostgreSQL, create a database and 2 users.")
     print ("If you want I can perform these operation but I need a username and password with adequate permissions.")
     print ("\nWould you like to setup the database by providing a user name and password?")
@@ -295,12 +296,17 @@ if not iamsuper:
             psqluser=input("\n Please input the username : ")
             psqlpasswd=input("\n Please input the password : ")
             print("Ok, we'll use user %s with password %s"%(psqluser,psqlpasswd))
+            my_env = os.environ.copy()
+            my_env["PGUSER"] = psqluser   
+            my_env["PGPASSWORD"] = psqlpasswd     
         else:
             print ("Just answer Yes or No. How difficult is that?")    
 else:
     psqldbok=True
     psqluser=None
-                    
+    
+       
+
 createdb="CREATE DATABASE autobuddy ENCODING 'UTF8';"
 pgreadonlyuser="""
 CREATE USER readbuddy WITH ENCRYPTED PASSWORD '%s';
@@ -336,7 +342,6 @@ while not weredone:
         weredone = True
     
     
-os.system('clear')    
 weredone=False
 newpasswd=""
 while not weredone:
@@ -361,8 +366,7 @@ if psqldbok:
         print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
     else:
         if psqluser:
-            sqlproc=subprocess.Popen(["/usr/bin/psql","-U",psqluser,"-W"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-            sqlproc.communicate(input=psqlpasswd)
+            sqlproc=subprocess.Popen(["/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
         else:
             sqlproc=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
         d_out=sqlproc.communicate(input=newconfig)
@@ -759,24 +763,28 @@ GRANT SELECT ON TABLE zone TO readbuddy;
 """         
 if psqldbok:
     if psqluser:
-        sqlproc=subprocess.Popen(["/usr/bin/psql","-U",psqluser,"-W","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-        sqlproc.communicate(input=psqlpasswd)
+        sqlproc=subprocess.Popen(["/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
     else:
         chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
     d_out=chpass.communicate(input=newconfig)
-else:
-    remindmeattheend+="\n"+newconfig+"\n"
+
 if not iamsuper:
     remindmeattheend+="\nYou must permit access to bluetooth adapter with:\n"
     
 for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
     if iamsuper:
         subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
+        subprocess.run(["/sbin/setcap", "cap_net_bind_service=+ep", "/usr/bin/python3.5"])
+        subprocess.run(["/sbin/setcap", "cap_net_raw=+ep", "/usr/bin/python3.5"])
     else:
-        remindmeattheend+="\t/sbin/setcap cap_net_admin=ep" + fname +"\n"
+        remindmeattheend+="\tsudo /sbin/setcap cap_net_admin=ep" + fname +"\n"
+        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_bind_service=+ep' /usr/bin/python3.5\n"
+        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_raw=+ep' /usr/bin/python3.5\n"
 
 if not psqldbok:
     remindmeattheend+="\n\nAfter creating the database you will also need to run the python script to bootstrap that database:\n\n"
+    remindmeattheend+="import sys\n"
+    remindmeattheend+="sys.path.append(\"%s\")\n"%(BUDDYLOCATION+"/Buddylib")
     remindmeattheend+="import buddylib as bl\n"
     remindmeattheend+="sess=bl.getSession(\"%s\")\n"%bdb
     remindmeattheend+="bl.initialize(sess)\n"
@@ -807,9 +815,12 @@ if not psqldbok:
     remindmeattheend+="sess.commit()\n"
     remindmeattheend+="\n\n"
     
+if not psqldbok:
+    remindmeattheend+="\nAfter that, you need to connect to the database again and do:"
+    remindmeattheend+="\n"+newconfig+"\n"
 #Update in BuddyTools
 for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
-    with open(fn, 'r') as file :
+    with open(BUDDYLOCATION+"/BuddyTools/"+fn, 'r') as file :
         filedata = file.read()
         # Replace the target string
         for val,newval in [("<AUTOBUDDYHOST/>",os.uname()[1]),
@@ -817,7 +828,7 @@ for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
                         ("<AUTOBUDDYCREDENTIAL/>",credential)]:
             filedata = filedata.replace(val, newval)
     
-    with open(fn, 'w') as file :
+    with open(BUDDYLOCATION+"/BuddyTools/"+fn, 'w') as file :
         file.write(filedata)
 try:
     from crontab import CronTab
