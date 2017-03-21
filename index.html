@@ -65,9 +65,9 @@
             and <span style="font-style: italic;">rules</span>.</p>
             <p>State variables can be of type:
                 <dl>
-                    <dt>event</dt><dd>Keep track of some event value (oor part thereof)</dd>
-                    <dt>simple</dt><dd>A way too share information between rules</dd>
-                    <dt>counter</dt><dd>Similar to a simple variable, but with interger operations.</dd>
+                    <dt>event</dt><dd>Keep track of some event value (or part thereof)</dd>
+                    <dt>simple</dt><dd>A way to share information between rules</dd>
+                    <dt>counter</dt><dd>Similar to a simple variable, but with integer operations.</dd>
                     <dt>tracker</dt><dd>A way to track entities associated with specific events/values.</dd>
                     <dt>time</dt><dd>A way to define time intervals</dd>
                 </dl>
@@ -80,14 +80,14 @@
                 </dl>
             </p>
             <p>ActionBuddy will process all events in the following way:
-                <ol>
+                <ul>
                     <li>Update all the state variables that the event should update,</li>
                     <li>Check what rules are triggerred,</li>
                     <li>Check that all the conditions are met for the rules triggerred,</li>
                     <li>If all checks, execute the commands.</li>
-                </ol>
+                </ul>
             </p>
-            <p>With ActionBuddy you can define rule that:
+            <p>With ActionBuddy you can define rules that:
                 <ul>
                     <li>Create a nice light show at sunset</li>
                         <li>Toggle a light at the push of a flic</li>
@@ -98,7 +98,7 @@
                 </ul>
             </p>
           <h2>SocketBuddy</h2>
-          <p>SocketBuddy provides 2-way communication between websocket and the . It serves WebBuddy and also provides login service to
+          <p>SocketBuddy provides 2-way communication between websocket and the AutoBuddy bus. It serves WebBuddy and also provides login service to
           WebBuddy. It uses <a href="http://aiohttp.readthedocs.io/en/stable/">aiohttp</a> Python library.</p>
           <h2>WebBuddy</h2>
           <p>WebBuddy is AutoBuddy web application. It enables the user, to create zones, associate devices with zone,
