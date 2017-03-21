@@ -60,43 +60,43 @@
           to track Bluetooth MAC addresses. Tracking presence with Bluetooth is very reliable. Tracking presence using ARP request is much less reliable. We
           tested with LG G5, Samsung Galaxy 7, iPhone 4s, iPhone 7 all of them answered haphazardly to the ARP requests sent.</p>
           <h2>ActionBuddy</h2>
-          <p>ActionBuddy is an application that processes events and act on them based on rules defined by the users. ActionBuddy also manages
-          internal time events (granularity is 1 minute). ActionBuddy let the user define <span style="font-style: italic;">state variables</span>
-          and <span style="font-style: italic;">rules</span>.</p>
-          <p>State variables can be of type:
-          <dl>
-          <dt>event</dt><dd>Keep track of some event value (oor part thereof)</dd>
-          <dt>simple</dt><dd>A way too share information between rules</dd>
-          <dt>counter</dt><dd>Similar to a simple variable, but with interger operations.</dd>
-          <dt>tracker</dt><dd>A way to track entities associated with specific events/values.</dd>
-          <dt>time</dt><dd>A way to define time intervals</dd>
-          </dl>
-          </p>
-          <p>Rules are defined by:
-          <dl>
-          <dt>A trigger</dt><dd>An event/value or the resulting value of a state variable after an event.</dd>
-          <dt>A list of conditions</dt><dd>Each condition testing the value of a state variable.</dd>
-          <dt>A list of commands</dt><dd>A list of commands to be executed if all the condition have been met after the rule was triggerred.</dd>
-          </dl>
-          </p>
-          <p>ActionBuddy will process all events in the following way:
-          <ol>
-          <li>Update all the state variables that the event should update,</li>
-          <li>Check what rules are triggerred,</li>
-          <li>Check that all the conditions are met for the rules triggerred,</li>
-          <li>If all checks, execute the commands.</li>
-          </ol>
-          </p>
-          <p>With ActionBuddy you can define rule that:
-          <ul>
-          <li>Create a nice light show at sunset</li>
-          <li>Toggle a light at the push of a flic</li>
-          <li>Restore the state of your light after a power outage</li>
-          <li>Turns light On/Off depending on the time of day and the presence/absence of people</li>
-          <li>Have your wife prepare you breakfast when you wake up..... Oh wait! That is not working yet.</li>
-          <li>...</li>
-          <ul>
-          </p>
+            <p>ActionBuddy is an application that processes events and act on them based on rules defined by the users. ActionBuddy also manages
+            internal time events (granularity is 1 minute). ActionBuddy let the user define <span style="font-style: italic;">state variables</span>
+            and <span style="font-style: italic;">rules</span>.</p>
+            <p>State variables can be of type:
+                <dl>
+                    <dt>event</dt><dd>Keep track of some event value (oor part thereof)</dd>
+                    <dt>simple</dt><dd>A way too share information between rules</dd>
+                    <dt>counter</dt><dd>Similar to a simple variable, but with interger operations.</dd>
+                    <dt>tracker</dt><dd>A way to track entities associated with specific events/values.</dd>
+                    <dt>time</dt><dd>A way to define time intervals</dd>
+                </dl>
+            </p>
+            <p>Rules are defined by:
+                <dl>
+                    <dt>A trigger</dt><dd>An event/value or the resulting value of a state variable after an event.</dd>
+                    <dt>A list of conditions</dt><dd>Each condition testing the value of a state variable.</dd>
+                    <dt>A list of commands</dt><dd>A list of commands to be executed if all the condition have been met after the rule was triggerred.</dd>
+                </dl>
+            </p>
+            <p>ActionBuddy will process all events in the following way:
+                <ol>
+                    <li>Update all the state variables that the event should update,</li>
+                    <li>Check what rules are triggerred,</li>
+                    <li>Check that all the conditions are met for the rules triggerred,</li>
+                    <li>If all checks, execute the commands.</li>
+                </ol>
+            </p>
+            <p>With ActionBuddy you can define rule that:
+                <ul>
+                    <li>Create a nice light show at sunset</li>
+                        <li>Toggle a light at the push of a flic</li>
+                        <li>Restore the state of your light after a power outage</li>
+                        <li>Turns light On/Off depending on the time of day and the presence/absence of people</li>
+                        <li>Have your wife prepare you breakfast when you wake up..... Oh wait! That is not working yet.</li>
+                    <li>...</li>
+                </ul>
+            </p>
           <h2>SocketBuddy</h2>
           <p>SocketBuddy provides 2-way communication between websocket and the . It serves WebBuddy and also provides login service to
           WebBuddy. It uses <a href="http://aiohttp.readthedocs.io/en/stable/">aiohttp</a> Python library.</p>
@@ -121,8 +121,8 @@
           <p>BuddyTools is a set of tools that can be used to trigger event from other application. Currently there is:
           <dl>
           <dt>dhcp-event</dt><dd>This tool is a PHP script that can be used with the dhcp server in dnsmasq to trigger
-          presence events based on dhcp lease events. It is a PHP script because I am using dd-wrt on my router an dd-wrt has a PHP interpreter but no
-          Python interpreter. It is used with the dhcp-script config option. Event send from this tool can be detected by PresenceBuddy even
+          presence events based on dhcp lease events. It is a PHP script because I am using dd-wrt on my router and dd-wrt has a PHP interpreter but no
+          Python interpreter. It is used with the dhcp-script config option. Events send from this tool can be detected by PresenceBuddy even
           when not using the ARPing method for presence. It generates <span style="font-weight: bold;">dhcp</span> events with as value a dictionary with
           <ul><li>status (online/offline)</li>
           <li>mac, the mac address</li>
