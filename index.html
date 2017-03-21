@@ -117,6 +117,26 @@
           <img src="images/webbuddy-action-rule.jpg" />
           <p>WebBuddy uses BuddyGuiLib to render all the command and configuration described in XML by each modules on
           the bus.</p>
+          <h2>BuddyTools</h2>
+          <p>BuddyTools is a set of tools that can be used to trigger event from other application. Currently there is:
+          <dl>
+          <dt>dhcp-event</dt><dd>This tool is a PHP script that can be used with the dhcp server in dnsmasq to trigger
+          presence events based on dhcp lease events. It is a PHP script because I am using dd-wrt on my router an dd-wrt has a PHP interpreter but no
+          Python interpreter. It is used with the dhcp-script config option. Event send from this tool can be detected by PresenceBuddy even
+          when not using the ARPing method for presence. It generates <span style="font-weight: bold;">dhcp</span> events with as value a dictionary with
+          <ul><li>status (online/offline)</li>
+          <li>mac, the mac address</li>
+          <li>ip, the ip address</li>
+          <li>hostname</li>
+          </ul>
+          </dd>
+          <dt>apcupsd-event</dt><dd>A python script meant to be used as <span style="font-weight: bold;">powerout</span> and 
+          <span style="font-weight: bold;">mainsback</span> scripts for apcupsd UPS monitoring daemon. It generates <span style="font-weight: bold;">grid power</span>
+          events with value <span style="font-weight: bold;">grid power on</span> or <span style="font-weight: bold;">grid power off</span></dd>
+          </dl>
+          <h2>ConfigBuddy</h2>
+          <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
+          
           <h2>Others</h2>
           <p>As time goes by, many other components should appear here. For instance:
               <dl>
@@ -126,8 +146,6 @@
               <dt>...</dt>
               </dl>
           </p>
-          <h2>ConfigBuddy</h2>
-          <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
           
           <h1>Documentation</h1>
           <p>Description of the messages and their function is somewhat documented on
