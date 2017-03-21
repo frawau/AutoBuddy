@@ -47,7 +47,7 @@ To get out of there use:
 
 ## Installing AutoBuddy
 
-Just clone frome github:
+Just clone from github:
 
     git clone https://github.com/frawau/AutoBuddy
     
@@ -66,11 +66,11 @@ WARNING: Running the configuration script with sudo will automatically grant "ra
 the python interpreter. Some people may object to this.
 
 
-BuddyConfig will ask you a few question and proceed to create a number of files.
+ConfigBuddy will ask you a few question and proceed to create a number of files/directories.
     
-    AutoBuddy/.tls              for certificates
-    AutoBuddy/.buddyconfig      for the json configuration files
-    AutoBuddy/.run              for the various starting files
+    AutoBuddy/.tls/              for certificates
+    AutoBuddy/.buddyconfig/      for the json configuration files
+    AutoBuddy/.run/              for the various starting files
     AutoBuddy/.start-autobuddy  the file starting the applications in tmux sessions.
 
 At the end it will also schedule AutoBuddy/.start-autobuddy to start on boot in the user
@@ -139,4 +139,4 @@ The Menu also contains quite a few things.
 BuddyWheel is sometimes jumpy, meaning that it jumps to a position nowhere near the mouse.
 
 In "Condition" and "Command" associated with Rules, it sometimes happen that one or more 
-empty Condition/Command are created and needs to be deleted
+empty Condition/Command are created and need to be deleted
