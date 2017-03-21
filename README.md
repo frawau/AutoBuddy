@@ -44,7 +44,8 @@ To get out of there use:
     ctrl-d
 
 
-##Installing AutoBuddy
+
+## Installing AutoBuddy
 
 Just clone frome github:
 
