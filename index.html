@@ -33,30 +33,78 @@
           <h1>Introduction</h1>
           <p><em>AutoBuddy</em> is a would-be home automation system written in his spare time by François Wautier.
           It is distributed under the MIT license.</p>
-          <p>This project was triggered by the purchase of a number of <a href="http://www.lifx.com">Lifx lightbulbs</a></p>
-          <p><em>AutoBuddy</em> consists in a number of pieces of software communicating via
-          <a ref="https://www.amqp.org/">AMQP</a> using <a hef="https://qpid.apache.org/">Apache Qpid</a> daemon and library.</p>
-          <p>This project is pretty much in its infancy and should be considered at this point (Oct 2015) as pre-alpha</p>
+          <p>This project was triggered by the purchase of a number of <a href="http://www.lifx.com">Lifx lightbulbs</a>.</p>
+          <p><em>AutoBuddy</em> consists in a number of pieces of software communicating via simple messaging bus. At this time,
+          March 2017, it should be considered beta software. AutoBuddy requires Python 3.5 or above.
+          </p>
           <p>AutoBuddy's logo was designed by Khan Wautier.</p>
           <h1>Components</h1>
           <h2>Buddylib</h2>
           <p>Buddylib is a python library that defines the element known to the AutoBuddy ecosystem. It defines zone, various 
           devices as well as some generic bridge functionalities. Buddylib depends on 
-          <a href="http://www.sqlalchemy.org/">SQLAlchemy</a> and <a hef="https://qpid.apache.org/">Apache qpid</a> python library.</p>
+          <a href="http://www.sqlalchemy.org/">SQLAlchemy</a>.</p>
           <h2>ControlBuddy</h2>
-          <p>ControlBuddy is at the heart of AutoBuddy. It controls the zones and their associated devices. It provides 
-          persistence services to other components.</p>
+          <p>ControlBuddy is at the heart of AutoBuddy. It multiplexes all the messages going in and out of the bus. It controls the zones and their associated devices. 
+          It provides persistence services to other components.</p>
           <h2>LifxBuddy</h2>
           <p>LifxBuddy is a bridge application that provides control to <a href="http://www.lifx.com">Lifx lightbulbs</a>. It uses 
-          <a href="https://github.com/mclarkk/lifxlan">lifxlan</a> to communicate with the lightbulbs.</p>
+          <a href="https://github.com/frawau/aiolifx">aiolifx</a> to communicate with the lightbulbs.</p>
+          <h2>FlicBuddy</h2>
+          <p>FlicBuddy is a bridge application that provides access to <a href="https://flic.io/">Flic Smart Button</a>. It uses 
+          <span style="font-style: italic;">aioflic</span> and <span style="font-style: italic;">flicd</span>, that can be found within
+          <a href="https://github.com/50ButtonsEach/fliclib-linux-hci">fliclib-linux-hci</a> to communicate with the buttons. FlicBuddy requires the exclusive us of a
+          Bluetooth adapter. More than one BuddyFlic can run as long as they have different subtypes. </p>
+          <h2>PresenceBuddy</h2>
+          <p>PresenceBuddy is a bridge application that provides presence information based on devices' MAC addresses. It uses 
+          <a href="https://github.com/frawau/aioarping">aioarping</a> to track MAC addresses on your LAN and/or <a href="https://github.com/frawau/aiobtname">aiobtname</a>
+          to track Bluetooth MAC addresses. Tracking presence with Bluetooth is very reliable. Tracking presence using ARP request is much less reliable. We
+          tested with LG G5, Samsung Galaxy 7, iPhone 4s, iPhone 7 all of them answered haphazardly to the ARP requests sent.</p>
+          <h2>ActionBuddy</h2>
+          <p>ActionBuddy is an application that processes events and act on them based on rules defined by the users. ActionBuddy also manages
+          internal time events (granularity is 1 minute). ActionBuddy let the user define <span style="font-style: italic;">state variables</span>
+          and <span style="font-style: italic;">rules</span>.</p>
+          <p>State variables can be of type:
+          <dl>
+          <dt>event</dt><dd>Keep track of some event value (oor part thereof)</dd>
+          <dt>simple</dt><dd>A way too share information between rules</dd>
+          <dt>counter</dt><dd>Similar to a simple variable, but with interger operations.</dd>
+          <dt>tracker</dt><dd>A way to track entities associated with specific events/values.</dd>
+          <dt>time</dt><dd>A way to define time intervals</dd>
+          </dl>
+          </p>
+          <p>Rules are defined by:
+          <dl>
+          <dt>A trigger</dt><dd>An event/value or the resulting value of a state variable after an event.</dd>
+          <dt>A list of conditions</dt><dd>Each condition testing the value of a state variable.</dd>
+          <dt>A list of commands</dt><dd>A list of commands to be executed if all the condition have been met after the rule was triggerred.</dd>
+          </dl>
+          </p>
+          <p>ActionBuddy will process all events in the following way:
+          <ol>
+          <li>Update all the state variables that the event should update,</li>
+          <li>Check what rules are triggerred,</li>
+          <li>Check that all the conditions are met for the rules triggerred,</li>
+          <li>If all checks, execute the commands.</li>
+          </ol>
+          </p>
+          <p>With ActionBuddy you can define rule that:
+          <ul>
+          <li>Create a nice light show at sunset</li>
+          <li>Toggle a light at the push of a flic</li>
+          <li>Restore the state of your light after a power outage</li>
+          <li>Turns light On/Off depending on the time of day and the presence/absence of people</li>
+          <li>Have your wife prepare you breakfast when you wake up..... Oh wait! That is not working yet.</li>
+          <li>...</li>
+          <ul>
+          </p>
           <h2>SocketBuddy</h2>
-          <p>SocketBuddy provides 2-way communication between websocket and AMQP. It serves WebBuddy and also provides login service to
-          WebBuddy. It uses <a href="http://autobahn.ws/">Autobahn WebSocket</a> Python library and 
-          <a hef="https://qpid.apache.org/">Apache qpid</a> library.</p>
+          <p>SocketBuddy provides 2-way communication between websocket and the . It serves WebBuddy and also provides login service to
+          WebBuddy. It uses <a href="http://aiohttp.readthedocs.io/en/stable/">aiohttp</a> Python library.</p>
           <h2>WebBuddy</h2>
           <p>WebBuddy is AutoBuddy web application. It enables the user, to create zones, associate devices with zone,
-          send commands to the devices/zones, manage users, and so on.</p>
+          send commands to the devices/zones, manage users, define rules, and so on.</p>
           <img src="images/webbuddy-snap.jpg" />
+          <img src="images/webbuddy-light-control.jpg" />
           <p>WebBuddy depend on, among others:
               <ul>
               <li><a href="https://jquery.org/">jQuery and jQuery-ui</a></li>
@@ -66,22 +114,31 @@
               that is a sub-project of ours.</li>
               </ul>
           </p>
+          <img src="images/webbuddy-action-rule.jpg" />
+          <p>WebBuddy uses BuddyGuiLib to render all the command and configuration described in XML by each modules on
+          the bus.</p>
           <h2>Others</h2>
           <p>As time goes by, many other components should appear here. For instance:
               <dl>
-              <dt>EventBuddy</dt><dd>Generate events based on day, time of day, calendar events,...</dd>
-              <dt>ActionBuddy</dt><dd>Perform action, state changes in response to events.</dd>
-              <dt>UPSBuddy</dt><dd>Restore state after power failure</dd>
-              <dt>HereBuddy</dt><dd>Detect presence via phone MAC address</dd>
+              <dt>LocationBuddy</dt><dd>Locating people in specific zone</dd>
               <dt>VoiceBuddy</dt><dd>Voice control</dd>
+              <dt>HayoBuddy</dt><dd>Support for <a href="https://hayo.io/">Hayo</a></dd></dd>
               <dt>...</dt>
               </dl>
-          
+          </p>
+          <h2>ConfigBuddy</h2>
+          <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
           
           <h1>Documentation</h1>
           <p>Description of the messages and their function is somewhat documented on
           <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>.</p>
           <h1>Status</h1>
+          <h3>March 2017</h3>
+          <p>System is soon to have its first release.</p>
+          <p>I have it installed on a Raspberry Pi 3 and I use it everyday. It just works.</p>
+          <p>Before release, I want to solve a couple of annoying bugs. I also want to add a location widget
+          for BuddyGuiLib so that it is more convenient for people to set their location (needed for sunrise/sunset time) 
+          event though ConfigBuddy gets your location allright.</p>
           <h3>October 2015</h3>
           <p>System released on an unsuspecting world. Chaos may ensue.</p>
           <p>The system is minimal. At this time we can 
