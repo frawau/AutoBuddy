@@ -2,9 +2,42 @@
 
 AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.io/AutoBuddy/ for some description and some screenshots.
 
-# Installation
+# Raspberry Pi Installation
 
-Soon there will be a Raspberry 2/3 images to be downloaded.... in the meantime....
+RPi3 and RPi2 are supported.
+
+Download the image from 
+
+    https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing
+
+Write the image to an SD card the usual way
+    
+    xzcat rpi3-autobuddy.img.xz | dd of=/dev/sdX
+
+with X the actual device e.g. sdb, sdc, ...
+
+Boot the RPi and connect to it using ssh;
+    
+    ssh autobuddy@autobuddy.local
+    
+The password is "autobuddy" (without the quotes)
+
+Execute
+
+    sudo AutoBuddy/ConfigBuddy/ConfigBuddy
+    
+answer the questions and reboot.
+
+Access WebBuddy at
+
+    https://autobuddy.local:8090
+    
+If it complains about an unsafe connection, ignore and trust the self-signed certificates
+then login as user "admin" with password "password"
+    
+Have fun and let us know what you like or don't like..
+
+# Installation
 
 ## Requirements
 
