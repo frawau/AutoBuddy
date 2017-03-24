@@ -548,13 +548,13 @@ class Controller():
                                     "content_type":"event",
                                     "content": {"event":"config updated",
                                                 "target": "System.configuration",
-                                                "values":system_config_default}})
+                                                "value":system_config_default}})
                     except:
                         self.sending({"subject":"System",
                                     "content_type":"event",
                                     "content": {"event":"Error",
                                                 "target": "System.configuration",
-                                                "values":"Config could not be saved"}})
+                                                "value":"Config could not be saved"}})
         elif msg["subject"].split(".")[0] == "control":
             try:
                 if msg["content_type"]== "request":
