@@ -1,0 +1,641 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is generating event for specified voice utterances
+# 
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse, sys
+import buddylib as bl
+import asyncio as aio
+from functools import partial
+import aiohttp,traceback,json,logging,os,ssl,re
+
+SUBTYPE="main"
+CERTFILE="autobuddy.crt"
+__version__="0.10"
+
+
+def intround(x):
+    return int(round(x))
+
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+voice_commands=""
+
+voice_config="""
+<buddyui version="0.1">
+    <configuration  name="voice">
+        <controlgroup type="listmaker"  name="command" label="Voice Command" > 
+            <control type="text" name="phrase" length="32"/>
+            <control type="switch" name="active" label="Active">
+                <value label="Active">yes</value>
+                <value label="Inactive">no</value>
+                <default>yes</default>
+            </control>
+            <control type="text" name="event" label="Event"  length="32"/>
+            <control type="text" name="value" label="Event Value" length="32"/>
+        </controlgroup>
+        <control type="text" name="keyphrase" label="Trigger Phrase"  length="32"/>
+    </configuration>
+</buddyui>
+"""
+voice_config_default={"command":[],"keyphrase":"listen_buddy"}
+
+voice_module_commands={}
+
+async def build_corpus(txt,path):
+    myfn="/tmp/myvocab.txt"
+    """txt is an array of sentences"""
+    myfile=open(myfn,"w")
+    for aline in txt:
+        myfile.write(aline.lower()+"\n")
+    myfile.close()
+    url = 'http://www.speech.cs.cmu.edu/cgi-bin/tools/lmtool/run'
+    files = {'corpus': open(myfn, 'rb'),"formtype":"simple",}
+    isdone=False
+    while not isdone:
+        try:
+            session=aiohttp.ClientSession()
+            async with session.post(url, data=files) as resp:
+                ttext = await resp.text()
+                urls = re.search(r"(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+]*[\w\-\@?^=%&amp;/~\+])?", ttext)
+            all=urls.group().split("/")
+            server="/".join(all[:-1])+"/"
+            doccode=re.findall(r'\d+',all[-1])[0]
+            for ext in [".dic",".lm"]:
+                filename=os.path.join(path,"autobuddy"+ext)
+                async with session.get(server+doccode+ext) as resp:
+                    with open(filename, 'wb') as fd:
+                        while True:
+                            chunk = await resp.content.read(512)
+                            if not chunk:
+                                break
+                            fd.write(chunk)
+            isdone=True
+        except:
+            await aio.sleep(5)
+            continue
+        finally:
+            session.close()
+
+
+def voice_process(self,msg):
+    """Voice is a one way communication bridge"""
+    if msg["content"]["command"] == "nickname":
+        #print msg
+        self.nickname=msg["content"]["value"]
+        self.controller.sending({"subject":"control" + "." + self.controller.type,
+                "content_type": "request",
+                "content":{"request":"nickname", 
+                            "target": self.controller.type+"."+ self.name,
+                            #"token": self.controller.target,
+                            "value":{"name":self.name,"nickname": msg["content"]["value"]}}})
+    elif msg["content"]["command"] == "status":
+        #Not gone the way of the dodo        
+        self.controller.sending({"subject":self.controller.type,
+                "content_type":"event",
+                "content": {"event":"status",
+                            "target": self.controller.type + "." + self.name,
+                            "icon status" : {"bu-not-present":{"opacity":0}},
+                            "value":{}}})
+
+    elif msg["content"]["command"] == "deletion":
+        self.controller.sending({"subject":"control" + "." + self.controller.type,
+                "content_type": "request",
+                "content":{"request":"deletion", 
+                            "target": self.controller.type,
+                            "value":self.name}})
+        
+    return None
+
+
+#Hop we go....
+bl.voice._process=voice_process
+        
+
+class VoiceBridge(bl.BuddyBridge):
+    """
+    This is the bridge application.
+    It will report any new bulb
+    """
+    def __init__(self,loop,future,config,log):
+        super(VoiceBridge, self).__init__(loop,future,config,log)
+        self.voice_device=None
+        self.voice_decoding = None
+        self.voice_config = voice_config_default
+        self.corpus_build=None
+        self.newconfig=None
+
+
+    def process_command(self,msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target and not self.corpus_build:
+                if msg["content"]["value"] != voice_config_default:
+                    self.newconfig={}
+                    for k,v in msg["content"]["value"].items():
+                        self.newconfig[k]=v
+                    #Create new corpus and restart the decoder
+                    self.corpus_build=aio.ensure_future(build_corpus([self.newconfig["keyphrase"]]+[ x["phrase"] for x in self.newconfig["command"]],self.config["voicepath"]))
+                    xx=self.loop.create_task(self.check_corpus())
+        else:
+            if self.voice_device:
+                self.voice_device.process(msg)
+  
+  
+    async def check_corpus(self):
+        """Check if the corpus generation is done"""
+        while True:
+            if self.corpus_build:
+                try:
+                    await aio.wait_for(self.corpus_build,60)
+                    self.corpus_build=None
+                    
+                    self.sending({"subject":self.target,
+                                "content_type": "event",
+                                "content":{"event":"gui alert", 
+                                            "target":bridgectl.target,
+                                            "value":"Voice command dictionary rebuilt."}})
+                                
+                    for k,v in self.newconfig.items():
+                        voice_config_default[k]=v
+                    self.newconfig=None
+                    self.sending({"subject":"control" + "." + self.subtype,
+                                        "content_type": "request",
+                                        "content": {"request":"save configuration",
+                                                    "target":self.type,
+                                                "value":bl.encrypt(voice_config_default,self.config["buddykey"])}})
+                    if self.voice_decoding:
+                        self.voice_decoding.cancel()
+                    self.voice_decoding=self.loop.create_task(self.decode_voice())
+                except:
+                    self.newconfig=None
+                    self.sending({"subject":self.target,
+                                "content_type": "event",
+                                "content":{"event":"gui alert", 
+                                            "target":bridgectl.target,
+                                            "value":"Voice command dictionary could not be rebuilt."}})
+                    
+            await aio.sleep(10)
+                
+    async def decode_voice(self):
+        
+        self.log.debug("Starting decoder")
+        decode = aio.create_subprocess_exec(os.path.join(self.config["voicepath"],"decoder.py"), '-m', self.config["modeldir"],
+                                            "-c",self.config["voicepath"],"-d",config["mic"],"-t", voice_config_default["keyphrase"],
+                                            stdout=aio.subprocess.PIPE)
+        proc = await decode
+
+        while True:
+            # Read one line of output
+            data = await proc.stdout.readline()
+            line = data.decode("utf8").rstrip().lower()
+            self.log.debug("Received voice command {}".format(line))
+            linebits = [ x.lower() for x in line.split(" ") if x !=""]
+            for cmd,event,evalue in [(x["phrase"],x["event"],x["value"]) for x in voice_config_default["command"] if x["active"]]:
+                cmdbits =  [ x.lower() for x in cmd.split(" ") if x !=""]
+                if len(linebits) < len(cmdbits):
+                    continue
+                allin=True
+                for x in linebits:
+                    if x not in cmdbits:
+                        allin = False
+                        break
+                if not allin:
+                    continue
+                
+                #So we have all the bits... are they in the right order?
+                cmdbits =  [ x.lower() for x in cmd.split(" ") if x.lower() in linebits]
+                self.log.debug("Compare {} to {}".format(cmdbits,linebits))
+                if cmdbits == linebits:
+                    #Got it
+                    
+                    bridgectl.sending({"subject":bridgectl.target,
+                        "content_type":"event",
+                        "content": {"event":event,
+                                    "target": bridgectl.target,
+                                    "value":evalue}})         
+        
+    def process_response(self,msg):
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            #Getting the config
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug("The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig={}
+                    savenew=True
+                    #log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.voice_config[x]=storedconfig[x]
+            
+            self.config["database"]= msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+                                
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and  msg["content"]["status"] != "done":
+                #log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            else:
+                self.sending({"subject":"control" + "." + self.target ,
+                        "content_type": "request",
+                        "content":{"request":"functions", 
+                                    "target":self.type,
+                                    "subtype": self.subtype,
+            #if savenew or ("configonly" in self.config and self.config["configonly"]):
+                #self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"value":bl.encrypt(flic_config_default,self.config["buddykey"])}})
+                                    #"token": self.target,
+                                    "value":{"configs":[voice_config,voice_config_default]}}})
+                self.sending({"subject":self.target ,
+                        "content_type": "event",
+                        "content":{"event":"config updated", 
+                                    "target":self.target,
+                                    "value":voice_config_default}})
+                        
+        elif msg["content"]["response"] == "configuration" and msg["subject"]==self.target:
+            if msg["content"]["configuration"]:
+                try:
+                    storedprop=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug("The property stored is {}".format(storedprop))
+                except:
+                    storedprop={}
+                    if self.config["debug"]:
+                        self.log.debug("The property stored cannot be decrypted.")
+                for k,v in storedprop.items():
+                    voice_config_default[k]=v
+                    
+
+                                    
+            if not( msg["content"]["configuration"] and  storedprop):
+                #First time around... was never saved that property.. let's do it
+                self.sending({"subject":"control" + "." + self.type,
+                        "content_type": "request",
+                        "content": {"request":"save configuration",
+                                    "target":self.subtype,
+                                    #"token": self.target,
+                                "value":bl.encrypt(voice_config_default,self.config["buddykey"])}})
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess=bl.getSession(self.config["database"])
+                device=sess.query(bl.voice).filter_by(name=msg["subject"].split(".")[-1]).one()
+                self.voice_device=device
+                self.voice_device.controller=self
+                self.sending({"subject":self.type,
+                            "content_type": "event",
+                            "content":{"event":"new device", 
+                                "target":self.type + "." + device.name,
+                                "value":{"type":self.type,"subtype":self.subtype,
+                                        "name":device.name,"nickname":device.nickname}}})
+
+                self.sending({"subject":self.type,
+                            "content_type": "event",
+                            "content":{"event":"presence", 
+                                        "target":self.type + "." + device.name,
+                                        "value":"online",
+                                        "icon status" : {"bu-not-present":{"opacity":0}}}})                
+
+                sess.close()
+            elif msg["content"]["response"] == "nickname" :
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug (msg)
+                    if self.voice_device.name==msg["subject"].split(".")[-1]:
+                        self.voice_device.nickname=msg["content"]["value"] 
+                        self.sending({"subject":self.type,
+                                "content_type": "event",
+                                "content":{"event":"nickname",  
+                                            "target":self.type + "." + self.voice_device.name,
+                                            "value":self.voice_device.nickname}})
+  
+                        
+            elif msg["content"]["response"] == "deletion" :
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug (msg)
+                    if self.voice_device.name==msg["subject"].split(".")[-1]:
+                        self.sending({"subject":self.type,
+                                "content_type": "event",
+                                "content":{"event":"deletion",  
+                                            "target":self.target,
+                                            "value":self.voice_device.name}})
+
+        else:
+            if self.log:
+                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+            else:
+                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+
+
+                                    
+    def build(self):
+        self.sending({"subject":"control" + "." + self.target ,
+                "content_type": "request",
+                "content":{"request":"functions", 
+                            "target":self.type,
+                            "subtype": self.subtype,
+                            #"token": self.target,
+                            "value":{"functions":"","configs":[voice_config,voice_config_default]}}})
+        
+        self.sending({"subject":self.target ,
+                "content_type": "event",
+                "content":{"event":"config updated", 
+                            "target":self.target,
+                            "value":voice_config_default}})
+        #Is device present
+        try:
+            sess=bl.getSession(self.config["database"])
+            self.voice_device=sess.query(bl.voice).filter_by(name=self.type+"_"+self.subtype).one()
+            self.voice_device.controller=self
+            self.sending({"subject":self.type,
+                        "content_type": "event",
+                        "content":{"event":"presence", 
+                                   "target":self.type+"."+self.type+"_"+self.subtype,
+                                    "value":"online",
+                                    "icon status" : {"bu-not-present":{"opacity":0}}}})
+        except:
+            #first run, create
+            
+            self.sending({"subject":"control" + "." + self.type,
+                      "content_type": "request",
+                      "content":{"request":"creation", 
+                                 "target":self.type, #Here we need the type
+                                 #"token": self.target,
+                                 "value":{"name":self.type+"_"+self.subtype, "nickname":self.subtype,"subtype":self.subtype}}})
+        finally:
+            sess.close()
+                
+        #start sound decoding
+        self.voice_decoding=self.loop.create_task(self.decode_voice())
+
+
+
+
+
+aboutstr="""<p>VoiceBuddy is an application looking for voice command. When a known voice command is detected,
+the associated event is sent. VoiceBuddy uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Melon University's PocketSphinx</a>. The icon used 
+has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>. </p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+iconstr="""
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
+    <g transform="scale(1,-1)">
+    <g transform="translate(320, -1610)">
+    <path class="bu-shape" d="M1152 832v-128q0 -221 -147.5 -384.5t-364.5 -187.5v-132h256q26 0 45 -19t19 -45t-19 
+                -45t-45 -19h-640q-26 0 -45 19t-19 45t19 45t45 19h256v132q-217 24 -364.5 187.5t-147.5 384.5v128q0 
+                26 19 45t45 19t45 -19t19 -45v-128q0 -185 131.5 -316.5t316.5 -131.5 t316.5 131.5t131.5 316.5v128q0 
+                26 19 45t45 19t45 -19t19 -45zM896 1216v-512q0 -132 -94 -226t-226 -94t-226 94t-94 226v512q0 132 94 
+                226t226 94t226 -94t94 -226z" />
+    </g></g>
+    <g transform="translate(0, -15)">
+    <path class="bu-not-present" fill="#a94442" 
+           d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
+              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
+              163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
+</g>
+</svg>
+"""
+
+cfgdefault={"type":"voice","subtype":SUBTYPE,"host":"localhost","port":8745,"credential":"","ssl":"", "modeldir":"/usr/share/pocketsphinx/model/en-us/en-us","voicepath":"./","mic":"default"}
+def configure(): 
+    parser = argparse.ArgumentParser(description="Voice commands.")
+    #                            version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                    help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                    help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-P", "--voicepath", default=cfgdefault["voicepath"],
+                    help="Where to find the voice decoding executable (and corpus) (default \"%s\")." % cfgdefault["voicepath"])
+    parser.add_argument("-M", "--modeldir", default=cfgdefault["modeldir"],
+                    help="Where to find the voice model (default \"%s\")." % cfgdefault["modeldir"])
+    parser.add_argument("-m", "--mic", default=cfgdefault["mic"],
+                    help="The microphone device to use (default \"%s\")." % cfgdefault["mic"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/voice.cfg", type=argparse.FileType('r'),
+                    help="Config file to use (default \"/etc/autobuddy/voice.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                    help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                    help="The directory where the file %s can be found."%(CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                    help="Exit after the the configuration has been saved")
+    
+    try:
+        opts=parser.parse_args()
+    except Exception as e:
+        parser.error("Error: "+str(e))
+        
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+            )
+    voicelog = logging.getLogger('')
+    voicecfg = {"debug":opts.debug}
+    try:
+    #if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except:
+            cfgdata={}
+            voicelog.warning("Config file could not be opened.")
+        if opts.type != cfgdefault["type"]:
+            voicecfg["type"] = opts.type
+        elif "type" in cfgdata:
+            voicecfg["type"] = cfgdata["type"]     
+        else:
+            voicecfg["type"] = opts.type
+        if opts.debug:
+            voicelog.debug("The type is %s." % voicecfg["type"]) 
+            
+        if opts.subtype != cfgdefault["subtype"]:
+            if "-" in opts.subtype:
+                raise Exception("Subtype may not contain a dash (\"-\")")
+            voicecfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            voicecfg["subtype"] = cfgdata["subtype"]     
+        else:
+            voicecfg["subtype"] = opts.subtype
+        if opts.debug:
+            voicelog.debug("The subtype is %s." % voicecfg["subtype"]) 
+            
+            
+        if opts.credential != cfgdefault["credential"]:
+            voicecfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            voicecfg["credential"] = cfgdata["credential"]
+        else:
+            voicecfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            voicelog.debug("The credential is %s"%voicecfg["credential"])         
+            
+        if opts.port != cfgdefault["port"]:
+            voicecfg["port"] = opts.port
+        elif "port" in cfgdata:
+            voicecfg["port"] = cfgdata["port"]
+        else:
+            voicecfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            voicelog.debug("The port is %s" % (voicecfg["port"]))      
+            
+        if opts.host != cfgdefault["host"]:
+            voicecfg["host"] = opts.host
+        elif "host" in cfgdata:
+            voicecfg["host"] = cfgdata["host"]
+        else:
+            voicecfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            voicelog.debug("The host is %s"%voicecfg["host"])       
+            
+            
+        if opts.voicepath != cfgdefault["voicepath"]:
+            voicecfg["voicepath"] = opts.voicepath
+        elif "voicepath" in cfgdata:
+            voicecfg["voicepath"] = cfgdata["voicepath"]
+        else:
+            voicecfg["voicepath"] = cfgdefault["voicepath"]
+        if opts.debug:
+            voicelog.debug("The voice path is %s"%voicecfg["voicepath"])  
+   
+        if opts.modeldir != cfgdefault["modeldir"]:
+            voicecfg["modeldir"] = opts.modeldir
+        elif "modeldir" in cfgdata:
+            voicecfg["modeldir"] = cfgdata["modeldir"]
+        else:
+            voicecfg["modeldir"] = cfgdefault["modeldir"]
+        if opts.debug:
+            voicelog.debug("The model directory is %s"%voicecfg["modeldir"])  
+ 
+        if "buddykey" in cfgdata:
+            voicecfg["buddykey"] = cfgdata["buddykey"]
+    
+        if opts.mic != cfgdefault["mic"]:
+            voicecfg["mic"] = opts.mic
+        elif "mic" in cfgdata:
+            voicecfg["mic"] = cfgdata["mic"]
+        else:
+            voicecfg["mic"] = cfgdefault["mic"]    
+            
+        if opts.ssl != cfgdefault["ssl"]:
+            voicecfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            voicecfg["ssl"] = cfgdata["ssl"]
+        else:
+            voicecfg["ssl"] = cfgdefault["ssl"]
+        if voicecfg["ssl"] and not ( os.path.isfile(voicecfg["ssl"]+"/"+CERTFILE)):
+            voicelog.critical("Encryption: Could not find {} .".format(
+                voicecfg["ssl"]+"/"+CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if voicecfg["ssl"]:
+                voicelog.debug("The ssl certificates can be found in %s"%voicecfg["ssl"]) 
+            else:
+                voicelog.debug("The connection is not encrypted") 
+                    
+        if opts.configonly:
+
+            if "buddykey" not in voicecfg:
+                if opts.debug:
+                    voicelog.debug("Generating random key")   
+                voicecfg["buddykey"] = bl.keygen()
+            try:
+                del(voicecfg["debug"])
+            except:
+                pass
+            with open(opts.configonly,"w") as cfile:
+                json.dump(voicecfg,cfile)
+            os.chmod(opts.configonly,384) # 0600
+            sys.exit()
+        
+    except Exception as e:
+        voicelog.error("Error: %r" % e)
+        sys.exit(-2)
+    
+    return (voicelog,voicecfg)
+
+         
+if __name__ == "__main__":
+    log,config=configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+ 
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+            cafile=config["ssl"]+'/'+CERTFILE)
+        
+        sslcontext.check_hostname = False
+    else:
+        sslcontext=None
+    connFuture=aio.Future()
+    fac=loop.create_connection(partial(VoiceBridge,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
+    conn,bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(bridgectl.configrequest,{"about":{"VoiceBuddy":aboutstr},"display":{config["subtype"]:iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except  KeyboardInterrupt:
+        print("\n","Exiting at user's request")
+    finally:
+        bridgectl.voice_decoding.cancel()
+        conn.close()
+        loop.close()
+            
+    

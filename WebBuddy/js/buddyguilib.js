@@ -93,7 +93,7 @@ var buddyPanel = Class.extend({
                     } else if   ( $(part).attr("type") == "time range" ) {
                         nco = new switchControl(ctxname,cname,$(part),realtime)
                         tabmsg+=nco.render();
-                    } else if   ( $(actrl).attr("type") == "text" ) {
+                    } else if   ( $(part).attr("type") == "text" ) {
                         nco = new textControl(ctxname,cname,$(part),realtime)
                         tabmsg+=nco.render();
                     } else {

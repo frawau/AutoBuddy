@@ -453,7 +453,7 @@ class LifxBridge(bl.BuddyBridge):
                     lifx_config_default[k]=v
                     if k == "refresh":
                         print("Setting  interval on {}".format(dir(fac)))
-                        aiolifx.DISCOVERY_INTERVAL=v
+                        self.probelights.discovery_interval=v
                 
                 self.sending({"subject":"control" + "." + self.subtype,
                                     "content_type": "request",

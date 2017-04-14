@@ -343,7 +343,7 @@ def configure():
         guiwscfg["subtype"]="gui"
         
         if guiwscfg["ssl"] and not ( os.path.isfile(guiwscfg["ssl"]+"/"+CERTFILE)):
-            self.log.critical("Encryption: Could not find {} .".format(
+            guiwslog.critical("Encryption: Could not find {} .".format(
                 guiwscfg["ssl"]+"/"+CERTFILE))
             sys.exit()
         
