@@ -97,6 +97,16 @@
                     <li>...</li>
                 </ul>
             </p>
+          <h2>VoiceBuddy</h2>
+          <p>VoiceBuddy is AutoBuddy's voice recognition module. It uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Mellon University's PockectSphinx</a>.
+          <p>VoiceBuddy allows you to define <span style="font-syle: italic;">utterances</span> and to trigger events when they are detected.</p>
+          <p>There is a configurable trigger utterance. By default it is <span style="font-weight:bold;">listen buddy</span> defined as "listen_buddy", a single
+          word rather than 2, to make recognition more reliable.</p>
+          <p>In general, to improve reliability, it is a good idea to use multi-syllables words when defining voice commands. Also try to separate similar sounding
+          commands when possible. For instance, instead of "turn the lights on" and "turn the ligths off" use "turn_on the_lights" and "turn the_light off". Another 
+          example, instead of "lock the door" and "unlock the door", use "do_lock the_door" and "unlock the_door".</p>
+          <p>In general, be aware that voice recognition does not work very well in noisy environments.</p>
+          <p>VoiceBuddy uses the python module <a href="https://github.com/larsimmisch/pyalsaaudio">alsaaudio</a>.</p>
           <h2>SocketBuddy</h2>
           <p>SocketBuddy provides 2-way communication between websocket and the AutoBuddy bus. It serves WebBuddy and also provides login service to
           WebBuddy. It uses <a href="http://aiohttp.readthedocs.io/en/stable/">aiohttp</a> Python library.</p>
@@ -141,7 +151,6 @@
           <p>As time goes by, many other components should appear here. For instance:
               <dl>
               <dt>LocationBuddy</dt><dd>Locating people in specific zone</dd>
-              <dt>VoiceBuddy</dt><dd>Voice control</dd>
               <dt>HayoBuddy</dt><dd>Support for <a href="https://hayo.io/">Hayo</a></dd></dd>
               <dt>...</dt>
               </dl>
