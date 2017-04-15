@@ -393,6 +393,7 @@ os.system('clear')
 
 dolifx=False
 doflic=False
+dovoice=False
 dopresence=False
 dopresencelan=False
 dopresencebt=False
@@ -430,6 +431,35 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doflic=lobtdevs[0]
     lobtdevs=lobtdevs[1:]
 
+print("\n\nVoiceBuddy allows you configure voice commands.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dovoice=True
+    
+voicedev="default"
+if dovoice:
+    import alsaaudio
+    gotit = False
+    while not gotit:
+        print (\" Please select the audio device to use for listening.")
+        lastdev = 0
+        for dnb,dname in enumerate(alsaaudio.cards()):
+            print ("   %d\t %s"%(dnb,dname))
+            lastdev = dnb
+        choice = input("Your choice: ")
+        try:
+            choice=int(choice)
+            if choice >= 0  and choice <= lastdev:
+                gotit = True
+                voicedev = "plughw:%d,0"%choice
+            else:     
+                os.system('clear')
+                print ("\nInput must be an integer between 0 and %d!"%lastdev)
+        except:
+            os.system('clear')
+            print ("\nInput must be an integer!")
+
 print("\nYou have decided:")
 if dolifx:
     print("\tto run LifxBuddy")
@@ -450,6 +480,12 @@ if doflic:
     print("\tto run FlicBuddy")
 else:
     print("\tnot to run FlicBuddy")
+   
+if dovoice:
+    print("\tto run VoiceBuddy with {}".format(voicedev))
+else:
+    print("\tnot to run VoiceBuddy")
+    
 
 if doflic and dopresencebt:
     print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
@@ -704,6 +740,44 @@ if dopresence:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n PresenceBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n PresenceBuddy "+fn
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "voice"
+mycfg["subtype"] = "main"
+
+mycfg["modeldir"] = "/usr/share/pocketsphinx/model/en-us/en-us"
+mycfg["voicepath"] = BUDDYLOCATION+"/VoiceBuddy/"
+mycfg["mic"] = voicedev
+        
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+actionkey=mycfg["buddykey"]
+fn=BUDDYLOCATION+"/.buddyconfig/voice.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/VoiceBuddy/VoiceBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/VoiceBuddy/VoiceBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/50-voice"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dovoice:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n VoiceBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n VoiceBuddy "+fn
 
 
 

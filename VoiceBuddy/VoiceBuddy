@@ -122,6 +122,7 @@ def voice_process(self,msg):
                 "content_type": "request",
                 "content":{"request":"deletion", 
                             "target": self.controller.type,
+                            "purge":True,
                             "value":self.name}})
         
     return None
@@ -352,7 +353,7 @@ class VoiceBridge(bl.BuddyBridge):
                         self.sending({"subject":self.type,
                                 "content_type": "event",
                                 "content":{"event":"deletion",  
-                                            "target":self.target,
+                                            "target":self.type + "." + self.voice_device.name,
                                             "value":self.voice_device.name}})
 
         else:

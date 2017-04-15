@@ -678,11 +678,18 @@ class Controller():
                         mytype=getattr(bl,msg["content"]["target"])
                         try:
                             thisdev=sess.query(mytype).filter_by(name=msg["content"]["value"]).one()
+                            mysubtype=thisdev.subtype
                             sess.delete(thisdev)
+                            if "purge" in msg["content"] and msg["content"]["purge"]:
+                                sess.delete(thisdev.functions)
                             sess.commit()
                             sts=True
                         except:
                             sts=False
+
+                        #TODO clean functions, config and commands
+                            
+                            
                         self.sending({"subject":msg["content"]["target"]+"."+msg["content"]["value"],
                                     "content_type":"response",
                                     "content": {"response":"deletion",
@@ -921,7 +928,7 @@ class Controller():
                                                 "value": resu}})
 
             except Exception as e:
-                self.log.critical("Bloody problem with ():\n".format(msg), exc_info=(type(e), e, e.__traceback__))
+                self.log.critical("Bloody problem with {}:\n".format(msg), exc_info=(type(e), e, e.__traceback__))
                 
 
         else:

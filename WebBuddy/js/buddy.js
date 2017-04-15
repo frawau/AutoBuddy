@@ -130,7 +130,7 @@ function show_about () {
     msg+="</ul>"
                         
     bootbox.dialog({
-        title: "<img src=\"/images/AutoBuddy-logo.svg\" width=\"30\" height=\"30\"/> About AutoBuddy <span class=\"pull-right bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</span>",
+        title: "<img src=\"/images/AutoBuddy-logo.svg\" width=\"30\" height=\"30\"/> About AutoBuddy <span class=\"pull-right bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</span>",
         message:msg+tabmsg,
         buttons: {
             close: {
