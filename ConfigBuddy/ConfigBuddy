@@ -277,10 +277,10 @@ if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     os.system('clear')
     
     print ("\n\n\n\n Password was set.\n\n")
-    choice = input(" Press '<enter>' to continue")
 
 
 if not iamsuper:
+    choice = input(" Press '<enter>' to continue")
     psqldbok=False
     psqluser=None
     print ("\nWe now need to setup PostgreSQL, create a database and 2 users.")
