@@ -442,7 +442,7 @@ if dovoice:
     import alsaaudio
     gotit = False
     while not gotit:
-        print (\" Please select the audio device to use for listening.")
+        print (" Please select the audio device to use for listening.")
         lastdev = 0
         for dnb,dname in enumerate(alsaaudio.cards()):
             print ("   %d\t %s"%(dnb,dname))
