@@ -251,6 +251,10 @@ try:
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
 
+if iamsuper and os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
+    subprocess.run(["chown","autobuddy:autobuddy",BUDDYLOCATION+"/VoiceBuddy/autobuddy*"])
+    print("Ownership updated.")
+
 choice = input(" Press '<enter>' to continue")
 os.system('clear')
 if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
