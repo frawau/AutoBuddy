@@ -185,6 +185,7 @@ class VoiceBridge(bl.BuddyBridge):
                                                 "value":bl.encrypt(voice_config_default,self.config["buddykey"])}})
                     if self.voice_decoding:
                         self.voice_decoding.cancel()
+                    await aio.sleep(5)  #Give some time for the device to close alright
                     self.voice_decoding=self.loop.create_task(self.decode_voice())
                 except:
                     self.newconfig=None
