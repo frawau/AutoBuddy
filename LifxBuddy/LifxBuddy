@@ -22,7 +22,7 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse, sys, traceback,json,logging,functools,random,os,ssl,math, colorsys
+import argparse, sys, traceback,json,logging,functools,random,os,ssl,math, colorsys, string
 import buddylib as bl
 import asyncio as aio
 import aiolifx
@@ -36,6 +36,12 @@ UDP_BROADCAST_PORT = 56700
 
 def intround(x):
     return int(round(x))
+
+def animname():
+    res=""
+    for x in range(4):
+        res+=random.choice(string.ascii_letters)
+    return res
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 lifx_functions="""
@@ -240,13 +246,27 @@ def lifx_process(self,msg):
                 rapidfire = True
             else:
                 rapidfire = False
-            if msg["content"]["command"] == "power":                
+            if msg["content"]["command"] == "power":
+                nowcss=self.cssColour(force=True)
+                iconsts={"bu-fill":{"fill":(msg["content"]["value"]["power"]=="on" and nowcss) or "transparent"}}
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                    prefix=animname()
+                    startcss=(msg["content"]["value"]["power"]=="on" and "transparent" ) or nowcss
+                    endcss=(msg["content"]["value"]["power"]=="on" and nowcss ) or "transparent"
+                    anim="@keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-webkit-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-moz-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-o-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    alen=int(msg["content"]["value"]["duration"] or 0)
+                    anim+="\n.run-animation-"+self.name+" { animation-name: "+prefix+self.name+"; animation-duration: %ds"%alen +"; animation-iteration-count: 1; }"
+                    if alen:
+                        iconsts["animation"]=anim
                 mypartial=partial(self.controller.sending,
                                 {"subject":self.controller.type,
                                 "content_type":"event",
                                 "content": {"event":"power",
                                             "target": self.controller.type + "." + self.name,
-                                            "icon status" : {"bu-fill":{"fill":(msg["content"]["value"]["power"]=="on" and self.cssColour(force=True)) or "transparent"}},
+                                            "icon status" : iconsts,
                                             "value":msg["content"]["value"]}})
                 if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
                     self.conn.set_power((msg["content"]["value"]["power"]=="on" and 1) or 0,duration=1000*int(msg["content"]["value"]["duration"] or 0),
@@ -255,14 +275,27 @@ def lifx_process(self,msg):
                     self.conn.set_power((msg["content"]["value"]["power"]=="on" and 1) or 0,callb=lambda x,y: mypartial())
                     
             elif msg["content"]["command"] == "colour":
+                endcss=self.cssColour([ intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
+                                        intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
+                                        intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500])
+                iconsts = {"bu-fill":{"fill":endcss}}
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                    prefix=animname()
+                    startcss=self.cssColour(force=True)
+                    anim="@keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-webkit-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-moz-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-o-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    alen=int(msg["content"]["value"]["duration"] or 0)
+                    anim+="\n.run-animation-"+self.name+" { animation-name: "+prefix+self.name+"; animation-duration: %ds"%alen +"; animation-iteration-count: 1; }"
+                    if alen:
+                        iconsts["animation"]=anim
+                    
                 mypartial=partial(self.controller.sending,{"subject":self.controller.type,
                                 "content_type":"event",
                                 "content": {"event":"colour",
                                             "target": self.controller.type + "." + self.name,
-                                            "icon status" : {"bu-fill":{"fill":self.cssColour(
-                                                    [intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
-                                                     intround((float(msg["content"]["value"]["saturation"])*65535.0)/100.0),
-                                                     intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500])}},
+                                            "icon status" : iconsts,
                                             "value":msg["content"]["value"]}})
                 if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
                     self.conn.set_color([intround((float(msg["content"]["value"]["hue"])*65535.0)/360.0),
@@ -275,13 +308,27 @@ def lifx_process(self,msg):
                                         intround((float(msg["content"]["value"]["value"])*65535.0)/100.0),3500], callb=lambda x,y: mypartial(),rapid=rapidfire)
 
             elif msg["content"]["command"] == "white":
+                endcss=self.cssColour([ 58275,0,
+                                        intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
+                                        intround(float(msg["content"]["value"]["temperature"]))])
+                iconsts = {"bu-fill":{"fill":endcss}}
+                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                    prefix=animname()
+                    startcss=self.cssColour(force=True)
+                    anim="@keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-webkit-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-moz-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    anim+="\n@-o-keyframes "+prefix+self.name+" {  from { fill: "+startcss+" }  to { fill: "+endcss+" }}"
+                    alen=int(msg["content"]["value"]["duration"] or 0)
+                    anim+="\n.run-animation-"+self.name+" { animation-name: "+prefix+self.name+"; animation-duration: %ds"%alen +"; animation-iteration-count: 1; }"
+                    if alen:
+                        iconsts["animation"]=anim
+                
                 mypartial=partial(self.controller.sending,{"subject":"",
                                 "content_type":"event",
                                 "content": {"event":"white",
                                             "target": self.controller.type + "." + self.name,
-                                            "icon status" : {"bu-fill":{"fill":self.cssColour([58275,0,
-                                                    intround((float(msg["content"]["value"]["value"])*65365.0)/100.0),
-                                                    intround(float(msg["content"]["value"]["temperature"]))])}},
+                                            "icon status" : iconsts,
                                             "value":msg["content"]["value"]}})
                 if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
                     self.conn.set_color([58275,0,
@@ -298,18 +345,28 @@ def lifx_process(self,msg):
                 endcss = self.cssColour(col=[intround((float(msg["content"]["value"]["colour"]["hue"])*65535.0)/360.0),
                                              intround((float(msg["content"]["value"]["colour"]["saturation"])*65535.0)/100.0),
                                              intround((float(msg["content"]["value"]["colour"]["value"])*65535.0)/100.0),3500])
-                trans = ("transient" in msg["content"]["value"] and msg["content"]["value"]["transient"]=="on") or 1
+                trans = ("transient" in msg["content"]["value"] and msg["content"]["value"]["transient"]=="on") or 1 #TODO remove or 1 when API works
                 dur = int(float(msg["content"]["value"]["duration"])*1000)
                 repeat=int(msg["content"]["value"]["repeat"])
+                prefix=animname()
                 if trans:
-                    anim="@keyframes flash"+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
+                    anim="@keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
+                    anim+="\n@-webkit-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
+                    anim+="\n@-moz-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
+                    anim+="\n@-o-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  50% { fill: "+endcss+" }  100% { fill: "+startcss+" }}"
                     alen=dur
                     arep=repeat
+                    fillcolour=startcss
                 else:
-                    anim="@keyframes flash"+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
+                    anim="@keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
+                    anim+="\n@-webkit-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
+                    anim+="\n@-moz-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
+                    anim+="\n@-o-keyframes "+prefix+self.name+" {  0% { fill: "+startcss+" }  33% { fill: "+endcss+" }  66% { fill: "+startcss+" } 100% { fill: "+endcss+" }}"
                     alen=intround(dur*1.5)
                     arep=intround(repeat/1.5) or 1
-                astyle={"animation-name": "flash"+self.name, "animation-duration:":"%dms"%alen, "animation-iteration-count": "%d"%(arep)}
+                    fillcolour=endcss
+                anim+="\n.run-animation-"+self.name+" { animation-name: "+prefix+self.name+"; animation-duration: %dms"%alen +"; animation-iteration-count: %d; }"%(arep)
+                astyle={"fill": fillcolour}
                 
                 mypartial=partial(self.controller.sending,{"subject":self.controller.type,
                                 "content_type":"event",

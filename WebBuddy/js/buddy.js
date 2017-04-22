@@ -834,24 +834,32 @@ var BuddyDevice = Class.extend({
     
     match_status: function() {
         var self = this;
-        $("#"+this.name).removeClass("run-animation")
+//         $("#"+this.name).removeClass("run-animation");
         if ("animation" in this.iconstatus ) {
             $("#"+this.name+"_anim").remove();
             $("head").append("<style type=\"text/css\" id=\""+ this.name+"_anim\" >"+this.iconstatus.animation+"</style>")
         }
         $.each(this.iconstatus, function (eclass,val) {
             if ( eclass != "animation" ) {
+                var mylelt=$(document.getElementById( self.name ).getElementsByClassName(eclass)[0]);
+                mylelt.removeClass("run-animation-"+self.name);
+                mylelt.attr("style","");
                 $.each(val, function (attr,aval) {
                     try {
-                        document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                        mylelt.css(attr,aval);
+                        //document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
                     }
-                    catch (err)  {};
+                    catch (err)  {console.log("Anim oops:"+err); };
                 })
+                if ("animation" in self.iconstatus ) {
+                    void mylelt.offsetWidth
+                    mylelt.addClass("run-animation-"+self.name)
+                }
             }
         });
-        if ("animation" in this.iconstatus ) {
-            $("#"+this.name).addClass("run-animation")
-        }
+//         if ("animation" in this.iconstatus ) {
+//             $("#"+this.name).addClass("run-animation")
+//         }
     },
     
     device_dbl_click: function() {
