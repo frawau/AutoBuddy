@@ -589,8 +589,8 @@ var listmakerCG = Class.extend({
          //size is an array with 2 values, 
         this.size=size
         $("#"+this.jsid+"__selector").on("changed.bs.select", this.onProxy);
-        $("#"+this.jsid+"__badd").on("click", $.debounce(1,this.onProxy));
-        //$("#"+this.jsid+"__badd").on("click", this.onProxy);
+        //$("#"+this.jsid+"__badd").on("click", $.debounce(1,this.onProxy));
+        $("#"+this.jsid+"__badd").on("click", this.onProxy);
         $("#"+this.jsid+"__bdel").on("click", this.onProxy);
         $("#"+this.jsid+"__selector").selectpicker('val', "bulmknew");
         this.onChange();
@@ -616,11 +616,11 @@ var listmakerCG = Class.extend({
         var n = this.id.search("__"+cmd);
         var id = this.id.slice(0,n);
         if ( cmd == "selector" ) {
-            $(this).data("buguiObj").onChange(e);
+            return $(this).data("buguiObj").onChange(e);
         } else if ( cmd == "badd" ) {
-            $(this).data("buguiObj").onAdd(e);
+            return $(this).data("buguiObj").onAdd(e);
         } else if( cmd == "bdel" ) {
-            $(this).data("buguiObj").onDelete(e);
+            return $(this).data("buguiObj").onDelete(e);
         } else {
             console.log("No \""+cmd+"\" button in listmaker");
         }
@@ -646,6 +646,7 @@ var listmakerCG = Class.extend({
     },
     
     onAdd: function (e) {
+        e.stopImmediatePropagation();
         if ( this.callback) {
             this.callback(e);
         }
@@ -667,8 +668,8 @@ var listmakerCG = Class.extend({
         $.each(this.locontrols, function (elt, actrl) {
             actrl.resetMe();
         });
-        this.onChange();
-        return false;
+        return this.onChange();
+        //return false;
     },
     
     onDelete: function (e) {
@@ -686,8 +687,8 @@ var listmakerCG = Class.extend({
         $.each(this.locontrols, function (elt, actrl) {
             actrl.resetMe();
         });
-        this.onChange();
-        return false;
+        return this.onChange();
+        //return false;
     },
         
     getValue: function() {
