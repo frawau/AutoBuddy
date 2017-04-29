@@ -2,10 +2,10 @@
 # -*- coding:utf-8 -*-
 #
 # This application is simply a bridge application for flic buttons
-# 
+#
 # Copyright (c) 2017 François Wautier
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
@@ -15,22 +15,30 @@
 # The above copyright notice and this permission notice shall be included in all copies
 # or substantial portions of the Software.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse, sys, traceback,json,logging,os,ssl, colorsys
+import argparse
+import sys
+import traceback
+import json
+import logging
+import os
+import ssl
+import colorsys
 import buddylib as bl
 import asyncio as aio
-import aioflic, sqlite3
+import aioflic
+import sqlite3
 from functools import partial
 
-SUBTYPE="flic"
-CERTFILE="autobuddy.crt"
-__version__="0.10"
+SUBTYPE = "flic"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
 
 
 def intround(x):
@@ -38,7 +46,7 @@ def intround(x):
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
-flic_commands="""
+flic_commands = """
 <buddyui version="0.1">
     <command  name="flic">
         <controlgroup  type="grouplist" name="click" label="Click" rteffect="1">
@@ -52,7 +60,7 @@ flic_commands="""
 </buddyui>
 """
 
-flic_config="""
+flic_config = """
 <buddyui version="0.1">
     <configuration  name="flic">
         <controlgroup type="list" name="colour" label="Icon Colour" widget="colourpicker">
@@ -75,101 +83,125 @@ flic_config="""
     </configuration>
 </buddyui>
 """
-flic_config_default={"colour":{"hue":181,"saturation":94.18,"value":89}}
+flic_config_default = {
+    "colour": {
+        "hue": 181,
+         "saturation": 94.18,
+         "value": 89}}
 
 # coammands must be defined after the config has been read. See below
-flic_module_commands={}
-#flic_module_commands={"scan":{"subject":"switch.flic","value":{}}}
+flic_module_commands = {}
+# flic_module_commands={"scan":{"subject":"switch.flic","value":{}}}
+
 
 def cssColour(hue=181, sat=94.18, val=89):
-    
-     return'#%02x%02x%02x' % tuple([int((x*255)+0.5) for x in colorsys.hsv_to_rgb(flic_config_default["colour"]["hue"]/360.0,
-                                                                         flic_config_default["colour"]["saturation"]/100.0,
-                                                                         flic_config_default["colour"]["value"]/100.0)])
+
+    return'#%02x%02x%02x' % tuple([int((x * 255) + 0.5) for x in colorsys.hsv_to_rgb(flic_config_default["colour"]["hue"] / 360.0,
+                                                                                     flic_config_default[
+                                                                                     "colour"][
+        "saturation"] / 100.0,
+        flic_config_default["colour"]["value"] / 100.0)])
 
 
-def flic_process(self,msg):
+def flic_process(self, msg):
     """Flic is a one way communication device"""
     if msg["content"]["command"] == "nickname":
-        #print msg
-        self.nickname=msg["content"]["value"]
-        self.controller.sending({"subject":"control" + "." + self.controller.type,
+        # print msg
+        self.nickname = msg["content"]["value"]
+        self.controller.sending(
+            {"subject": "control" + "." + self.controller.type,
                 "content_type": "request",
-                "content":{"request":"nickname", 
-                            "target": self.controller.type+"."+ self.name,
-                            #"token": self.controller.target,
-                            "value":{"name":self.name,"nickname": msg["content"]["value"]}}})
-    elif msg["content"]["command"] == "status":
-        #Not gone the way of the dodo        
-        #try:
-        self.controller.sending({"subject":self.controller.type,
-                "content_type":"event",
-                "content": {"event":"status",
+                "content": {"request": "nickname",
                             "target": self.controller.type + "." + self.name,
-                            "icon status" : {"bu-fill":{"fill":cssColour()},"bu-not-present":{"opacity":0}},
-                            "value":{}}})
-        #except: #Most probably is known but we lost pairing
-            #pass
+                            #"token": self.controller.target,
+                            "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+    elif msg["content"]["command"] == "status":
+        # Not gone the way of the dodo
+        # try:
+        self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "status",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "icon status":
+                                             {"bu-fill": {"fill": cssColour()}, "bu-not-present": {
+                                              "opacity": 0}},
+                                             "value": {}}})
+        # except: #Most probably is known but we lost pairing
+            # pass
     elif msg["content"]["command"] == "deletion":
-        self.controller.sending({"subject":"control" + "." + self.controller.type,
+        self.controller.sending(
+            {"subject": "control" + "." + self.controller.type,
                 "content_type": "request",
-                "content":{"request":"deletion", 
+                "content": {"request": "deletion",
                             "target": self.controller.type,
-                            "value":self.name}})
-        
+                            "value": self.name}})
+
     elif msg["content"]["command"] == "click":
-        bridgectl.sending({"subject":msg["subject"],
-                        "content_type": "event",
-                        "content":{"event":"click", 
-                                    "target":msg["subject"],
-                                    "value":msg["content"]["value"]["type"]["bu-cvalue"]}})
+        bridgectl.sending({"subject": msg["subject"],
+                           "content_type": "event",
+                           "content": {"event": "click",
+                                       "target": msg["subject"],
+                                       "value": msg["content"]["value"]["type"]["bu-cvalue"]}})
     return None
 
 
-#A few needed flic callback
+# A few needed flic callback
 
 def process_flic_event(channel, click_type, was_queued, time_diff):
-    
-    if click_type == aioflic.ClickType.ButtonSingleClick: 
-        bridgectl.sending({"subject":bridgectl.type+"." +channel.name,
-                        "content_type": "event",
-                        "content":{"event":"click", 
-                                    "target":bridgectl.type+"." +channel.name,
-                                    "value":"single"}})
-    if click_type == aioflic.ClickType.ButtonDoubleClick: 
-        bridgectl.sending({"subject":bridgectl.type+"." +channel.name,
-                        "content_type": "event",
-                        "content":{"event":"click", 
-                                    "target":bridgectl.type+"." +channel.name,
-                                    "value":"double"}})
-    if click_type == aioflic.ClickType.ButtonHold: 
-        bridgectl.sending({"subject":bridgectl.type+"." +channel.name,
-                        "content_type": "event",
-                        "content":{"event":"click", 
-                                    "target":bridgectl.type+"." +channel.name,
-                                    "value":"long"}})
+
+    if click_type == aioflic.ClickType.ButtonSingleClick:
+        bridgectl.sending({"subject": bridgectl.type + "." + channel.name,
+                           "content_type": "event",
+                           "content": {"event": "click",
+                                       "target": bridgectl.type +
+                                       "." +
+                                       channel.name,
+                                       "value": "single"}})
+    if click_type == aioflic.ClickType.ButtonDoubleClick:
+        bridgectl.sending({"subject": bridgectl.type + "." + channel.name,
+                           "content_type": "event",
+                           "content": {"event": "click",
+                                       "target": bridgectl.type +
+                                       "." +
+                                       channel.name,
+                                       "value": "double"}})
+    if click_type == aioflic.ClickType.ButtonHold:
+        bridgectl.sending({"subject": bridgectl.type + "." + channel.name,
+                           "content_type": "event",
+                           "content": {"event": "click",
+                                       "target": bridgectl.type +
+                                       "." +
+                                       channel.name,
+                                       "value": "long"}})
+
 
 def process_flic_connection_event(channel, removal_reason):
     bridgectl.unregister(channel)
-    
+
+
 def scan_private_event(wiz):
-    bridgectl.sending({"subject":bridgectl.type+".scan",
-                        "content_type": "event",
-                        "content":{"event":"gui alert", 
-                                    "target":bridgectl.type+".scan",
-                                    "value":"We found a private flic. Please press it for 7 secs."}})
+    bridgectl.sending({"subject": bridgectl.type + ".scan",
+                       "content_type": "event",
+                       "content": {"event": "gui alert",
+                                   "target": bridgectl.type + ".scan",
+                                   "value": "We found a private flic. Please press it for 7 secs."}})
+
 
 def scan_connect_event(scan_wizard, bd_addr, name):
-    got_flic( bd_addr)
-    
+    got_flic(bd_addr)
+
+
 def scan_completed_event(scan_wizard, result, bd_addr, name):
-    bridgectl.flic_scan=None
-    if result != aioflic.ScanWizardResult.WizardSuccess: 
-        bridgectl.sending({"subject":bridgectl.type+".scan",
-                        "content_type": "event",
-                        "content":{"event":"gui alert", 
-                                    "target":bridgectl.type+".scan",
-                                    "value":"We are sorry, no flic could be connected during scan."}})
+    bridgectl.flic_scan = None
+    if result != aioflic.ScanWizardResult.WizardSuccess:
+        bridgectl.sending({"subject": bridgectl.type + ".scan",
+                           "content_type": "event",
+                           "content": {"event": "gui alert",
+                                       "target": bridgectl.type + ".scan",
+                                       "value": "We are sorry, no flic could be connected during scan."}})
+
 
 def got_flic(bd_addr):
     """Register a flic detected by the flicd daemin"""
@@ -177,7 +209,7 @@ def got_flic(bd_addr):
     newflic.on_button_single_or_double_click_or_hold = process_flic_event
     newflic.on_remove = process_flic_connection_event
     bridgectl.register(newflic)
-    
+
 
 def got_flic_info(items):
     """Once the daemon has started, we willinitiate an info request.
@@ -185,330 +217,366 @@ def got_flic_info(items):
     for bd_addr in items["bd_addr_of_verified_buttons"]:
         got_flic(bd_addr)
 
-#Hop we go....
-bl.switch._process=flic_process
-        
+# Hop we go....
+bl.switch._process = flic_process
+
 
 class FlicBridge(bl.BuddyBridge):
+
     """
     This is the bridge application. It will check for the current list  of flic
     It will report any new bulb
     """
-    def __init__(self,loop,future,config,log):
-        super(FlicBridge, self).__init__(loop,future,config,log)
+
+    def __init__(self, loop, future, config, log):
+        super(FlicBridge, self).__init__(loop, future, config, log)
         self.flic_daemon = None
         self.flic_scan = None
         self.flic_config = flic_config_default
 
-
-    def process_command(self,msg):
+    def process_command(self, msg):
         if msg["content"]["command"] == "update config":
             if msg["content"]["target"] == self.target:
-                for k,v in msg["content"]["value"].items():
-                    flic_config_default[k]=v
-                
-                self.sending({"subject":"control" + "." + self.subtype,
-                                    "content_type": "request",
-                                    "content": {"request":"save configuration",
-                                                "target":self.type,
-                                            "value":bl.encrypt(flic_config_default,self.config["buddykey"])}})
-        
-        elif msg["content"]["command"]=="start_scan":
-            if  msg["subject"]==self.target:
+                for k, v in msg["content"]["value"].items():
+                    flic_config_default[k] = v
+
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "value": bl.encrypt(flic_config_default, self.config["buddykey"])}})
+
+        elif msg["content"]["command"] == "start_scan":
+            if msg["subject"] == self.target:
                 if self.flic_scan is None:
-                    self.flic_scan=aioflic.ScanWizard()
+                    self.flic_scan = aioflic.ScanWizard()
                     self.flic_scan.on_found_private_button = scan_private_event
-                    self.flic_scan.on_button_connected=scan_connect_event
-                    self.flic_scan.on_completed=scan_completed_event
+                    self.flic_scan.on_button_connected = scan_connect_event
+                    self.flic_scan.on_completed = scan_completed_event
                     self.flic_daemon.add_scan_wizard(self.flic_scan)
-            
+
         else:
             for aflic in self.devices:
                 aflic.process(msg)
 
-    def process_response(self,msg):
-        #if msg["content"]["token"] != self.target:
-            #if self.log:
-                #self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            #else:
-                #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
-            #Getting the config
-            newconfig={}
-            fromconfig=[]
+            # Getting the config
+            newconfig = {}
+            fromconfig = []
             if msg["content"]["configuration"]:
                 try:
-                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
                     if self.config["debug"]:
-                        self.log.debug("The config stored is {}".format(storedconfig))
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
                 except:
-                    storedconfig={}
-                    savenew=True
-                    #log
+                    storedconfig = {}
+                    savenew = True
+                    # log
                     if self.log:
                         self.log.warning("Config is mangled")
                     else:
                         print("Config is mangled")
 
                 for x in storedconfig:
-                    self.flic_config[x]=storedconfig[x]
-            
-            self.config["database"]= msg["content"]["database"]
+                    self.flic_config[x] = storedconfig[x]
+
+            self.config["database"] = msg["content"]["database"]
             if "configonly" in self.config and self.config["configonly"]:
                 self.state = "wait config save"
             else:
                 self.state = "active"
                 self.build()
-            #if savenew or ("configonly" in self.config and self.config["configonly"]):
-                #self.sending({"subject":"control" + "." + self.subtype,
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
                                 #"content_type": "request",
                                 #"content": {"request":"save configuration",
                                             #"target":self.target,
                                             #"value":bl.encrypt(flic_config_default,self.config["buddykey"])}})
-                                
+
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
-            if self.state == "active" and  msg["content"]["status"] != "done":
-                #log
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
                 if self.log:
                     self.log.warning("Warning: Configuration was not saved.")
                 else:
                     print("Warning: Configuration was not saved.")
             else:
-                self.sending({"subject":"control" + "." + self.target ,
-                        "content_type": "request",
-                        "content":{"request":"functions", 
-                                    "target":self.type,
-                                    "subtype": self.subtype,
-                                    #"token": self.target,
-                                    "value":{"configs":[flic_config,flic_config_default]}}})
-                self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"config updated", 
-                                    "target":self.target,
-                                    "value":flic_config_default}})
-                #Now update all the flic present
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [flic_config, flic_config_default]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": flic_config_default}})
+                # Now update all the flic present
                 for flic in self.devices:
                     if flic.present:
-                        self.sending({"subject":self.type,
-                                    "content_type": "event",
-                                    "content":{"event":"presence", 
-                                               "target":self.type + "." + flic.name,
-                                               "value":"online",
-                                               "icon status" : {"bu-fill":{"fill":cssColour()},"bu-not-present":{"opacity":0}}}})     
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  flic.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill": cssColour()}, "bu-not-present": {"opacity": 0}}}})
 
-        elif msg["content"]["response"] == "configuration" and msg["subject"]==self.target:
+        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             if msg["content"]["configuration"]:
                 try:
-                    storedprop=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    storedprop = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
                     if self.config["debug"]:
-                        self.log.debug("The property stored is {}".format(storedprop))
+                        self.log.debug(
+                            "The property stored is {}".format(storedprop))
                 except:
-                    storedprop={}
+                    storedprop = {}
                     if self.config["debug"]:
-                        self.log.debug("The property stored cannot be decrypted.")
-                for k,v in storedprop.items():
-                    flic_config_default[k]=v
-                    
+                        self.log.debug(
+                            "The property stored cannot be decrypted.")
+                for k, v in storedprop.items():
+                    flic_config_default[k] = v
 
-                                    
-            if not( msg["content"]["configuration"] and  storedprop):
-                #First time around... was never saved that property.. let's do it
-                self.sending({"subject":"control" + "." + self.type,
-                        "content_type": "request",
-                        "content": {"request":"save configuration",
-                                    "target":self.subtype,
-                                    #"token": self.target,
-                                "value":bl.encrypt(flic_config_default,self.config["buddykey"])}})
+            if not(msg["content"]["configuration"] and storedprop):
+                # First time around... was never saved that property.. let's do
+                # it
+                self.sending({"subject": "control" + "." + self.type,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.subtype,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(flic_config_default, self.config["buddykey"])}})
         elif self.state == "active":
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
-                sess=bl.getSession(self.config["database"])
-                switch=sess.query(bl.switch).filter_by(name=msg["subject"].split(".")[-1]).one()
-                self.sending({"subject":self.type,
-                            "content_type": "event",
-                            "content":{"event":"new device", 
-                                "target":self.type + "." + switch.name,
-                                "value":{"type":self.type,"subtype":self.subtype,
-                                        "name":switch.name,"nickname":switch.nickname}}})
-                bidx=0
-                notseen=True
-                for b in  self.pending:
+                sess = bl.getSession(self.config["database"])
+                switch = sess.query(bl.switch).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          switch.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": switch.name, "nickname": switch.nickname}}})
+                bidx = 0
+                notseen = True
+                for b in self.pending:
                     if b.name == switch.name:
-                        switch.present=True
-                        switch.conn=b
+                        switch.present = True
+                        switch.conn = b
                         switch.controller = self
                         self.devices.append(switch)
-                        self.pending = self.pending[:bidx] + self.pending[bidx+1:]
-                        self.sending({"subject":self.type,
-                                    "content_type": "event",
-                                    "content":{"event":"presence", 
-                                               "target":self.type + "." + switch.name,
-                                               "value":"online",
-                                               "icon status" : {"bu-fill":{"fill":cssColour()},"bu-not-present":{"opacity":0}}}})                
+                        self.pending = self.pending[
+                            :bidx] + self.pending[
+                                bidx + 1:]
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  switch.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill": cssColour()}, "bu-not-present": {"opacity": 0}}}})
                         bridgectl.flic_daemon.add_connection_channel(b)
 
-                        notseen=False
+                        notseen = False
                         break
-                    bidx+=1
+                    bidx += 1
                 if notseen:
-                    self.sending({"subject":self.type,
-                                "content_type": "event",
-                                "content":{"event":"presence", 
-                                           "target":self.type + "." + switch.name,
-                                           "value":"offline",
-                                            "icon status" : {"bu-fill":{"fill":cssColour()},
-                                                             "bu-not-present":{"opacity":1}}}})
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              switch.name,
+                                              "value": "offline",
+                                              "icon status": {"bu-fill": {"fill": cssColour()},
+                                                              "bu-not-present": {"opacity": 1}}}})
                 sess.close()
-            elif msg["content"]["response"] == "nickname" :
+            elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
                     if self.log:
-                        self.log.debug (msg)
+                        self.log.debug(msg)
                     for switch in self.devices:
-                        if switch.name==msg["subject"].split(".")[-1]:
-                            switch.nickname=msg["content"]["value"] 
-                            self.sending({"subject":self.type,
-                                    "content_type": "event",
-                                    "content":{"event":"nickname",  
-                                               "target":self.type + "." + switch.name,
-                                               "value":switch.nickname}})
+                        if switch.name == msg["subject"].split(".")[-1]:
+                            switch.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      switch.name,
+                                                      "value": switch.nickname}})
                             break
-                        
-            elif msg["content"]["response"] == "deletion" :
+
+            elif msg["content"]["response"] == "deletion":
                 if msg["content"]["status"] == "done":
                     if self.log:
-                        self.log.debug (msg)
-                    sidx=0
-                    doremove=False
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
                     for switch in self.devices:
-                        if switch.name==msg["subject"].split(".")[-1]:
-                            self.flic_daemon.remove_connection_channel(switch.conn)
-                            #try:
+                        if switch.name == msg["subject"].split(".")[-1]:
+                            self.flic_daemon.remove_connection_channel(
+                                switch.conn)
+                            # try:
                             if True:
-                                conn=sqlite3.connect(self.config["flicpath"]+"/flic.db")
+                                conn = sqlite3.connect(
+                                    self.config["flicpath"] + "/flic.db")
                                 c = conn.cursor()
-                                c.execute("DELETE FROM buttons WHERE bdaddr='%s'"%switch.conn.bd_addr)
+                                c.execute(
+                                    "DELETE FROM buttons WHERE bdaddr='%s'" %
+                                    switch.conn.bd_addr)
                                 conn.commit()
                                 conn.close()
-                            #except Exception as e:
-                                #emsg="Error: Button {} could not be deleted. It will reappear.\nTrace: {}".format(switch.name,e.__traceback__)
-                                #self.sending({"subject":self.target ,
+                            # except Exception as e:
+                                # emsg="Error: Button {} could not be deleted. It will reappear.\nTrace: {}".format(switch.name,e.__traceback__)
+                                # self.sending({"subject":self.target ,
                                             #"content_type": "event",
-                                            #"content":{"event":"error report", 
+                                            #"content":{"event":"error report",
                                                         #"target":self.target,
                                                         #"value":emsg}})
 
                                 pass
-                            self.sending({"subject":self.type,
-                                    "content_type": "event",
-                                    "content":{"event":"deletion",  
-                                               "target":self.type + "." + switch.name,
-                                               "value":switch.name}})
-                            doremove=True
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      switch.name,
+                                                      "value": switch.name}})
+                            doremove = True
                             break
-                        sidx+=1
-                        
+                        sidx += 1
+
                     if doremove:
                         del self.devices[sidx]
         else:
             if self.log:
-                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
             else:
-                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
 
-
-                                    
     def build(self):
-        self.sending({"subject":"control" + "." + self.target ,
-                "content_type": "request",
-                "content":{"request":"functions", 
-                            "target":self.type,
-                            "subtype": self.subtype,
-                            #"token": self.target,
-                            "value":{"functions":flic_commands,"module commands":flic_module_commands,"configs":[flic_config,flic_config_default]}}})
-        
-        self.sending({"subject":self.target ,
-                "content_type": "event",
-                "content":{"event":"config updated", 
-                            "target":self.target,
-                            "value":flic_config_default}})
-        #No flic is present yet
-                
-        coro = self.loop.create_connection(lambda: aioflic.FlicClient( self.loop, parent=self),
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": flic_commands, "module commands": flic_module_commands, "configs": [flic_config, flic_config_default]}}})
+
+        self.sending({"subject": self.target,
+                      "content_type": "event",
+                      "content": {"event": "config updated",
+                                  "target": self.target,
+                                  "value": flic_config_default}})
+        # No flic is present yet
+
+        coro = self.loop.create_connection(
+            lambda: aioflic.FlicClient(self.loop, parent=self),
                                 self.config["flichost"], self.config["flicport"])
         self.loop.create_task(coro)
 
-    def register_protocol(self,proto):
-        self.flic_daemon=proto
-        self.flic_daemon.on_get_info=got_flic_info     
+    def register_protocol(self, proto):
+        self.flic_daemon = proto
+        self.flic_daemon.on_get_info = got_flic_info
         self.flic_daemon.get_info()
 
-    def register(self,aflic):
-        aflic.name=self.subtype+"-"+aflic.bd_addr.replace(":","")
-        aflic.nickname=aflic.name
-        notseen =  True
+    def register(self, aflic):
+        aflic.name = self.subtype + "-" + aflic.bd_addr.replace(":", "")
+        aflic.nickname = aflic.name
+        notseen = True
         try:
-            sess=bl.getSession(self.config["database"])
-            switch=sess.query(bl.switch).filter_by(name=aflic.name).one()
-            switch.present=False
+            sess = bl.getSession(self.config["database"])
+            switch = sess.query(bl.switch).filter_by(name=aflic.name).one()
+            switch.present = False
             self.devices.append(switch)
         except:
             pass
-        
+
         for flic in self.devices:
-            ispresent=False 
+            ispresent = False
 
             if aflic.name == flic.name:
-                flic.conn=aflic
+                flic.conn = aflic
                 flic.controller = self
-                ispresent=True
+                ispresent = True
                 if ispresent != flic.present:
                     flic.present = ispresent
-                    self.sending({"subject":self.type,
-                        "content_type": "event",
-                        "content":{"event":"presence", 
-                                   "target":self.type + "." + flic.name,
-                                    "value":ispresent and "online" or "offline",
-                                    "icon status" : {"bu-not-present":{"opacity":(not ispresent and 1) or 0}}}})
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              flic.name,
+                                              "value":
+                                              ispresent and "online" or "offline",
+                                              "icon status": {"bu-not-present": {"opacity": (not ispresent and 1) or 0}}}})
                     bridgectl.flic_daemon.add_connection_channel(aflic)
-                notseen=False
+                notseen = False
                 break
         if notseen:
             self.pending.append(aflic)
-            self.sending({"subject":"control" + "." + self.type,
-                      "content_type": "request",
-                      "content":{"request":"creation", 
-                                 "target":self.type, #Here we need the type
-                                 #"token": self.target,
-                                 "value":{"name":aflic.name, "nickname":aflic.nickname or aflic.name,"subtype":self.subtype}}})
-                  
-        
-        
-    def unregister(self,aflic):
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                          # Here we need the type
+                                      #"token": self.target,
+                                      "value": {"name": aflic.name, "nickname": aflic.nickname or aflic.name, "subtype": self.subtype}}})
+
+    def unregister(self, aflic):
         if aflic in self.pending:
             self.pending.remove(aflic)
         else:
             for switch in self.devices:
-                try: #HAve to protect, in some rare cases, alight does not have a name attribute yet
+                try:  # HAve to protect, in some rare cases, alight does not have a name attribute yet
                     if switch.name == aflic.name:
                         switch.conn = None
                         switch.present = False
-                        self.sending({"subject":self.type ,
-                                    "content_type": "event",
-                                    "content":{"event":"presence", 
-                                            "target": self.type + "." + switch.name,
-                                            "value":"offline",
-                                            "icon status" : {"bu-not-present":{"opacity":1}}}})
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  switch.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
                         bridgectl.flic_daemon.remove_connection_channel(aflic)
                 except:
                     pass
 
-aboutstr="""<p>FlicBuddy is a bridge talking to <a href="https://flic.io/">flic smart buttons</a>. Flic can be paired and
-will then trigger &quot;click&quot; events with value set to either &quot;single&quot;, &quot;double&quot; or, &quot;long&quot;. 
+aboutstr = """<p>FlicBuddy is a bridge talking to <a href="https://flic.io/">flic smart buttons</a>. Flic can be paired and
+will then trigger &quot;click&quot; events with value set to either &quot;single&quot;, &quot;double&quot; or, &quot;long&quot;.
 Pairing can be requested from the menu. The icon used is based on one made by Freepik from www.flaticon.com </p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
-iconstr="""
+iconstr = """
 <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 537.63 537.63" xmlns="http://www.w3.org/2000/svg">
-<g> 
+<g>
     <circle class="bu-fill" cx="250" cy="144" r="127" stroke="none" fill="white" />
     <path class="bu-shape" d="M124.795,144.021c0-69.472,56.528-126.018,126.018-126.018s126.018,56.546,126.018,126.018
         c0,11.432-1.513,22.737-4.537,33.611l17.355,4.789c3.439-12.44,5.185-25.348,5.185-38.4C394.834,64.611,330.222,0,250.813,0
@@ -529,100 +597,111 @@ iconstr="""
         c0,0.013-0.001,0.026-0.001,0.039h0.001v18.002h18.001v-18.002h0.001c0-9.938,8.084-18.003,18.003-18.003
         c9.92,0,18.003,8.066,18.003,18.003v36.005h18.001V270.15c9.316,0.249,18.004,8.013,18.004,17.892
         C412.836,326.838,408.551,365.742,400.126,403.619z" fill="black" opacity="1" fill-rule="nonzero"/>
-    <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90" 
-        stroke="#a94442" stroke-width="60" fill="none" opacity="1" /> 
+    <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90"
+        stroke="#a94442" stroke-width="60" fill="none" opacity="1" />
 </g>
 </svg>
 """
 
-cfgdefault={"type":"switch","subtype":SUBTYPE,"host":"localhost","port":8745,"credential":"","ssl":"", "flichost":"localhost","flicport":5551, "flicpath":"./flicd","btiface":"hci0"}
-def configure(): 
+cfgdefault = {
+    "type": "switch",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "flichost": "localhost",
+     "flicport": 5551,
+     "flicpath": "./flicd",
+     "btiface": "hci0"}
+
+
+def configure():
     parser = argparse.ArgumentParser(description="Track flic buttons..")
-    #                            version="%prog " + __version__ + "/" + bl.__version__)
+    # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                    help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
     parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                    help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
     parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
     parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
     parser.add_argument("-P", "--flicport", type=int, default=cfgdefault["flicport"],
-                    help="The port used by the flicd server (default \"%s\")." % cfgdefault["flicport"])
+                        help="The port used by the flicd server (default \"%s\")." % cfgdefault["flicport"])
     parser.add_argument("-f", "--flichost", default=cfgdefault["flichost"],
-                    help="The host of the flicd server (default \"%s\"). " % cfgdefault["flichost"] +
-                         "A value of \"%s\" means that we will try to start the flicd deamon." % cfgdefault["flichost"])
+                        help="The host of the flicd server (default \"%s\"). " % cfgdefault["flichost"] +
+                        "A value of \"%s\" means that we will try to start the flicd deamon." % cfgdefault["flichost"])
     parser.add_argument("-F", "--flicpath", default=cfgdefault["flicpath"],
-                    help="The port used by the server (default \"%s\")." % cfgdefault["flicpath"])
+                        help="The port used by the server (default \"%s\")." % cfgdefault["flicpath"])
     parser.add_argument("-b", "--btiface", default=cfgdefault["btiface"],
-                    help="The Bluetooth adapter to be used by the flicd server (default \"%s\")." % cfgdefault["btiface"])
+                        help="The Bluetooth adapter to be used by the flicd server (default \"%s\")." % cfgdefault["btiface"])
     parser.add_argument("-c", "--config", default="/etc/autobuddy/flic.cfg", type=argparse.FileType('r'),
-                    help="Config file to use (default \"/etc/autobuddy/flic.cfg\")")
+                        help="Config file to use (default \"/etc/autobuddy/flic.cfg\")")
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
     parser.add_argument("-d", "--debug", action="count", default=0,
-                    help="Log debug information (default False)")
+                        help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
-                    help="The directory where the file %s can be found."%(CERTFILE))
+                        help="The directory where the file %s can be found." % (CERTFILE))
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                    help="Log warning messages")
+                        help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
-                    help="Exit after the the configuration has been saved")
-    
+                        help="Exit after the the configuration has been saved")
+
     try:
-        opts=parser.parse_args()
+        opts = parser.parse_args()
     except Exception as e:
-        parser.error("Error: "+str(e))
-        
+        parser.error("Error: " + str(e))
+
     if opts.debug:
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     elif opts.verbose:
         logging.basicConfig(
             level=logging.WARNING,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     else:
         logging.basicConfig(
             level=logging.CRITICAL,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     fliclog = logging.getLogger('')
-    fliccfg = {"debug":opts.debug}
+    fliccfg = {"debug": opts.debug}
     try:
-    #if True:
+    # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
         except:
-            cfgdata={}
+            cfgdata = {}
             fliclog.warning("Config file could not be opened.")
         if opts.type != cfgdefault["type"]:
             fliccfg["type"] = opts.type
         elif "type" in cfgdata:
-            fliccfg["type"] = cfgdata["type"]     
+            fliccfg["type"] = cfgdata["type"]
         else:
             fliccfg["type"] = opts.type
         if opts.debug:
-            fliclog.debug("The type is %s." % fliccfg["type"]) 
-            
+            fliclog.debug("The type is %s." % fliccfg["type"])
+
         if opts.subtype != cfgdefault["subtype"]:
             if "-" in opts.subtype:
                 raise Exception("Subtype may not contain a dash (\"-\")")
             fliccfg["subtype"] = opts.subtype
         elif "subtype" in cfgdata:
-            fliccfg["subtype"] = cfgdata["subtype"]     
+            fliccfg["subtype"] = cfgdata["subtype"]
         else:
             fliccfg["subtype"] = opts.subtype
         if opts.debug:
-            fliclog.debug("The subtype is %s." % fliccfg["subtype"]) 
-            
-            
+            fliclog.debug("The subtype is %s." % fliccfg["subtype"])
+
         if opts.credential != cfgdefault["credential"]:
             fliccfg["credential"] = opts.credential
         elif "credential" in cfgdata:
@@ -630,8 +709,8 @@ def configure():
         else:
             fliccfg["credential"] = cfgdefault["credential"]
         if opts.debug:
-            fliclog.debug("The credential is %s"%fliccfg["credential"])         
-            
+            fliclog.debug("The credential is %s" % fliccfg["credential"])
+
         if opts.port != cfgdefault["port"]:
             fliccfg["port"] = opts.port
         elif "port" in cfgdata:
@@ -639,8 +718,8 @@ def configure():
         else:
             fliccfg["port"] = cfgdefault["port"]
         if opts.debug:
-            fliclog.debug("The port is %s" % (fliccfg["port"]))      
-            
+            fliclog.debug("The port is %s" % (fliccfg["port"]))
+
         if opts.flicport != cfgdefault["flicport"]:
             fliccfg["flicport"] = opts.flicport
         elif "filcport" in cfgdata:
@@ -649,8 +728,7 @@ def configure():
             fliccfg["flicport"] = cfgdefault["flicport"]
         if opts.debug:
             fliclog.debug("The flicd port is %s" % (fliccfg["flicport"]))
-            
-            
+
         if opts.host != cfgdefault["host"]:
             fliccfg["host"] = opts.host
         elif "host" in cfgdata:
@@ -658,9 +736,8 @@ def configure():
         else:
             fliccfg["host"] = cfgdefault["host"]
         if opts.debug:
-            fliclog.debug("The host is %s"%fliccfg["host"])       
-            
-            
+            fliclog.debug("The host is %s" % fliccfg["host"])
+
         if opts.flichost != cfgdefault["flichost"]:
             fliccfg["flichost"] = opts.flichost
         elif "flichost" in cfgdata:
@@ -668,105 +745,133 @@ def configure():
         else:
             fliccfg["flichost"] = cfgdefault["flichost"]
         if opts.debug:
-            fliclog.debug("The flicd host is %s"%fliccfg["flichost"])  
- 
+            fliclog.debug("The flicd host is %s" % fliccfg["flichost"])
+
         if "buddykey" in cfgdata:
             fliccfg["buddykey"] = cfgdata["buddykey"]
-            
+
         if opts.flicpath != cfgdefault["flicpath"]:
             fliccfg["flicpath"] = opts.flicpath
         elif "flicpath" in cfgdata:
             fliccfg["flicpath"] = cfgdata["flicpath"]
         else:
             fliccfg["flicpath"] = cfgdefault["flicpath"]
-                    
+
         if opts.btiface != cfgdefault["btiface"]:
             fliccfg["btiface"] = opts.btiface
         elif "btiface" in cfgdata:
             fliccfg["btiface"] = cfgdata["btiface"]
         else:
-            fliccfg["btiface"] = cfgdefault["btiface"]    
-            
+            fliccfg["btiface"] = cfgdefault["btiface"]
+
         if opts.ssl != cfgdefault["ssl"]:
             fliccfg["ssl"] = opts.ssl
         elif "ssl" in cfgdata:
             fliccfg["ssl"] = cfgdata["ssl"]
         else:
             fliccfg["ssl"] = cfgdefault["ssl"]
-        if fliccfg["ssl"] and not ( os.path.isfile(fliccfg["ssl"]+"/"+CERTFILE)):
+        if fliccfg["ssl"] and not (os.path.isfile(fliccfg["ssl"] + "/" + CERTFILE)):
             fliclog.critical("Encryption: Could not find {} .".format(
-                fliccfg["ssl"]+"/"+CERTFILE))
+                fliccfg["ssl"] + "/" + CERTFILE))
             sys.exit()
         if opts.debug:
             if fliccfg["ssl"]:
-                fliclog.debug("The ssl certificates can be found in %s"%fliccfg["ssl"]) 
+                fliclog.debug(
+                    "The ssl certificates can be found in %s" %
+                    fliccfg["ssl"])
             else:
-                fliclog.debug("The connection is not encrypted") 
-                    
+                fliclog.debug("The connection is not encrypted")
+
         if opts.configonly:
 
             if "buddykey" not in fliccfg:
                 if opts.debug:
-                    fliclog.debug("Generating random key")   
+                    fliclog.debug("Generating random key")
                 fliccfg["buddykey"] = bl.keygen()
             try:
                 del(fliccfg["debug"])
             except:
                 pass
-            with open(opts.configonly,"w") as cfile:
-                json.dump(fliccfg,cfile)
-            os.chmod(opts.configonly,384) # 0600
+            with open(opts.configonly, "w") as cfile:
+                json.dump(fliccfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
             sys.exit()
-        
+
     except Exception as e:
         fliclog.error("Error: %r" % e)
         sys.exit(-2)
-    
-    return (fliclog,fliccfg)
 
-         
+    return (fliclog, fliccfg)
+
+
 if __name__ == "__main__":
-    log,config=configure()
+    log, config = configure()
     log.info("Configured")
     loop = aio.get_event_loop()
     if config["debug"]:
         loop.set_debug(True)
-        
-    flic_module_commands["start_scan"]={"module":config["type"],"value":config["subtype"],"label":"Scan for flic (%s)"%config["subtype"]}
-        
-        
-    flicdpid=-1
-    #Let's for the flicd daemon
+
+    flic_module_commands[
+        "start_scan"] = {
+        "module": config[
+            "type"],
+             "value": config[
+                 "subtype"],
+                 "label": "Scan for flic (%s)" %
+                config[
+                    "subtype"]}
+
+    flicdpid = -1
+    # Let's for the flicd daemon
     if config["flichost"] == "localhost":
-        flicdpid=os.fork()
+        flicdpid = os.fork()
         if flicdpid == 0:
             try:
-                os.execl(config["flicpath"]+"/flicd",config["flicpath"]+"/flicd","-f",config["flicpath"]+"/flic.db","-p",str(config["flicport"]),"-h",config["btiface"], '-l','/tmp/flic.log')
+                os.execl(
+                    config["flicpath"] + "/flicd",
+                    config["flicpath"] + "/flicd",
+                    "-f",
+                    config["flicpath"] + "/flic.db",
+                    "-p",
+                    str(config["flicport"]),
+                    "-h",
+                    config["btiface"],
+                    '-l',
+                    '/tmp/flic.log')
             except:
                 sys.exit(0)
-        
+
     if config["ssl"]:
         sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-            cafile=config["ssl"]+'/'+CERTFILE)
-        
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
         sslcontext.check_hostname = False
     else:
-        sslcontext=None
-    connFuture=aio.Future()
-    fac=loop.create_connection(partial(FlicBridge,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
-    conn,bridgectl = loop.run_until_complete(fac)
-    loop.call_soon(bridgectl.configrequest,{"about":{"FlicBuddy":aboutstr},"display":{config["subtype"]:iconstr}})
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(FlicBridge,
+                loop,
+                connFuture,
+                config,
+                log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"FlicBuddy": aboutstr},
+         "display": {config["subtype"]: iconstr}})
 
     try:
         loop.run_until_complete(connFuture)
-    except  KeyboardInterrupt:
-        print("\n","Exiting at user's request")
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
     finally:
-       
+
         bridgectl.flic_daemon.close()
         conn.close()
         loop.close()
         if flicdpid > 0:
-            os.system("kill -TERM %d"%flicdpid)
-            
-    
+            os.system("kill -TERM %d" % flicdpid)

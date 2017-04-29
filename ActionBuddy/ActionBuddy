@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application listen for events and process them according 
+# This application listen for events and process them according
 # to a set of rules. Commands and/or state changes may ensue.
-# 
+#
 # Copyright (c) 2017 François Wautier
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
@@ -16,30 +16,41 @@
 # The above copyright notice and this permission notice shall be included in all copies
 # or substantial portions of the Software.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse, sys, traceback,json,os,ssl,functools,logging,datetime as dt, asyncio as aio, ephem, dateutil.easter as due
+import argparse
+import sys
+import traceback
+import json
+import os
+import ssl
+import functools
+import logging
+import datetime as dt
+import asyncio as aio
+import ephem
+import dateutil.easter as due
 
 import buddylib as bl
 
-SUBTYPE="Action"
-__version__="0.10"
-CERTFILE="autobuddy.crt"
+SUBTYPE = "Action"
+__version__ = "0.10"
+CERTFILE = "autobuddy.crt"
 
-aboutstr="""<p>ActionBuddy is an application processing rules defined by the user.</p>
+aboutstr = """<p>ActionBuddy is an application processing rules defined by the user.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
-action_statevariable="""
+action_statevariable = """
 <buddyui version="0.1">
     <configuration name="action">
         <controlgroup type="listmaker"  name="state variable" label="State Variable">
             <control type="text" name="name" label="Name" length="32"/>
-            <controlgroup type="choice"  name="type" label="Type">  
+            <controlgroup type="choice"  name="type" label="Type">
                 <item value="event" label="Event">
                     <controlgroup type="choice"  name="period" label="Time Frame">
                         <item value="none" label="No"  />
@@ -54,7 +65,7 @@ action_statevariable="""
                     <control name="subval" label="Part of value" type="text" length="32" >
                         <default>value</default>
                     </control>
-                </item>  
+                </item>
                 <item value="simple" label="Simple">
                     <controlgroup type="choice"  name="period" label="Time Frame">
                         <item value="none" label="No"  />
@@ -65,7 +76,7 @@ action_statevariable="""
                         <item value="year" label="Year" />
                     </controlgroup>
                     <control name="init" label="Initial Value" type="text" length="16" />
-                </item> 
+                </item>
                 <item value="counter" label="Counter">
                     <controlgroup type="choice"  name="period" label="Time Frame">
                         <item value="none" label="No"  />
@@ -237,7 +248,7 @@ action_statevariable="""
                                     <control type="time range" name="timedef" label=" "/>
                                 </item>
                             </controlgroup>
-                        </item> 
+                        </item>
                         <item value="week">
                             <controlgroup type="choice"  name="day" label=" ">
                                 <item value="monday" label="Monday" />
@@ -381,13 +392,13 @@ action_statevariable="""
                         </item>
                         <item value="minute" />
                     </controlgroup>
-                </item> 
+                </item>
             </controlgroup>
         </controlgroup>
     </configuration>
 </buddyui>
 """
-action_rules="""
+action_rules = """
 <buddyui version="0.1">
     <configuration name="action">
         <controlgroup type="listmaker"  name="rules" label="Rules">
@@ -421,36 +432,36 @@ action_rules="""
                         <controlgroup type="choice"  name="compare" label=" ">
                             <item value="eq" label="==" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>  
+                            </item>
                             <item value="ne" label="!=" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>  
+                            </item>
                             <item value="in" label="in"/>
                             <item value="not in" label="not in" />
                             <item value="gt" label="&gt;" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>  
+                            </item>
                             <item value="ge" label="&gt;=" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>  
+                            </item>
                             <item value="lt" label="&lt;" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>  
+                            </item>
                             <item value="le" label="&lt;=" >
                                 <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
-                            </item>    
+                            </item>
                             <item value="first in" label="first in">
                                 <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
                             </item>
                             <item value="last out" label="last out">
                                 <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
-                            </item>   
+                            </item>
                             <item value="got in" label="got in">
                                 <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
                             </item>
                             <item value="got out" label="got out">
                                 <control name="compval" expand="device" exopt="any withtype" label="What?" type="text" length="16" />
-                            </item>   
+                            </item>
                         </controlgroup>
                     </item>
                     <item value="event" label="Event">
@@ -486,10 +497,10 @@ action_rules="""
                             </item>
                             <item value="any" label="Any value" />
                         </controlgroup>
-                    </item> 
+                    </item>
                 </controlgroup>
             </controlgroup>
-            <controlgroup type="listmaker"  name="condition" label="Conditions" newtab="true" key="cond name"  alabel="Add Condition" dlabel="Delete Condition"> 
+            <controlgroup type="listmaker"  name="condition" label="Conditions" newtab="true" key="cond name"  alabel="Add Condition" dlabel="Delete Condition">
                 <control type="text" name="cond name" length="32" label="Name" />
                 <controlgroup type="choice"  name="condition" label=" ">
                     <item value="t-variable" label="Target Variable">
@@ -674,217 +685,242 @@ action_rules="""
     </configuration>
 </buddyui>
 """
-#mystuff=json.loads(urllib.request.urlopen("https://freegeoip.net/json/").read().decode())
+# mystuff=json.loads(urllib.request.urlopen("https://freegeoip.net/json/").read().decode())
 
-daysofweek=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+daysofweek = [
+    "monday",
+     "tuesday",
+     "wednesday",
+     "thursday",
+     "friday",
+     "saturday",
+     "sunday"]
+
 
 def nth_of_month(val):
-    lok=["type","period","when","day"]
-    day=val
+    lok = ["type", "period", "when", "day"]
+    day = val
     for x in lok:
-        day=day[x]
+        day = day[x]
     try:
         return dt.date.today().replace(day=int(day))
     except:
-        #Get the last day
-       return last_of_month()
+        # Get the last day
+        return last_of_month()
+
 
 def last_of_month(val):
-    today=dt.date.today()
-    return (today+dt.timedelta(days=35-today.day)).replace(day=1) - dt.timedelta(days=1)
+    today = dt.date.today()
+    return (today + dt.timedelta(days=35 - today.day)).replace(day=1) - dt.timedelta(days=1)
+
 
 def nth_blast_month(val):
-    lok=["type","period","when","offset"]
-    day=val
+    lok = ["type", "period", "when", "offset"]
+    day = val
     for x in lok:
-        day=day[x]
-    
-    return las(val)-dt.timedelta(days=int(day))
+        day = day[x]
+
+    return las(val) - dt.timedelta(days=int(day))
+
 
 def nth_wd_month(val):
-    lok=["type","period","when"]
+    lok = ["type", "period", "when"]
     for x in lok:
-        val=val[x]
-    n=int(val["occur"])
-    lok=["day","bu-cvalue"]
-    dow=val
+        val = val[x]
+    n = int(val["occur"])
+    lok = ["day", "bu-cvalue"]
+    dow = val
     for x in lok:
-        dow=dow[x]
-    fotm=dt.date.today().replace(day=1)
-    delta=daysofweek.index(dow)-fotm.weekday()
+        dow = dow[x]
+    fotm = dt.date.today().replace(day=1)
+    delta = daysofweek.index(dow) - fotm.weekday()
     if delta >= 0:
-        return fotm+dt.timedelta(days=delta+(n-1)*7)
+        return fotm + dt.timedelta(days=delta + (n - 1) * 7)
     else:
-        return fotm+dt.timedelta(days=delta+(n)*7)
-  
+        return fotm + dt.timedelta(days=delta + (n) * 7)
+
+
 def last_wd_month(val):
-    lok=["type","period","when","day","bu-cvalue"]
-    day=val
+    lok = ["type", "period", "when", "day", "bu-cvalue"]
+    day = val
     for x in lok:
-        day=day[x]
-    adate=(dt.date.today().replace(day=1)+dt.timedelta(days=32)).replace(day=1)
-    idx=8
-    while idx>=0: #just in case really
-        idx-=1
-        adate=adate-dt.timedelta(days=1)
-        if daysofweek[adate.weekday()]==day:
+        day = day[x]
+    adate = (
+        dt.date.today(
+        ).replace(
+            day=1) + dt.timedelta(
+                days=32)).replace(
+                    day=1)
+    idx = 8
+    while idx >= 0:  # just in case really
+        idx -= 1
+        adate = adate - dt.timedelta(days=1)
+        if daysofweek[adate.weekday()] == day:
             return adate
 
+
 def day_week(val):
-    lok=["type","period","day","bu-cvalue"]
-    day=val
+    lok = ["type", "period", "day", "bu-cvalue"]
+    day = val
     for x in lok:
-        day=day[x]
-    adate=dt.date.today()
-    return adate+dt.timedelta(days=daysofweek.index(day)-adate.weekday())
-            
+        day = day[x]
+    adate = dt.date.today()
+    return adate + dt.timedelta(days=daysofweek.index(day) - adate.weekday())
+
+
 def sunrise(date):
     if "location" in bridgectl.config:
-        myloc=ephem.Observer()
-        myloc.lon=str(bridgectl.config["location"]["longitude"])
-        myloc.lat=str(bridgectl.config["location"]["latitude"])
-        myloc.elevation=bridgectl.config["location"]["altitude"]
-        myloc.date=date
+        myloc = ephem.Observer()
+        myloc.lon = str(bridgectl.config["location"]["longitude"])
+        myloc.lat = str(bridgectl.config["location"]["latitude"])
+        myloc.elevation = bridgectl.config["location"]["altitude"]
+        myloc.date = date
         sun = ephem.Sun()
         sr = ephem.localtime(myloc.next_rising(sun))
         if sr.date() > date.date():
             sr = ephem.localtime(myloc.previous_rising(sun))
-        sr=(sr+dt.timedelta(seconds=30)).time()
-        return dt.timedelta(hours=sr.hour,minutes=sr.minute)
+        sr = (sr + dt.timedelta(seconds=30)).time()
+        return dt.timedelta(hours=sr.hour, minutes=sr.minute)
     else:
         return dt.timedelta(hours=6)
 
+
 def sunset(date):
     if "location" in bridgectl.config:
-        myloc=ephem.Observer()
-        myloc.lon=str(bridgectl.config["location"]["longitude"])
-        myloc.lat=str(bridgectl.config["location"]["latitude"])
-        myloc.elevation=bridgectl.config["location"]["altitude"]
-        myloc.date=date
+        myloc = ephem.Observer()
+        myloc.lon = str(bridgectl.config["location"]["longitude"])
+        myloc.lat = str(bridgectl.config["location"]["latitude"])
+        myloc.elevation = bridgectl.config["location"]["altitude"]
+        myloc.date = date
         sun = ephem.Sun()
         sr = ephem.localtime(myloc.next_setting(sun))
         if sr.date() > date.date():
             sr = ephem.localtime(myloc.previous_setting(sun))
-        sr=(sr+dt.timedelta(seconds=30)).time()
-        return dt.timedelta(hours=sr.hour,minutes=sr.minute)
+        sr = (sr + dt.timedelta(seconds=30)).time()
+        return dt.timedelta(hours=sr.hour, minutes=sr.minute)
     else:
         return dt.timedelta(hours=18)
 
+
 def easter(val):
-    today=dt.date.today()
-    return due.easter(today.year,due.EASTER_WESTERN)
-    #fullMoon = ephem.next_full_moon(dt.date(today.year, 3, 21)).datetime().date()
-    #if fullMoon.weekday() < 6:
+    today = dt.date.today()
+    return due.easter(today.year, due.EASTER_WESTERN)
+    # fullMoon = ephem.next_full_moon(dt.date(today.year, 3, 21)).datetime().date()
+    # if fullMoon.weekday() < 6:
     #    easter = fullMoon + dt.timedelta(days=(6-fullMoon.weekday()))
-    #else:
+    # else:
     #    easter = fullMoon + dt.timedelta(days=7)
-    #return easter    
-    
+    # return easter
+
+
 def orthodox_easter(val):
-    today=dt.date.today()
-    return due.easter(today.year,due.EASTER_ORTHODOX)
-    
+    today = dt.date.today()
+    return due.easter(today.year, due.EASTER_ORTHODOX)
+
+
 def mardigras(val):
-    mg=easter(None)-dt.timedelta(days=38)
-    while mg.weekday()!=1:
-        mg=mg-dt.timedelta(days=1)
+    mg = easter(None) - dt.timedelta(days=38)
+    while mg.weekday() != 1:
+        mg = mg - dt.timedelta(days=1)
     return mg
 
+
 def givenday(val):
-    lok=["type","period","when","day"]
-    day=val
+    lok = ["type", "period", "when", "day"]
+    day = val
     for x in lok:
-        day=day[x]
-    month,day=[int(x) for x in day.split("/")]
+        day = day[x]
+    month, day = [int(x) for x in day.split("/")]
     return dt.date.today().replace(month=month).replace(day=day)
 
 
-sv_ressources={
-    "year"  : {
-        "easter" : easter,
-        "orthodox easter" : orthodox_easter,
+sv_ressources = {
+    "year": {
+        "easter": easter,
+        "orthodox easter": orthodox_easter,
         "this day": givenday,
         "mardi gras": mardigras
-        },
-    "month" : {
+    },
+    "month": {
         "day": nth_of_month,
         "last day": last_of_month,
         "nth before last": nth_blast_month,
         "nth weekday": nth_wd_month,
         "last weekday": last_wd_month
-        },
-    "week"  : {
-        "day" : day_week,
-        },
-    "day"   : {
-        "sunrise"     : sunrise,
-        "sunset"      : sunset
-        }
+    },
+    "week": {
+        "day": day_week,
+    },
+    "day": {
+        "sunrise": sunrise,
+        "sunset": sunset
+    }
 }
 
 
 def sv_factory(vardef):
-    if vardef["type"]["bu-cvalue"]=="event":
+    if vardef["type"]["bu-cvalue"] == "event":
         return EventState(vardef)
-    elif vardef["type"]["bu-cvalue"]=="tracker":
+    elif vardef["type"]["bu-cvalue"] == "tracker":
         return AccuState(vardef)
-    elif vardef["type"]["bu-cvalue"]=="simple":
+    elif vardef["type"]["bu-cvalue"] == "simple":
         return SimpleState(vardef)
-    elif vardef["type"]["bu-cvalue"]=="counter":
+    elif vardef["type"]["bu-cvalue"] == "counter":
         return CounterState(vardef)
-    elif vardef["type"]["bu-cvalue"]=="time":
+    elif vardef["type"]["bu-cvalue"] == "time":
         return TimeState(vardef)
     else:
         return None
 
 
 class SimpleState():
+
     """A simple state variable"""
-    def __init__(self,vardef):
+
+    def __init__(self, vardef):
         """Generic state variable, just a name"""
-        self.vardef=vardef
-        self.name=None
-        self.period=None
-        self._varstate=None
+        self.vardef = vardef
+        self.name = None
+        self.period = None
+        self._varstate = None
         self._parseval(self.vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-        
-    def _parseval(self,val):
-        if val["type"]["bu-cvalue"]!="simple":
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
+    def _parseval(self, val):
+        if val["type"]["bu-cvalue"] != "simple":
             raise Exception("Wrong state variable type")
-        self.name=val["name"]
-        aval= val["type"]
-        self._varstate=aval["init"]
-        self.period=aval["period"]["bu-cvalue"]
-                
+        self.name = val["name"]
+        aval = val["type"]
+        self._varstate = aval["init"]
+        self.period = aval["period"]["bu-cvalue"]
+
     @property
     def event(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return None
-    
+
     @property
     def state(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return self._varstate
-    
+
     @state.setter
-    def state(self,val):
-        self._varstate=val
-    
-    def process_event(self,event):
+    def state(self, val):
+        self._varstate = val
+
+    def process_event(self, event):
         if event['event'] == 'time tick':
             if self.period in event["starts"]:
                 self._varstate = self.reset()
-    
-    def check(self,val,compare="eq"):
+
+    def check(self, val, compare="eq"):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter val
-        """ 
+        """
         try:
             if compare == "eq":
                 return self._varstate == val
@@ -904,90 +940,93 @@ class SimpleState():
                 return self._varstate <= val
             return False
         except Exception as e:
-            emsg="Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
-            self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"error report", 
-                                    "target":self.type+".state variable",
-                                    "value":emsg}})
+            emsg = "Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(
+                self.name, val, e.__traceback__)
+            self.sending({"subject": self.target,
+                          "content_type": "event",
+                          "content": {"event": "error report",
+                                      "target": self.type + ".state variable",
+                                      "value": emsg}})
 
             return False
-    
+
     def reset(self):
         """Reset the variable to its initial value"""
         self._parseval(self.vardef)
-    
-    def update(self,val):
+
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self._parseval(self,val)
+
+        self._parseval(self, val)
         return True
-        
+
     def freeze(self):
         pass
-        
+
     def unfreeze(self):
         pass
-       
-    def event_trigger(self,event):
+
+    def event_trigger(self, event):
         """Check if the event triggers this  state  variable"""
         return False
-    
-    
+
+
 class CounterState():
+
     """A simple state variable"""
-    def __init__(self,vardef):
+
+    def __init__(self, vardef):
         """Generic state variable, just a name"""
-        self.vardef=vardef
-        self.name=None
-        self.period=None
-        self._varstate=None
+        self.vardef = vardef
+        self.name = None
+        self.period = None
+        self._varstate = None
         self._parseval(self.vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-    def _parseval(self,val):
-        if val["type"]["bu-cvalue"]!="counter":
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
+    def _parseval(self, val):
+        if val["type"]["bu-cvalue"] != "counter":
             raise Exception("Wrong state variable type")
-        self.name=val["name"]
-        aval= val["type"]
-        self._varstate=int(aval["init"])
-        self.period=aval["period"]["bu-cvalue"]
-        
+        self.name = val["name"]
+        aval = val["type"]
+        self._varstate = int(aval["init"])
+        self.period = aval["period"]["bu-cvalue"]
+
     @property
     def state(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return self._varstate
-    
+
     @state.setter
-    def state(self,val):
-        self._varstate=int(val)
-    
-    def process_event(self,event):
+    def state(self, val):
+        self._varstate = int(val)
+
+    def process_event(self, event):
         if event['event'] == 'time tick':
             if self.period in event["starts"]:
                 self._varstate = self.reset()
-    
-    def check(self,val,compare="eq"):
+
+    def check(self, val, compare="eq"):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter val
-        """ 
+        """
         try:
             if compare == "eq":
                 return self._varstate == int(val)
             if compare == "ne":
                 return self._varstate != int(val)
             if compare == "in":
-                return self._varstate in [ int(x) for x in val.split(",")]
+                return self._varstate in [int(x) for x in val.split(",")]
             if compare == "not in":
-                return self._varstate not in [ int(x) for x in val.split(",")]
+                return self._varstate not in [int(x) for x in val.split(",")]
             if compare == "gt":
                 return self._varstate > int(val)
             if compare == "ge":
@@ -998,76 +1037,79 @@ class CounterState():
                 return self._varstate <= int(val)
             return False
         except Exception as e:
-            emsg="Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
-            self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"error report", 
-                                    "target":self.type+".state variable",
-                                    "value":emsg}})
+            emsg = "Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(
+                self.name, val, e.__traceback__)
+            self.sending({"subject": self.target,
+                          "content_type": "event",
+                          "content": {"event": "error report",
+                                      "target": self.type + ".state variable",
+                                      "value": emsg}})
 
             return False
-    
+
     def reset(self):
         """Reset the variable to its initial value"""
         self._parseval(self.vardef)
-    
-    def update(self,val):
+
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self._parseval(self,val)
+
+        self._parseval(self, val)
         return True
-        
+
     def freeze(self):
         pass
-        
+
     def unfreeze(self):
         pass
-       
-    def event_trigger(self,event):
+
+    def event_trigger(self, event):
         """Check if the event triggers this  state  variable"""
         return False
 
+
 class EventState():
+
     """ track an event across entities """
-    
-    def __init__(self,vardef):
+
+    def __init__(self, vardef):
         """Generic state variable, just a name"""
-        self.vardef=vardef
-        self.name=None
-        self.period=None
-        self.what=None
-        self.event=None
-        self.subval=[]
+        self.vardef = vardef
+        self.name = None
+        self.period = None
+        self.what = None
+        self.event = None
+        self.subval = []
         self._parseval(self.vardef)
-        self._varstate=None
+        self._varstate = None
         self.frozen = False
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-    def _parseval(self,val):
-        if val["type"]["bu-cvalue"]!="event":
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
+    def _parseval(self, val):
+        if val["type"]["bu-cvalue"] != "event":
             raise Exception("Wrong state variable type")
-        self.name=val["name"]
-        aval= val["type"]
-        self.period=aval["period"]["bu-cvalue"]
-        if isinstance(aval["entity"],dict):
-            #was expanded
-            self.what=aval["entity"]["bu-cvalue"] or None
+        self.name = val["name"]
+        aval = val["type"]
+        self.period = aval["period"]["bu-cvalue"]
+        if isinstance(aval["entity"], dict):
+            # was expanded
+            self.what = aval["entity"]["bu-cvalue"] or None
         else:
-            self.what=aval["entity"].strip() or None
+            self.what = aval["entity"].strip() or None
         self.event = aval["event"]
         if aval["subval"].strip():
-            self.subval=[x.strip() for x in aval["subval"].split("::")]
+            self.subval = [x.strip() for x in aval["subval"].split("::")]
         else:
-            self.subval=["value"]
-        
-    def process_event(self,event):
-        """This needs to implement the event processing to change the 
+            self.subval = ["value"]
+
+    def process_event(self, event):
+        """This needs to implement the event processing to change the
         state of the variable."""
         if not self.frozen:
             if event["event"] == self.event:
@@ -1076,28 +1118,36 @@ class EventState():
                     try:
                         for key in self.subval:
                             self._varstate = self._varstate[key]
-                            
+
                         if bridgectl.log:
-                            bridgectl.log.debug("New value for {} is {}".format(self.name,self._varstate))
+                            bridgectl.log.debug(
+                                "New value for {} is {}".format(
+                                    self.name,
+                                    self._varstate))
                     except Exception as e:
                         if bridgectl.log:
-                            bridgectl.log.critical("Failed to process event for {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+                            bridgectl.log.critical(
+                                "Failed to process event for {}".format(
+                                    self.name),
+                                exc_info=(type(e),
+                                          e,
+                                          e.__traceback__))
                         pass
             if event['event'] == 'time tick':
                 if self.period in event["starts"]:
                     self._varstate = self.reset()
-    
+
     @property
     def state(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return self._varstate
-    
-    def check(self,val,compare="eq"):
+
+    def check(self, val, compare="eq"):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter val
-        """ 
+        """
         try:
             if compare == "eq":
                 return self._varstate == val
@@ -1121,37 +1171,38 @@ class EventState():
                 return not self.frozen
             return False
         except Exception as e:
-            emsg="Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
-            self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"error report", 
-                                    "target":self.type+".state variable",
-                                    "value":emsg}})
+            emsg = "Error: State variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(
+                self.name, val, e.__traceback__)
+            self.sending({"subject": self.target,
+                          "content_type": "event",
+                          "content": {"event": "error report",
+                                      "target": self.type + ".state variable",
+                                      "value": emsg}})
 
             return False
-    
+
     def reset(self):
         """Reset the variable to its initial value"""
-        self._varstate=None
-        self.frozen=False
-    
-    def update(self,val):
+        self._varstate = None
+        self.frozen = False
+
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self._parseval(self,val)
+
+        self._parseval(self, val)
         return True
-        
+
     def freeze(self):
-        self.frozen=True
-        
+        self.frozen = True
+
     def unfreeze(self):
-        self.frozen=False
-       
-    def event_trigger(self,event):
+        self.frozen = False
+
+    def event_trigger(self, event):
         """Check if the event triggers this  state  variable"""
         if event["event"] == self.event:
             if self.what is None or event["target"].startswith(self.what):
@@ -1160,364 +1211,394 @@ class EventState():
 
 
 class AccuState():
+
     """ track an event across entities """
-    
-    def __init__(self,vardef):
+
+    def __init__(self, vardef):
         """Accumulation state variable, just a name"""
-        self.vardef=vardef
-        self.name=None
-        self.period=None
-        self.what=None
-        self.event=None
-        self.subval=[]
-        self.devent=None
-        self.dsubval=[]
-        self.addV=None
-        self.subV=None
-        self.entities=set()
-        self.lastone=None
+        self.vardef = vardef
+        self.name = None
+        self.period = None
+        self.what = None
+        self.event = None
+        self.subval = []
+        self.devent = None
+        self.dsubval = []
+        self.addV = None
+        self.subV = None
+        self.entities = set()
+        self.lastone = None
         self._parseval(self.vardef)
-        self.frozen=False
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-    def _parseval(self,val):
-        if val["type"]["bu-cvalue"]!="tracker":
+        self.frozen = False
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
+    def _parseval(self, val):
+        if val["type"]["bu-cvalue"] != "tracker":
             raise Exception("Wrong state variable type")
-        self.name=val["name"].strip()
-        aval= val["type"]
-        self.period=aval["period"]["bu-cvalue"].strip()
-        if isinstance(aval["entity"],dict):
-            #was expanded
-            self.what=aval["entity"]["bu-cvalue"] or None
+        self.name = val["name"].strip()
+        aval = val["type"]
+        self.period = aval["period"]["bu-cvalue"].strip()
+        if isinstance(aval["entity"], dict):
+            # was expanded
+            self.what = aval["entity"]["bu-cvalue"] or None
         else:
-            self.what=aval["entity"].strip() or None
+            self.what = aval["entity"].strip() or None
         self.event = aval["event"].strip()
         if aval["subval"].strip():
-            self.subval=[x.strip() for x in aval["subval"].split("::")]
+            self.subval = [x.strip() for x in aval["subval"].split("::")]
         else:
-            self.subval=["value"] #here the event value
-        self.addV=[y for y in map(lambda x:x.strip(),aval["add"].split(","))]
+            self.subval = ["value"]  # here the event value
+        self.addV = [y for y in map(
+                     lambda x:x.strip(),
+                     aval["add"].split(","))]
         self.devent = aval["devent"].strip() or self.event
         if self.devent == self.event and not aval["dsubval"].strip():
-            self.dsubval=self.subval
+            self.dsubval = self.subval
         else:
             if aval["dsubval"].strip():
-                self.dsubval=[x.strip() for x in aval["dsubval"].split("::")]
+                self.dsubval = [x.strip() for x in aval["dsubval"].split("::")]
             else:
-                self.dsubval=["value"] #here the event value
-        self.subV=[y for y in map(lambda x:x.strip(),aval["sub"].split(","))]
-        
-    def process_event(self,event):
-        """This needs to implement the event processing to change the 
+                self.dsubval = ["value"]  # here the event value
+        self.subV = [y for y in map(
+                     lambda x:x.strip(),
+                     aval["sub"].split(","))]
+
+    def process_event(self, event):
+        """This needs to implement the event processing to change the
         state of the variable."""
         if not self.frozen:
-            if event["event"] in [self.event,self.devent]:
+            if event["event"] in [self.event, self.devent]:
                 if self.what is None or event["target"].startswith(self.what):
-                    self.lastone=None
+                    self.lastone = None
                     if event["event"] == self.event:
-                        val=event
+                        val = event
                         for key in self.subval:
                             val = val[key]
                         if val in self.addV:
                             if event["target"] not in self.entities:
                                 self.entities.add(event["target"])
-                                self.lastone=event["target"]
+                                self.lastone = event["target"]
                     if event["event"] == self.devent:
-                        val=event
+                        val = event
                         for key in self.dsubval:
                             val = val[key]
                         if val in self.subV:
                             try:
                                 self.entities.remove(event["target"])
-                                self.lastone=event["target"]
-                            except: pass
+                                self.lastone = event["target"]
+                            except:
+                                pass
                 if self.lastone is not None and bridgectl.log:
-                    bridgectl.log.debug("New value for {} is {}".format(self.name,self.entities))
+                    bridgectl.log.debug(
+                        "New value for {} is {}".format(
+                            self.name,
+                            self.entities))
             if event['event'] == 'time tick':
                 if self.period in event["starts"]:
                     self.reset()
-    
+
     @property
     def state(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return len(self.entities)
-    
-    def check(self,val,compare="eq"):
+
+    def check(self, val, compare="eq"):
         """Compare the state variable to a value (val) using compare.
         """
         try:
             if compare == "eq":
-                return len(self.entities)==int(val)
+                return len(self.entities) == int(val)
             if compare == "ne":
-                return len(self.entities)!=int(val)
+                return len(self.entities) != int(val)
             if compare == "in":
                 return val in self.entities
             if compare == "not in":
                 return val not in self.entities
             if compare == "gt":
-                return len(self.entities)>int(val)
+                return len(self.entities) > int(val)
             if compare == "ge":
-                return len(self.entities)>=int(val)
+                return len(self.entities) >= int(val)
             if compare == "lt":
-                return len(self.entities)<int(val)
+                return len(self.entities) < int(val)
             if compare == "le":
-                return len(self.entities)<=int(val)
-            if compare == "first in": #trigger comparator
-                return len(self.entities)==1 and self.lastone in self.entities
-            if compare == "last out": #trigger comparator
-                return len(self.entities)==0 and val == self.lastone
-            if compare == "got in": #trigger comparator
+                return len(self.entities) <= int(val)
+            if compare == "first in":  # trigger comparator
+                return len(self.entities) == 1 and self.lastone in self.entities
+            if compare == "last out":  # trigger comparator
+                return len(self.entities) == 0 and val == self.lastone
+            if compare == "got in":  # trigger comparator
                 return val == self.lastone and self.lastone in self.entities
-            if compare == "got out": #trigger comparator
+            if compare == "got out":  # trigger comparator
                 return val == self.lastone and self.lastone not in self.entities
             if compare == "frozen":
                 return self.frozen
             if compare == "not frozen":
                 return not self.frozen
-                   
-            return False
-        except Exception as e:
-            emsg="Error: State variable {} : Tracker compares the number of tracked entities. Comparison value ({}) must be an integer.\nTrace: {}".format(self.name,val,e.__traceback__)
-            self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"error report", 
-                                    "target":self.type+".state variable",
-                                    "value":emsg}})
 
             return False
-        
-    
+        except Exception as e:
+            emsg = "Error: State variable {} : Tracker compares the number of tracked entities. Comparison value ({}) must be an integer.\nTrace: {}".format(
+                self.name, val, e.__traceback__)
+            self.sending({"subject": self.target,
+                          "content_type": "event",
+                          "content": {"event": "error report",
+                                      "target": self.type + ".state variable",
+                                      "value": emsg}})
+
+            return False
+
     def reset(self):
         """Reset the variable to its initial value"""
-        self.entities=set()
-        self.frozen=False
-    
-    def update(self,val):
+        self.entities = set()
+        self.frozen = False
+
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self._parseval(self,val)
+
+        self._parseval(self, val)
         return True
-        
+
     def freeze(self):
-        self.frozen=True
-        
+        self.frozen = True
+
     def unfreeze(self):
-        self.frozen=False
-       
-    def event_trigger(self,event):
-        if event["event"] in [self.event,self.devent]:
+        self.frozen = False
+
+    def event_trigger(self, event):
+        if event["event"] in [self.event, self.devent]:
             if self.lastone is not None:
                 return True
         return False
 
 
-
 class TimeState():
+
     """Time dependent state variable
     """
-    
-    def __init__(self,vardef):
+
+    def __init__(self, vardef):
         """Create a time dependent state variable. Its state is either True or False
             A time state variable defines a time interval. calc gives us the date whilst
             after and before define the time interval. The minimum is 60 secs, the max
             is 1 full day
         """
-        self.vardef=vardef
-        self.name=None
-        self.period=None
+        self.vardef = vardef
+        self.name = None
+        self.period = None
         self.istart = None
         self.iend = None
         self.calc = None
-        self._varstate=None
-        self.lasttick=dt.datetime.now().replace(second=0,microsecond=0)
+        self._varstate = None
+        self.lasttick = dt.datetime.now().replace(second=0, microsecond=0)
         self._parseval(vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-   
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
     def __repr__(self):
-        return "Time variable between "+str(self._varstate+self.istart)+" and "+str(self._varstate+self.iend)
-    
-    def _parseval(self,val):
-        if val["type"]["bu-cvalue"]!="time":
+        return "Time variable between " + str(self._varstate + self.istart) + " and " + str(self._varstate + self.iend)
+
+    def _parseval(self, val):
+        if val["type"]["bu-cvalue"] != "time":
             raise Exception("Wrong state variable type")
-        self.name=val["name"]
-        aval=val["type"]["period"]
-        self.period=aval["bu-cvalue"]
-        self.istart=None
-        self.iend=None
-        if self.period in ["year","month"]:
-            self.calc=sv_ressources[self.period][aval["when"]["bu-cvalue"]]
+        self.name = val["name"]
+        aval = val["type"]["period"]
+        self.period = aval["bu-cvalue"]
+        self.istart = None
+        self.iend = None
+        if self.period in ["year", "month"]:
+            self.calc = sv_ressources[self.period][aval["when"]["bu-cvalue"]]
         elif self.period in ["week"]:
-            self.calc=sv_ressources["week"]["day"]
-        self._varstate=self.dreset()
+            self.calc = sv_ressources["week"]["day"]
+        self._varstate = self.dreset()
         if self.period in ["minute"]:
-            now=self.lasttick
-            self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[now.hour,now.minute])]))
-            self.iend=self.istart+dt.timedelta(seconds=60)
+            now = self.lasttick
+            self.istart = dt.timedelta(
+                **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [now.hour, now.minute])]))
+            self.iend = self.istart + dt.timedelta(seconds=60)
         elif self.period in ["hour"]:
-            aval=aval["timing"]
-            thish=self.lasttick.hour
+            aval = aval["timing"]
+            thish = self.lasttick.hour
             if aval["bu-cvalue"] == "at":
-                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
-                self.iend=self.istart+dt.timedelta(seconds=60)
+                self.istart = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [thish, aval["delta"]])]))
+                self.iend = self.istart + dt.timedelta(seconds=60)
             elif aval["bu-cvalue"] == "before":
-                self.istart=dt,timedelta()
-                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
+                self.istart = dt, timedelta()
+                self.iend = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [thish, aval["delta"]])]))
             elif aval["bu-cvalue"] == "after":
-                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["delta"]])]))
-                self.iend=dt.timedelta(hours=1)
+                self.istart = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [thish, aval["delta"]])]))
+                self.iend = dt.timedelta(hours=1)
             elif aval["bu-cvalue"] == "between":
-                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["sdelta"]])]))
-                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],[thish,aval["edelta"]])]))
-                self.iend=self.iend+dt.timedelta(seconds=60)
+                self.istart = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [thish, aval["sdelta"]])]))
+                self.iend = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], [thish, aval["edelta"]])]))
+                self.iend = self.iend + dt.timedelta(seconds=60)
         else:
-            aval=val["type"]["period"]["timing"]
+            aval = val["type"]["period"]["timing"]
             if aval["bu-cvalue"] == "all day":
-                self.istart=dt.timedelta(hours=0)
-                self.iend=dt.timedelta(hours=24)
+                self.istart = dt.timedelta(hours=0)
+                self.iend = dt.timedelta(hours=24)
             elif aval["bu-cvalue"] == "at":
-                aval=aval["timedef"]
-                if aval["bu-cvalue"]=="sunrise":
-                    self.istart=sunrise(self._varstate)
-                elif aval["bu-cvalue"]=="sunset":
-                    self.istart=sunset(self._varstate)
-                elif aval["bu-cvalue"]=="time":
-                    self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
-                self.iend=self.istart+dt.timedelta(seconds=60)
+                aval = aval["timedef"]
+                if aval["bu-cvalue"] == "sunrise":
+                    self.istart = sunrise(self._varstate)
+                elif aval["bu-cvalue"] == "sunset":
+                    self.istart = sunset(self._varstate)
+                elif aval["bu-cvalue"] == "time":
+                    self.istart = dt.timedelta(
+                        **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], aval["time"].split(":"))]))
+                self.iend = self.istart + dt.timedelta(seconds=60)
             elif aval["bu-cvalue"] == "before":
-                self.istart=dt.timedelta()-dt.timedelta(minutes=int(aval["delta"]))
-                aval=aval["timedef"]
-                if aval["bu-cvalue"]=="sunrise":
-                    self.istart+=sunrise(self._varstate)
-                elif aval["bu-cvalue"]=="sunset":
-                    self.istart+=sunset(self._varstate)
-                elif aval["bu-cvalue"]=="time":
-                    self.istart+=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
-                self.iend=self.istart+dt.timedelta(seconds=60)
+                self.istart = dt.timedelta() - dt.timedelta(
+                    minutes=int(aval["delta"]))
+                aval = aval["timedef"]
+                if aval["bu-cvalue"] == "sunrise":
+                    self.istart += sunrise(self._varstate)
+                elif aval["bu-cvalue"] == "sunset":
+                    self.istart += sunset(self._varstate)
+                elif aval["bu-cvalue"] == "time":
+                    self.istart += dt.timedelta(
+                        **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], aval["time"].split(":"))]))
+                self.iend = self.istart + dt.timedelta(seconds=60)
             elif aval["bu-cvalue"] == "after":
-                self.istart=dt.timedelta(minutes=int(aval["delta"]))
-                aval=aval["timedef"]
-                if aval["bu-cvalue"]=="sunrise":
-                    self.istart+=sunrise(self._varstate)
-                elif aval["bu-cvalue"]=="sunset":
-                    self.istart+=sunset(self._varstate)
-                elif aval["bu-cvalue"]=="time":
-                    self.istart+=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["time"].split(":"))]))
-                self.iend=self.istart+dt.timedelta(seconds=60)
+                self.istart = dt.timedelta(minutes=int(aval["delta"]))
+                aval = aval["timedef"]
+                if aval["bu-cvalue"] == "sunrise":
+                    self.istart += sunrise(self._varstate)
+                elif aval["bu-cvalue"] == "sunset":
+                    self.istart += sunset(self._varstate)
+                elif aval["bu-cvalue"] == "time":
+                    self.istart += dt.timedelta(
+                        **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], aval["time"].split(":"))]))
+                self.iend = self.istart + dt.timedelta(seconds=60)
             elif aval["bu-cvalue"] == "between":
-                self.istart=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["timedef"][0].split(":"))]))
-                self.iend=dt.timedelta(**dict([(x,int(y)) for x,y in zip(["hours","minutes"],aval["timedef"][1].split(":"))]))
-                self.iend=self.iend+dt.timedelta(seconds=60)
+                self.istart = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], aval["timedef"][0].split(":"))]))
+                self.iend = dt.timedelta(
+                    **dict([(x, int(y)) for x, y in zip(["hours", "minutes"], aval["timedef"][1].split(":"))]))
+                self.iend = self.iend + dt.timedelta(seconds=60)
         if bridgectl.log:
-            bridgectl.log.debug("Time var {} between {} and {}".format(self.name,self._varstate+self.istart,self._varstate+self.iend))
-        
+            bridgectl.log.debug(
+                "Time var {} between {} and {}".format(
+                    self.name,
+                    self._varstate + self.istart,
+                    self._varstate + self.iend))
+
     def dreset(self):
         """Reinitialise the date variable"""
         if self.calc:
-            return dt.datetime.combine(self.calc(self.vardef),dt.time(hour=0,minute=0))
+            return dt.datetime.combine(self.calc(self.vardef), dt.time(hour=0, minute=0))
         else:
-            val=dt.date.today()
-            if self.period in ["minute","hour","day"]:
-                return dt.datetime.combine(val,dt.time(hour=0,minute=0))
-            param={}
+            val = dt.date.today()
+            if self.period in ["minute", "hour", "day"]:
+                return dt.datetime.combine(val, dt.time(hour=0, minute=0))
+            param = {}
             if self.period == "week":
-                return dt.datetime.combine(val-dt.timedelta(days=val.weekday()),
-                                            dt.time(hour=0,minute=0))
-            for x,y in { "month": "day","year": "month"}.items():
-                 param[y]=1
-                 if self.period == x:
-                     return dt.datetime.combine(val.replace(**param).date(),dt.time(hour=0,minute=0))
-            
+                return dt.datetime.combine(
+                    val - dt.timedelta(days=val.weekday()),
+                                            dt.time(hour=0, minute=0))
+            for x, y in {"month": "day", "year": "month"}.items():
+                param[y] = 1
+                if self.period == x:
+                    return dt.datetime.combine(val.replace(**param).date(), dt.time(hour=0, minute=0))
+
             raise Exception()
-         
+
     def reset(self):
         self._parseval(self.vardef)
-    
-    def check(self,val=None,compare="eq"):
-        val=self.lasttick
-        if compare in ["eq","ne","in","not in"] :
-            resu = val >= (self._varstate+self.istart) and val < (self._varstate+self.iend)
 
-            if compare in ["eq","in"]:
+    def check(self, val=None, compare="eq"):
+        val = self.lasttick
+        if compare in ["eq", "ne", "in", "not in"]:
+            resu = val >= (
+                self._varstate +
+                self.istart) and val < (
+                    self._varstate +
+                    self.iend)
+
+            if compare in ["eq", "in"]:
                 return resu
             else:
                 return not resu
-        
+
         if compare == "gt":
-            return val>=self._varstate+self.iend
+            return val >= self._varstate + self.iend
         if compare == "le":
-            return val<self._varstate+self.iend
+            return val < self._varstate + self.iend
         if compare == "lt":
-            return val<self._varstate+self.istart
+            return val < self._varstate + self.istart
         if compare == "ge":
-            return val>=self._varstate+self.istart
-    
-    
-    def process_event(self,event):
+            return val >= self._varstate + self.istart
+
+    def process_event(self, event):
         """Check events and act accordingly. Here time ticks are what we react to.
         """
         if event['event'] == 'time tick':
-            self.lasttick=event['value']
+            self.lasttick = event['value']
             if self.period in event["starts"]:
                 self.reset()
-    
-    def update(self,val):
+
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self.vardef=val
+
+        self.vardef = val
         self._parseval(val)
         return True
-          
+
     def freeze(self):
-        pass #You cannot freeze time
-        
+        pass  # You cannot freeze time
+
     def unfreeze(self):
         pass
-       
-    def event_trigger(self,event):
+
+    def event_trigger(self, event):
         if event["event"] == "time tick":
             return self.check()
-        return False  
-        
- 
+        return False
+
+
 class Condition():
+
     """
-    A condition is simply a state variable, a value and a conditional to check the 
+    A condition is simply a state variable, a value and a conditional to check the
     state variable value against the value.
-    
+
     The conditional callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter cval
     """
-    
-    def __init__(self,state,cval=True,conditional="eq"):
+
+    def __init__(self, state, cval=True, conditional="eq"):
         """State of a state. This one will be True at most once during the timeframe defined by duration"""
-        self.variable=state
+        self.variable = state
         self.cval = cval
-        self.conditional=conditional
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
+        self.conditional = conditional
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
     def __repr__(self):
-        return "Condition on {} {} {}".format(self.variable.name,self.conditional,self.cval)
-        
+        return "Condition on {} {} {}".format(self.variable.name, self.conditional, self.cval)
+
     @property
     def state(self):
-        #proxy it
+        # proxy it
         return self.variable.state
-    
+
     def check(self):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
@@ -1525,52 +1606,52 @@ class Condition():
             y: should be the parameter val
         """
 
-        return self.variable.check(self.cval,self.conditional)
-        
-    def event_trigger(self,event):
+        return self.variable.check(self.cval, self.conditional)
+
+    def event_trigger(self, event):
         return self.variable.event_trigger(event) and self.check()
-           
- 
-    
+
+
 class EventTrigger():
+
     """ track an event across entities """
-    
-    def __init__(self,rname,vardef):
+
+    def __init__(self, rname, vardef):
         """Generic state variable, just a name"""
-        self.vardef=vardef
-        self.name=rname
-        self.what=None
-        self.event=None
-        self.subval=[]
-        self.compare=None
-        self.compval=None
+        self.vardef = vardef
+        self.name = rname
+        self.what = None
+        self.event = None
+        self.subval = []
+        self.compare = None
+        self.compval = None
         self._parseval(self.vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-   
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
     def __repr__(self):
-        return "Event trigger "+self.name+" looking for "+self.event+" on "+(self.what or "anything") +" with "+"::".join(self.subval)+" "+self.compare+" "+(self.compval or "None")
-             
-    def _parseval(self,val):
-        if isinstance(val["name"],dict):
-            #was expanded
-            self.what=val["name"]["bu-cvalue"] or None
+        return "Event trigger " + self.name + " looking for " + self.event + " on " + (self.what or "anything") + " with " + "::".join(self.subval) + " " + self.compare + " " + (self.compval or "None")
+
+    def _parseval(self, val):
+        if isinstance(val["name"], dict):
+            # was expanded
+            self.what = val["name"]["bu-cvalue"] or None
         else:
-            self.what=val["name"].strip() or None
+            self.what = val["name"].strip() or None
         self.event = val["event"]
         if val["subval"].strip():
-            self.subval=[x.strip() for x in val["subval"].split("::")]
+            self.subval = [x.strip() for x in val["subval"].split("::")]
         else:
-            self.subval=["value"]
-        self.compare=val["compare"]["bu-cvalue"]
+            self.subval = ["value"]
+        self.compare = val["compare"]["bu-cvalue"]
         if "compval" in val["compare"]:
-            self.compval=val["compare"]["compval"]
+            self.compval = val["compare"]["compval"]
         else:
-            self.compval=None
-        
-    def process_event(self,event):
-        """This needs to implement the event processing to change the 
+            self.compval = None
+
+    def process_event(self, event):
+        """This needs to implement the event processing to change the
         state of the variable."""
         if not self.frozen:
             if event["event"] == self.event:
@@ -1579,32 +1660,43 @@ class EventTrigger():
                     try:
                         for key in self.subval:
                             self._varstate = self._varstate[key]
-                            
+
                         if bridgectl.log:
-                            bridgectl.log.debug("New value for {} is {}".format(self.name,self._varstate))
+                            bridgectl.log.debug(
+                                "New value for {} is {}".format(
+                                    self.name,
+                                    self._varstate))
                     except Exception as e:
                         if bridgectl.log:
-                            bridgectl.log.critical("Failed to process event for rule {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+                            bridgectl.log.critical(
+                                "Failed to process event for rule {}".format(
+                                    self.name),
+                                exc_info=(type(e),
+                                          e,
+                                          e.__traceback__))
                         pass
             if event['event'] == 'time tick':
                 if self.period in event["starts"]:
                     self._varstate = self.reset()
-    
 
-    def check(self,event):
+    def check(self, event):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter val
-        """ 
+        """
         myvar = event
         try:
             for key in self.subval:
                 myvar = myvar[key]
-                
+
         except Exception as e:
             if bridgectl.log:
-                bridgectl.log.critical("Failed to process trigger event for {}".format(self.name),exc_info=(type(e), e, e.__traceback__))
+                bridgectl.log.critical(
+                    "Failed to process trigger event for {}".format(self.name),
+                    exc_info=(type(e),
+                              e,
+                              e.__traceback__))
             return False
         try:
             if self.compare == "any":
@@ -1628,74 +1720,77 @@ class EventTrigger():
             return False
         except:
             return False
-       
-    def event_trigger(self,event):
+
+    def event_trigger(self, event):
         """Check if the event triggers this  state  variable"""
         if event["event"] == self.event:
             if self.what is None or event["target"].startswith(self.what):
                 return self.check(event)
         return False
 
+
 class DiffCond():
+
     """Check the relative value of 2 state variables"""
-    def __init__(self,name,vardef):
+
+    def __init__(self, name, vardef):
         """Generic state variable, just a name"""
-        self.vardef=vardef
-        self.name=name
-        self.first=None
-        self.second=None
-        self.transform= lambda x: int(x or 0) #just in case it is triggered before the client is
-        self.compare=None
-        self.compval=None
+        self.vardef = vardef
+        self.name = name
+        self.first = None
+        self.second = None
+        self.transform = lambda x: int(
+            x or 0)  # just in case it is triggered before the client is
+        self.compare = None
+        self.compval = None
         self._parseval(self.vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-    def _parseval(self,val):
-        aval= val
-        self.first=bridgectl.stateVar[aval["first"]["bu-cvalue"]]
-        self.second=bridgectl.stateVar[aval["second"]["bu-cvalue"]]
-        if aval["transform"]["bu-cvalue"]=="float":
-            self.transform= lambda x: float(x or 0)
-        elif aval["transform"]["bu-cvalue"]=="int":
-            self.transform= lambda x: int(x or 0)
-        elif aval["transform"]["bu-cvalue"]=="round int":
-            self.transform= lambda x: int(roubd(float(x or 0)))
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
+
+    def _parseval(self, val):
+        aval = val
+        self.first = bridgectl.stateVar[aval["first"]["bu-cvalue"]]
+        self.second = bridgectl.stateVar[aval["second"]["bu-cvalue"]]
+        if aval["transform"]["bu-cvalue"] == "float":
+            self.transform = lambda x: float(x or 0)
+        elif aval["transform"]["bu-cvalue"] == "int":
+            self.transform = lambda x: int(x or 0)
+        elif aval["transform"]["bu-cvalue"] == "round int":
+            self.transform = lambda x: int(roubd(float(x or 0)))
         else:
-            self.transform= lambda x: int(x or 0)
-        self.compare=val["compare"]["bu-cvalue"]
-        self.compval=val["compare"]["compval"]
-     
+            self.transform = lambda x: int(x or 0)
+        self.compare = val["compare"]["bu-cvalue"]
+        self.compval = val["compare"]["compval"]
+
     @property
     def _varstate(self):
-        return self.transform(self.first._varstate)-int(self.second._varstate)
-        
+        return self.transform(self.first._varstate) - int(self.second._varstate)
+
     @property
     def state(self):
-        #Should be overwritten for more complex processingtry:
+        # Should be overwritten for more complex processingtry:
         return self._varstate
 
-    
-    def process_event(self,event):
+    def process_event(self, event):
         pass
-    
+
     def check(self):
         """Compare the state variable to a value (val) using compare.
         The compare callable is expected to accept 2 parameters:
             x: should be the state variable value
             y: should be the parameter val
-        """ 
-        
+        """
+
         try:
             if self.compare == "eq":
                 return self._varstate == self.transform(self.compval)
             if self.compare == "ne":
                 return self._varstate != self.transform(self.compval)
             if self.compare == "in":
-                return self._varstate in [ self.transform(x) for x in self.compval.split(",")]
+                return self._varstate in [self.transform(x) for x in self.compval.split(",")]
             if self.compare == "not in":
-                return self._varstate not in [ self.transform(x) for x in self.compval.split(",")]
+                return self._varstate not in [self.transform(x) for x in self.compval.split(",")]
             if self.compare == "gt":
                 return self._varstate > self.transform(self.compval)
             if self.compare == "ge":
@@ -1706,169 +1801,231 @@ class DiffCond():
                 return self._varstate <= self.transform(self.compval)
             return False
         except Exception as e:
-            emsg="Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(self.name,val,e.__traceback__)
-            self.sending({"subject":self.target ,
-                        "content_type": "event",
-                        "content":{"event":"error report", 
-                                    "target":self.type+".state variable",
-                                    "value":emsg}})
+            emsg = "Error: Counter variable {} : Comparison failed with value \"{}\".\nTrace: {}".format(
+                self.name, val, e.__traceback__)
+            self.sending({"subject": self.target,
+                          "content_type": "event",
+                          "content": {"event": "error report",
+                                      "target": self.type + ".state variable",
+                                      "value": emsg}})
 
             return False
-    
+
     def reset(self):
         """Reset the variable to its initial value"""
         self._parseval(self.vardef)
-    
 
 
- 
 class Rule():
-    """Define a rule... """   
-    def __init__(self,vardef):
+
+    """Define a rule... """
+
+    def __init__(self, vardef):
         """Create a rule
         """
-        self.vardef=vardef
-        self.name=None
-        self.active=False
-        self.trigger=None
-        self.condition=[]
-        self.action=[]
+        self.vardef = vardef
+        self.name = None
+        self.active = False
+        self.trigger = None
+        self.condition = []
+        self.action = []
         self._parseval(vardef)
-        self.sending=bridgectl.sending
-        self.type=bridgectl.type
-        self.target=bridgectl.target
-        
-    def __repr__(self):
-        return "Rule "+self.name
-   
-    def _parseval(self,val):
-        self.condition=[]
-        self.action=[]
-        self.name=val['name']
-        self.active=val['active']=="yes"
-        #Dealing with the trigger
-        aval=val["trigger"]["type"]
-        if aval['bu-cvalue'] == "time variable":
-            self.trigger=bridgectl.stateVar[aval["name"]['bu-cvalue']]
-        elif aval['bu-cvalue'] == "event":
-            self.trigger=EventTrigger(self.name,aval)
-        elif aval['bu-cvalue'] == "tracker variable" :
-            if "bu-cvalue" in aval["compare"]["compval"]:
-                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compare"]["compval"]["bu-cvalue"],aval["compare"]['bu-cvalue'])
-            else:
-                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compare"]["compval"],aval["compare"]['bu-cvalue'])
-        else :
-            if "bu-cvalue" in aval["compval"]:
-                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compval"]["bu-cvalue"],aval["compare"]['bu-cvalue'])
-            else:
-                self.trigger=Condition(bridgectl.stateVar[aval["name"]['bu-cvalue']],aval["compval"],aval["compare"]['bu-cvalue'])
+        self.sending = bridgectl.sending
+        self.type = bridgectl.type
+        self.target = bridgectl.target
 
- 
-        #Dealing with the conditions
-        
-        aval=val["condition"]
+    def __repr__(self):
+        return "Rule " + self.name
+
+    def _parseval(self, val):
+        self.condition = []
+        self.action = []
+        self.name = val['name']
+        self.active = val['active'] == "yes"
+        # Dealing with the trigger
+        aval = val["trigger"]["type"]
+        if aval['bu-cvalue'] == "time variable":
+            self.trigger = bridgectl.stateVar[aval["name"]['bu-cvalue']]
+        elif aval['bu-cvalue'] == "event":
+            self.trigger = EventTrigger(self.name, aval)
+        elif aval['bu-cvalue'] == "tracker variable":
+            if "bu-cvalue" in aval["compare"]["compval"]:
+                self.trigger = Condition(
+                    bridgectl.stateVar[aval["name"]['bu-cvalue']],
+                    aval["compare"]["compval"]["bu-cvalue"],
+                    aval["compare"]['bu-cvalue'])
+            else:
+                self.trigger = Condition(
+                    bridgectl.stateVar[aval["name"]['bu-cvalue']],
+                    aval["compare"]["compval"],
+                    aval["compare"]['bu-cvalue'])
+        else:
+            if "bu-cvalue" in aval["compval"]:
+                self.trigger = Condition(
+                    bridgectl.stateVar[aval["name"]['bu-cvalue']],
+                    aval["compval"]["bu-cvalue"],
+                    aval["compare"]['bu-cvalue'])
+            else:
+                self.trigger = Condition(
+                    bridgectl.stateVar[aval["name"]['bu-cvalue']],
+                    aval["compval"],
+                    aval["compare"]['bu-cvalue'])
+
+        # Dealing with the conditions
+
+        aval = val["condition"]
         aval.sort(key=lambda x: x["cond name"])
         for acond in aval:
             if acond['condition']['bu-cvalue'] == 'time-variable':
-                self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],None,acond['condition']["compare"]['bu-cvalue']))
+                self.condition.append(
+                    Condition(
+                        bridgectl.stateVar[
+                            acond[
+                                'condition'][
+                                    "variable"][
+                                        'bu-cvalue']],
+                        None,
+                        acond['condition']["compare"]['bu-cvalue']))
             elif acond['condition']['bu-cvalue'] == 'differential':
-                self.condition.append(DiffCond(acond["cond name"],acond['condition']))
-            elif acond['condition']["compare"]['bu-cvalue'] in ['frozen','not frozen']:
-                self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],False,acond['condition']["compare"]['bu-cvalue']))
+                self.condition.append(
+                    DiffCond(acond["cond name"],
+                             acond['condition']))
+            elif acond['condition']["compare"]['bu-cvalue'] in ['frozen', 'not frozen']:
+                self.condition.append(
+                    Condition(
+                        bridgectl.stateVar[
+                            acond[
+                                'condition'][
+                                    "variable"][
+                                        'bu-cvalue']],
+                        False,
+                        acond['condition']["compare"]['bu-cvalue']))
             else:
                 if "bu-cvalue" in acond['condition']["compare"]["compval"]:
-                    self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],acond['condition']["compare"]["compval"]["bu-cvalue"],acond['condition']["compare"]['bu-cvalue']))
+                    self.condition.append(
+                        Condition(
+                            bridgectl.stateVar[
+                                acond[
+                                    'condition'][
+                                        "variable"][
+                                            'bu-cvalue']],
+                            acond[
+                                'condition'][
+                                    "compare"][
+                                        "compval"][
+                                            "bu-cvalue"],
+                            acond['condition']["compare"]['bu-cvalue']))
                 else:
-                    self.condition.append(Condition(bridgectl.stateVar[acond['condition']["variable"]['bu-cvalue']],acond['condition']["compare"]["compval"],acond['condition']["compare"]['bu-cvalue']))
+                    self.condition.append(
+                        Condition(
+                            bridgectl.stateVar[
+                                acond[
+                                    'condition'][
+                                        "variable"][
+                                            'bu-cvalue']],
+                            acond['condition']["compare"]["compval"],
+                            acond['condition']["compare"]['bu-cvalue']))
 
-        #Dealing with the commands
-        aval=val["commands"]
+        # Dealing with the commands
+        aval = val["commands"]
         aval.sort(key=lambda x: x["command name"])
         for acmd in aval:
-            acmd=acmd["command"]
+            acmd = acmd["command"]
             if acmd['bu-cvalue'] == 'set counter':
-                mycmd=[acmd['bu-cvalue'],acmd['variable']['bu-cvalue']]
-                if acmd['set']['bu-cvalue']=="add":
-                    mycmd.append(lambda x: x+acmd['set']['value'])
-                if acmd['set']['bu-cvalue']=="sub":
-                    mycmd.append(lambda x: x-acmd['set']['value'])
-                if acmd['set']['bu-cvalue']=="set":
+                mycmd = [acmd['bu-cvalue'], acmd['variable']['bu-cvalue']]
+                if acmd['set']['bu-cvalue'] == "add":
+                    mycmd.append(lambda x: x + acmd['set']['value'])
+                if acmd['set']['bu-cvalue'] == "sub":
+                    mycmd.append(lambda x: x - acmd['set']['value'])
+                if acmd['set']['bu-cvalue'] == "set":
                     mycmd.append(lambda x: acmd['set']['value'])
                 self.action.append(mycmd)
             elif acmd['bu-cvalue'] == 'set variable':
-                self.action.append([acmd['bu-cvalue'],acmd['variable']['bu-cvalue'],acmd['value']])
-            elif acmd['bu-cvalue'] in ["freeze","unfreeze"]:
-                self.action.append([acmd['bu-cvalue'],acmd['variable']['bu-cvalue'],None])
+                self.action.append(
+                    [acmd['bu-cvalue'],
+                     acmd['variable']['bu-cvalue'],
+                        acmd['value']])
+            elif acmd['bu-cvalue'] in ["freeze", "unfreeze"]:
+                self.action.append(
+                    [acmd['bu-cvalue'],
+                     acmd['variable']['bu-cvalue'],
+                        None])
             elif acmd['bu-cvalue'] == "sleep":
-                self.action.append([acmd['bu-cvalue'],acmd['delay'],None])
+                self.action.append([acmd['bu-cvalue'], acmd['delay'], None])
             elif acmd['bu-cvalue'] == "event":
                 self.action.append([acmd['bu-cvalue'],
-                            {"subject": "action.synthetic" ,
-                                "content_type": "event",
-                                "content":{"event":acmd['event'], 
-                                            "target":"action.rules",
-                                            "value":acmd['e-value']}},None])
+                                    {"subject": "action.synthetic",
+                                     "content_type": "event",
+                                     "content": {"event": acmd['event'],
+                                                 "target":"action.rules",
+                                                 "value":acmd['e-value']}}, None])
             elif acmd['bu-cvalue'] == "command":
-                mycmd=[acmd['bu-cvalue']]
-                acmd=acmd["command"]
-                tcmd=acmd["command"]['bu-cvalue']
-                tcmdval=acmd['command'][tcmd]
-                mycmd.append({"subject":acmd['bu-cvalue'],
+                mycmd = [acmd['bu-cvalue']]
+                acmd = acmd["command"]
+                tcmd = acmd["command"]['bu-cvalue']
+                tcmdval = acmd['command'][tcmd]
+                mycmd.append({"subject": acmd['bu-cvalue'],
                              "content_type": "command",
-                             "content":{ "command": tcmd,
-                                         "token":bl.genid(),
-                                        "target":acmd['bu-cvalue'].split("-")[0],
-                                        "value":tcmdval}})
+                              "content": {"command": tcmd,
+                                          "token": bl.genid(),
+                                          "target":
+                                          acmd['bu-cvalue'].split("-")[0],
+                                          "value": tcmdval}})
                 mycmd.append(None)
                 self.action.append(mycmd)
             elif acmd['bu-cvalue'] == "command tracker":
-                
-                mycmd=[acmd['bu-cvalue']]
+
+                mycmd = [acmd['bu-cvalue']]
                 mycmd.append(acmd["variable"]['bu-cvalue'])
-                tcmd=acmd['command']['bu-cvalue']
-                tcmdval=acmd['command'][tcmd]
-                mycmd.append({"subject":None,
+                tcmd = acmd['command']['bu-cvalue']
+                tcmdval = acmd['command'][tcmd]
+                mycmd.append({"subject": None,
                              "content_type": "command",
-                             "content":{ "command": tcmd,
-                                         "token":None,
-                                        "target":None,
-                                        "value":tcmdval}})
+                              "content": {"command": tcmd,
+                                          "token": None,
+                                          "target": None,
+                                          "value": tcmdval}})
                 self.action.append(mycmd)
         if bridgectl.log:
-            bridgectl.log.debug("Action defined {} defined {}".format(self.name,self.action))   
+            bridgectl.log.debug(
+                "Action defined {} defined {}".format(
+                    self.name,
+                    self.action))
 
-            
-    def process_event(self,event):
+    def process_event(self, event):
         if bridgectl.log:
-            bridgectl.log.debug("Checking {} with {}".format(self.name,self.trigger))
-            
+            bridgectl.log.debug(
+                "Checking {} with {}".format(
+                    self.name,
+                    self.trigger))
+
         if not self.active:
             return False
-        
+
         if not self.trigger.event_trigger(event):
             return False
-        
+
         if bridgectl.log:
-            bridgectl.log.debug("\n\nRule {} was triggered\n\n".format(self))                 
-             
+            bridgectl.log.debug("\n\nRule {} was triggered\n\n".format(self))
+
         for c in self.condition:
             if not c.check():
                 return False
-            
+
         if bridgectl.log:
-            bridgectl.log.debug("\n\nRule {} conditions were met\n\n".format(self))
-                
-        xx=aio.ensure_future(self.doAct())
-   
-   
+            bridgectl.log.debug(
+                "\n\nRule {} conditions were met\n\n".format(self))
+
+        xx = aio.ensure_future(self.doAct())
+
     async def doAct(self):
-        for c,v,f in self.action:
-            bridgectl.log.debug("\n\nRule action {} {} {}\n\n".format(c,v,f))
-            #try:
+        for c, v, f in self.action:
+            bridgectl.log.debug("\n\nRule action {} {} {}\n\n".format(c, v, f))
+            # try:
             if c == 'set counter':
-                bridgectl.stateVar[v].state=f(bridgectl.stateVar[v].state)
+                bridgectl.stateVar[v].state = f(bridgectl.stateVar[v].state)
             elif c == 'set variable':
-                bridgectl.stateVar[v].state=f
+                bridgectl.stateVar[v].state = f
             elif c == 'freeze':
                 bridgectl.stateVar[v].freeze()
             elif c == 'unfreeze':
@@ -1882,113 +2039,120 @@ class Rule():
                 self.sending(v)
             elif c == 'command tracker':
                 for ent in bridgectl.stateVar[v].entities:
-                    f["subject"]=ent
-                    f["content"]["token"]=bl.genid()
-                    f["content"]["target"]=ent.split("-")[0]
+                    f["subject"] = ent
+                    f["content"]["token"] = bl.genid()
+                    f["content"]["target"] = ent.split("-")[0]
                     self.sending(f)
-                    
-            #except Exception as e:
-                #if bridgectl.log:
-                    #emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
-                    #self.sending({"subject":self.target ,
+
+            # except Exception as e:
+                # if bridgectl.log:
+                    # emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
+                    # self.sending({"subject":self.target ,
                                 #"content_type": "event",
-                                #"content":{"event":"error report", 
+                                #"content":{"event":"error report",
                                             #"target":self.type+".rules",
                                             #"value":emsg}})
 
-            
-    def update(self,val):
+    def update(self, val):
         if val == self.vardef:
             return False
         if val["name"] != self.name:
-            #idiot proofing
+            # idiot proofing
             return False
-        
-        self.condition=[]
-        self.action=[]
-        self.vardef=val
+
+        self.condition = []
+        self.action = []
+        self.vardef = val
         self._parseval(val)
         return True
 
 
-cfgdefault={"type":"action","subtype":"action","host":"localhost","port":8745,"credential":"","ssl":""}
-def configure(): 
-    parser = argparse.ArgumentParser(description="Track Lifx action bulbs.")
-    #                            version="%prog " + __version__ + "/" + bl.__version__)
+cfgdefault = {
+    "type": "action",
+     "subtype": "action",
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": ""}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Create state variables and rules.")
+    # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                    help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
     parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                    help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
     parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                    help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
     parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                    help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
     parser.add_argument("-c", "--config", default="/etc/autobuddy/action.cfg", type=argparse.FileType('r'),
-                    help="Config file to use (default \"/etc/autobuddy/action.cfg\")")
+                        help="Config file to use (default \"/etc/autobuddy/action.cfg\")")
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                    help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
     parser.add_argument("-d", "--debug", action="count", default=0,
-                    help="Log debug information (default False)")
+                        help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
-                    help="The directory where the file %s can be found."%(CERTFILE))
+                        help="The directory where the file %s can be found." % (CERTFILE))
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                    help="Log warning messages")
+                        help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
-                    help="Exit after the the configuration has been saved")
-    
+                        help="Exit after the the configuration has been saved")
+
     try:
-        opts=parser.parse_args()
+        opts = parser.parse_args()
     except Exception as e:
-        parser.error("Error: "+str(e))
-        
+        parser.error("Error: " + str(e))
+
     if opts.debug:
         logging.basicConfig(
             level=logging.DEBUG,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     elif opts.verbose:
         logging.basicConfig(
             level=logging.WARNING,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     else:
         logging.basicConfig(
             level=logging.CRITICAL,
             format='%(levelname)7s: %(message)s',
             stream=sys.stderr,
-            )
+        )
     actionlog = logging.getLogger('')
-    actioncfg = {"debug":opts.debug}
+    actioncfg = {"debug": opts.debug}
     try:
-    #if True:
+    # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
         except Exception as e:
             if opts.configonly:
-                cfgdata={}
+                cfgdata = {}
             else:
                 raise e
-            
+
         if opts.type != cfgdefault["type"]:
             actioncfg["type"] = opts.type
         elif "type" in cfgdata:
-            actioncfg["type"] = cfgdata["type"]     
+            actioncfg["type"] = cfgdata["type"]
         else:
             actioncfg["type"] = opts.type
         if opts.debug:
             actionlog.debug("The type is %s." % actioncfg["type"])
-            
+
         if opts.subtype != cfgdefault["subtype"]:
             actioncfg["subtype"] = opts.subtype
         elif "subtype" in cfgdata:
-            actioncfg["subtype"] = cfgdata["subtype"]     
+            actioncfg["subtype"] = cfgdata["subtype"]
         else:
             actioncfg["subtype"] = opts.subtype
         if opts.debug:
-            actionlog.debug("The subtype is %s." % actioncfg["subtype"]) 
+            actionlog.debug("The subtype is %s." % actioncfg["subtype"])
 
         if opts.credential != cfgdefault["credential"]:
             actioncfg["credential"] = opts.credential
@@ -1997,8 +2161,8 @@ def configure():
         else:
             actioncfg["credential"] = cfgdefault["credential"]
         if opts.debug:
-            actionlog.debug("The credential is %s"%actioncfg["credential"])       
-    
+            actionlog.debug("The credential is %s" % actioncfg["credential"])
+
         if opts.port != cfgdefault["port"]:
             actioncfg["port"] = opts.port
         elif "port" in cfgdata:
@@ -2007,7 +2171,7 @@ def configure():
             actioncfg["port"] = cfgdefault["port"]
         if opts.debug:
             actionlog.debug("The port is %s" % (actioncfg["port"]))
-            
+
         if opts.host != cfgdefault["host"]:
             actioncfg["host"] = opts.host
         elif "host" in cfgdata:
@@ -2015,8 +2179,8 @@ def configure():
         else:
             actioncfg["host"] = cfgdefault["host"]
         if opts.debug:
-            actionlog.debug("The host is %s"%actioncfg["host"])       
- 
+            actionlog.debug("The host is %s" % actioncfg["host"])
+
         if "buddykey" in cfgdata:
             actioncfg["buddykey"] = cfgdata["buddykey"]
 
@@ -2026,55 +2190,59 @@ def configure():
             actioncfg["ssl"] = cfgdata["ssl"]
         else:
             actioncfg["ssl"] = cfgdefault["ssl"]
-        if actioncfg["ssl"] and not ( os.path.isfile(actioncfg["ssl"]+"/"+CERTFILE)):
+        if actioncfg["ssl"] and not (os.path.isfile(actioncfg["ssl"] + "/" + CERTFILE)):
             actionlog.critical("Encryption: Could not find {} .".format(
-                actioncfg["ssl"]+"/"+CERTFILE))
+                actioncfg["ssl"] + "/" + CERTFILE))
             sys.exit()
         if opts.debug:
             if actioncfg["ssl"]:
-                actionlog.debug("The ssl certificates can be found in %s"%actioncfg["ssl"]) 
+                actionlog.debug(
+                    "The ssl certificates can be found in %s" %
+                    actioncfg["ssl"])
             else:
-                actionlog.debug("The connection is not encrypted") 
-                    
+                actionlog.debug("The connection is not encrypted")
+
         if opts.configonly:
 
             if "buddykey" not in actioncfg:
                 if opts.debug:
-                    actionlog.debug("Generating random key")   
+                    actionlog.debug("Generating random key")
                 actioncfg["buddykey"] = bl.keygen()
             try:
                 del(actioncfg["debug"])
             except:
                 pass
-            with open(opts.configonly,"w") as cfile:
-                json.dump(actioncfg,cfile)
-            os.chmod(opts.configonly,384) # 0600
+            with open(opts.configonly, "w") as cfile:
+                json.dump(actioncfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
             sys.exit()
-        
+
     except Exception as e:
         actionlog.error("Error: %r" % e)
         sys.exit(-2)
-    
-    return (actionlog,actioncfg)
+
+    return (actionlog, actioncfg)
+
 
 class Action(bl.BuddyBridge):
+
     """
     This is the main class
     """
-    def __init__(self, loop,future,config,log):
-        super(Action, self).__init__(loop,future,config,log)
+
+    def __init__(self, loop, future, config, log):
+        super(Action, self).__init__(loop, future, config, log)
         self.rules = {}
         self.stateVar = {}
         self.deviceVar = {}
-        self.timer=None
-               
+        self.timer = None
+
     @property
     def target(self):
-        #When destined to me
+        # When destined to me
         return self.type
-    
-    
-    def process_event(self,msg):
+
+    def process_event(self, msg):
         if self.log:
             self.log.debug("Processing event: {}".format(msg))
         for x in self.stateVar:
@@ -2082,294 +2250,368 @@ class Action(bl.BuddyBridge):
                 self.stateVar[x].process_event(msg["content"])
             except Exception as e:
                 if self.log:
-                    self.log.warning("Problem processing state variable event: {}".format(msg),exc_info=(type(e), e, e.__traceback__))
-        lok=list(self.rules.keys())
+                    self.log.warning(
+                        "Problem processing state variable event: {}".format(
+                            msg),
+                        exc_info=(type(e),
+                                  e,
+                                  e.__traceback__))
+        lok = list(self.rules.keys())
         lok.sort()
         for x in lok:
             try:
                 self.rules[x].process_event(msg["content"])
             except Exception as e:
                 if self.log:
-                    self.log.warning("Problem processing rule: {}".format(msg),exc_info=(type(e), e, e.__traceback__))
-        
-    def process_command(self,msg):
+                    self.log.warning(
+                        "Problem processing rule: {}".format(msg),
+                        exc_info=(type(e),
+                                  e,
+                                  e.__traceback__))
+
+    def process_command(self, msg):
         """Here we process the commands.
-        
+
         Here we expect requests from the gui. These commands are can be one of
             update config : A command to create or update a state variable/rule
             set variable   : A command to set the value of a state variable
             buddy rule     : A command to create or update a rule
-            
+
         """
         if msg["content"]["command"] == "update config":
-            if msg["content"]["target"] == self.type+".state variable":
-                if "state variable" in  msg["content"]["value"]:
-                    curnames=list(self.stateVar.keys())
-                    needupdate=False
+            if msg["content"]["target"] == self.type + ".state variable":
+                if "state variable" in msg["content"]["value"]:
+                    curnames = list(self.stateVar.keys())
+                    needupdate = False
                     for vardef in msg["content"]["value"]["state variable"]:
-                        vname=self.type+".state variable."+vardef["name"]
+                        vname = self.type + ".state variable." + vardef["name"]
                         if vname in curnames:
                             curnames.remove(vname)
                             try:
-                                needupdate = needupdate or self.stateVar[vname].update(vardef)
+                                needupdate = needupdate or self.stateVar[
+                                    vname].update(vardef)
                             except:
                                 self.stateVar[vname] = sv_factory(vardef)
                                 needupdate = True
                         else:
-                            self.stateVar[vname]=sv_factory(vardef)
+                            self.stateVar[vname] = sv_factory(vardef)
                             needupdate = True
                     for name in curnames:
                         del(self.stateVar[name])
                         needupdate = True
-                                
+
                     if needupdate:
-                        self.sending({"subject":"control." + self.type,
+                        self.sending({"subject": "control." + self.type,
                                       "content_type": "request",
-                                      "content": {"request":"save property",
-                                                  "target":self.type,
-                                                  "name":"state variable",
+                                      "content": {"request": "save property",
+                                                  "target": self.type,
+                                                  "name": "state variable",
                                                   #"token": self.target,
-                                                  "value":bl.encrypt([ x.vardef for x in self.stateVar.values()],self.config["buddykey"])}})
+                                                  "value": bl.encrypt([x.vardef for x in self.stateVar.values()], self.config["buddykey"])}})
                         if self.log:
-                            self.log.debug("The new property stored is {}".format([ x.vardef for x in self.stateVar.values()]))
-                            
-            if msg["content"]["target"] == self.type+".rules":
-                if "rules" in  msg["content"]["value"]:
-                    curnames=list(self.rules.keys())
-                    needupdate=False
+                            self.log.debug("The new property stored is {}".format(
+                                [x.vardef for x in self.stateVar.values()]))
+
+            if msg["content"]["target"] == self.type + ".rules":
+                if "rules" in msg["content"]["value"]:
+                    curnames = list(self.rules.keys())
+                    needupdate = False
                     for vardef in msg["content"]["value"]["rules"]:
-                        vname=self.type+".rules."+vardef["name"]
+                        vname = self.type + ".rules." + vardef["name"]
                         if vname in curnames:
                             curnames.remove(vname)
                             try:
-                                needupdate = needupdate or self.rules[vname].update(vardef)
+                                needupdate = needupdate or self.rules[
+                                    vname].update(vardef)
                             except:
                                 self.rules[vname] = Rule(vardef)
                                 needupdate = True
                         else:
-                            self.rules[vname]=Rule(vardef)
+                            self.rules[vname] = Rule(vardef)
                             needupdate = True
                     for name in curnames:
                         del(self.rules[name])
                         needupdate = True
-                                
+
                     if needupdate:
-                        self.sending({"subject":"control." + self.type,
+                        self.sending({"subject": "control." + self.type,
                                       "content_type": "request",
-                                      "content": {"request":"save property",
-                                                  "target":self.type,
-                                                  "name":"rules",
+                                      "content": {"request": "save property",
+                                                  "target": self.type,
+                                                  "name": "rules",
                                                   #"token": self.target,
-                                                  "value":bl.encrypt([ x.vardef for x in self.rules.values()],self.config["buddykey"])}})
+                                                  "value": bl.encrypt([x.vardef for x in self.rules.values()], self.config["buddykey"])}})
                         if self.log:
-                            self.log.debug("The new property stored is {}".format([ x.vardef for x in self.rules.values()]))
-                            
-            #Now value contains the definition of that state variable
+                            self.log.debug("The new property stored is {}".format(
+                                [x.vardef for x in self.rules.values()]))
+
+            # Now value contains the definition of that state variable
             #   type is the type one of "state" or "time" because device state variable are
-            #        created automatically when devices are referenced in a rule 
+            #        created automatically when devices are referenced in a rule
             #   name is the name of the variable it must be unique
             #   mickname  an easier name
- 
-    def process_response(self,msg):
-        #if msg["content"]["token"] != self.target:
-            #if self.log:
-                #self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            #else:
-                #print ("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-                
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.type:
-            #Getting the config
+            # Getting the config
             if msg["content"]["configuration"]:
                 try:
-                    storedconfig=bl.decrypt(msg["content"]["configuration"],self.config["buddykey"])
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
                     if self.config["debug"]:
-                        self.log.debug("The config stored is {}".format(storedconfig))
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
                 except:
-                    storedconfig={}
-                    #log
+                    storedconfig = {}
+                    # log
                     if self.log:
                         self.log.warning("Config is mangled")
                     else:
                         print("Config is mangled")
             if "location" in msg["content"]["system configuration"]:
-                self.config["location"]=msg["content"]["system configuration"]["location"]
-            self.config["database"]= msg["content"]["database"]
+                self.config[
+                    "location"] = msg[
+                        "content"][
+                            "system configuration"][
+                                "location"]
+            self.config["database"] = msg["content"]["database"]
             self.state = "active"
             self.build()
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"].startswith(self.type):
-            if self.state == "active" and  msg["content"]["status"] != "done":
-                #log
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
                 if self.log:
                     self.log.warning("Warning: Configuration was not saved.")
                 else:
                     print("Warning: Configuration was not saved.")
-                   
+
         elif msg["content"]["response"] == "functions" and msg["subject"].startswith(self.type):
             if msg["content"]["status"] != "done":
                 if self.log:
-                    self.log.warning("Configuration definition was not registered.")
+                    self.log.warning(
+                        "Configuration definition was not registered.")
                 else:
-                    print("Warning: Configuration definition was not registered..")   
+                    print(
+                        "Warning: Configuration definition was not registered..")
         elif msg["content"]["response"] == "get property" and msg["subject"].startswith(self.type):
-            if msg["content"]["status"]=="done":
-                for prop in ["state variable","rules"]:
+            if msg["content"]["status"] == "done":
+                for prop in ["state variable", "rules"]:
                     if prop in msg["content"]["value"]:
                         try:
-                            storedprop=bl.decrypt(msg["content"]["value"][prop],self.config["buddykey"])
+                            storedprop = bl.decrypt(
+                                msg["content"]["value"][prop],
+                                self.config["buddykey"])
                             if self.config["debug"]:
-                                self.log.debug("The property stored is {}".format(storedprop))
+                                self.log.debug(
+                                    "The property stored is {}".format(storedprop))
                         except:
-                            storedprop={}
+                            storedprop = {}
                             if self.config["debug"]:
-                                self.log.debug("The property stored cannot be decrypted.")
+                                self.log.debug(
+                                    "The property stored cannot be decrypted.")
 
                         if prop.startswith("state variable"):
                             for avar in storedprop:
                                 try:
-                                    nv=sv_factory(avar)
-                                    self.stateVar[self.type+"."+prop+"."+nv.name]=nv
+                                    nv = sv_factory(avar)
+                                    self.stateVar[
+                                        self.type +
+                                        "." +
+                                        prop +
+                                        "." +
+                                        nv.name] = nv
                                 except Exception as e:
-                                    self.log.warning("The data cannot be parsed into a state variable:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
+                                    self.log.warning(
+                                        "The data cannot be parsed into a state variable:{}".format(
+                                            storedprop),
+                                        exc_info=(type(e),
+                                                  e,
+                                                  e.__traceback__))
                                     continue
-                                
-                            self.sending({"subject":"control" + "." + self.type ,
+
+                            self.sending(
+                                {"subject": "control" + "." + self.type,
                                     "content_type": "request",
-                                    "content":{"request":"functions", 
-                                                "target":self.type,
+                                    "content": {"request": "functions",
+                                                "target": self.type,
                                                 "subtype": "state variable",
                                                 #"token": self.type+".state variable",
-                                                "value":{"configs":[action_statevariable,{"state variable":[ x.vardef for x in self.stateVar.values()]}]}}})
-                            self.sending({"subject":self.target ,
-                                    "content_type": "event",
-                                    "content":{"event":"config updated", 
-                                                "target":self.type+".state variable",
-                                                "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
+                                                "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
+                            self.sending({"subject": self.target,
+                                          "content_type": "event",
+                                          "content": {"event": "config updated",
+                                                      "target": self.type +
+                                                      ".state variable",
+                                                      "value": {"state variable": [x.vardef for x in self.stateVar.values()]}}})
 
-                                
                         if prop == "rules":
                             for avar in storedprop:
                                 try:
-                                    nr=Rule(avar)
-                                    self.rules[self.type+"."+prop+"."+nr.name]=nr
-                                        
+                                    nr = Rule(avar)
+                                    self.rules[
+                                        self.type +
+                                        "." +
+                                        prop +
+                                        "." +
+                                        nr.name] = nr
+
                                 except Exception as e:
-                                    self.log.warning("The data cannot be parsed into a rule:{}".format(storedprop),exc_info=(type(e), e, e.__traceback__))
-                                    continue 
-                            self.sending({"subject":"control" + "." + self.type ,
+                                    self.log.warning(
+                                        "The data cannot be parsed into a rule:{}".format(
+                                            storedprop),
+                                        exc_info=(type(e),
+                                                  e,
+                                                  e.__traceback__))
+                                    continue
+                            self.sending(
+                                {"subject": "control" + "." + self.type,
                                     "content_type": "request",
-                                    "content":{"request":"functions", 
-                                                "target":self.type,
+                                    "content": {"request": "functions",
+                                                "target": self.type,
                                                 "subtype": "rules",
                                                 #"token": self.type+".rules",
-                                                "value":{"configs":[action_rules,{"rules":[ x.vardef for x in self.rules.values()]}]}}})
-                            self.sending({"subject":self.target ,
-                                    "content_type": "event",
-                                    "content":{"event":"config updated", 
-                                                "target":self.type+".rules",
-                                                "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
+                                                "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
+                            self.sending({"subject": self.target,
+                                          "content_type": "event",
+                                          "content": {"event": "config updated",
+                                                      "target": self.type +
+                                                      ".rules",
+                                                      "value": {"rules": [x.vardef for x in self.rules.values()]}}})
             else:
                 if self.log:
                     self.log.warning("Property could not be retrieved")
 
         elif msg["content"]["response"] == "save property" and msg["subject"].startswith(self.type):
-            if msg["content"]["status"]=="done":
+            if msg["content"]["status"] == "done":
                 if msg["content"]["name"] == "state variable":
-                    self.sending({"subject":"control" + "." + self.type ,
-                            "content_type": "request",
-                            "content":{"request":"functions", 
-                                        "target":self.type,
-                                        "subtype": "state variable",
-                                        #"token": self.type+".state variable",
-                                        "value":{"configs":[action_statevariable,{"state variable":[ x.vardef for x in self.stateVar.values()]}]}}})
-                    self.sending({"subject":self.target ,
-                            "content_type": "event",
-                            "content":{"event":"config updated", 
-                                        "target":self.type+".state variable",
-                                        "value":{"state variable":[ x.vardef for x in self.stateVar.values()]}}})
+                    self.sending({"subject": "control" + "." + self.type,
+                                  "content_type": "request",
+                                  "content": {"request": "functions",
+                                              "target": self.type,
+                                              "subtype": "state variable",
+                                              #"token": self.type+".state variable",
+                                              "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
+                    self.sending({"subject": self.target,
+                                  "content_type": "event",
+                                  "content": {"event": "config updated",
+                                              "target": self.type +
+                                              ".state variable",
+                                              "value": {"state variable": [x.vardef for x in self.stateVar.values()]}}})
                 if msg["content"]["name"] == "rules":
-                    self.sending({"subject":"control" + "." + self.type ,
-                            "content_type": "request",
-                            "content":{"request":"functions", 
-                                        "target":self.type,
-                                        "subtype": "rules",
-                                        #"token": self.type+".rules",
-                                        "value":{"configs":[action_rules,{"rules":[ x.vardef for x in self.rules.values()]}]}}})
-                    self.sending({"subject":self.target ,
-                            "content_type": "event",
-                            "content":{"event":"config updated", 
-                                        "target":self.type+".rules",
-                                        "value":{"rules":[ x.vardef for x in self.rules.values()]}}})
+                    self.sending({"subject": "control" + "." + self.type,
+                                  "content_type": "request",
+                                  "content": {"request": "functions",
+                                              "target": self.type,
+                                              "subtype": "rules",
+                                              #"token": self.type+".rules",
+                                              "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
+                    self.sending({"subject": self.target,
+                                  "content_type": "event",
+                                  "content": {"event": "config updated",
+                                              "target": self.type + ".rules",
+                                              "value": {"rules": [x.vardef for x in self.rules.values()]}}})
         else:
             if self.log:
-                self.log.warning("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
             else:
-                print ("Unknown response {} {} {}".format(msg["subject"] ,msg["content_type"] ,msg["content"])) 
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
 
-
-                                    
     def build(self):
-        newmsg={"content_type":"request","subject":"control."+self.type,"content":{}}
-        newmsg["content"]["request"]="get property"
-        newmsg["content"]["target"]= self.type
-        #newmsg["content"]["token"] = bl.genid()
+        newmsg = {
+            "content_type": "request",
+            "subject": "control." +
+            self.type,
+            "content": {
+            }}
+        newmsg["content"]["request"] = "get property"
+        newmsg["content"]["target"] = self.type
+        # newmsg["content"]["token"] = bl.genid()
         self.sending(newmsg)
-        self.timer=aio.ensure_future(self.periodic())
-                
-    async def periodic(self):
-        tstmp=dt.datetime.now()
-        second=tstmp.second #To delete (also in debug below
-        await aio.sleep(60-tstmp.second+1)
-        self.timer=aio.ensure_future(self.periodic())
-        tstmp=dt.datetime.now().replace(second=0,microsecond=0)
-        los=["minute"]
-        tcheck=[int(y) for y in tstmp.strftime("%m %d %H %M %w").split(" ")]
-        if tcheck[0]==1 and tcheck[1]==1:
-            los.append("year")
-        if tcheck[1]==1:
-            los.append("month")
-        if tcheck[2]==0 and tcheck[3]==0:
-            los.append("day")
-        if tcheck[3]==0:
-            los.append("hour")
-        self.process_event({"subject":self.type,
-                "content_type": "event",
-                "content":{"event":"time tick", 
-                           "target":self.type,
-                           "starts":los,
-                            "value":tstmp}})
-        
-        if self.config["debug"]:
-            self.log.debug("Time event scheduled at {}  {}.".format(second,{"subject":self.type,
-                "content_type": "event",
-                "content":{"event":"time tick", 
-                           "target":self.type,
-                           "starts":los,
-                            "value":tstmp}}))
+        self.timer = aio.ensure_future(self.periodic())
 
-     
+    async def periodic(self):
+        tstmp = dt.datetime.now()
+        second = tstmp.second  # To delete (also in debug below
+        await aio.sleep(60 - tstmp.second + 1)
+        self.timer = aio.ensure_future(self.periodic())
+        tstmp = dt.datetime.now().replace(second=0, microsecond=0)
+        los = ["minute"]
+        tcheck = [int(y) for y in tstmp.strftime("%m %d %H %M %w").split(" ")]
+        if tcheck[0] == 1 and tcheck[1] == 1:
+            los.append("year")
+        if tcheck[1] == 1:
+            los.append("month")
+        if tcheck[2] == 0 and tcheck[3] == 0:
+            los.append("day")
+        if tcheck[3] == 0:
+            los.append("hour")
+        self.process_event({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "time tick",
+                                        "target": self.type,
+                                        "starts": los,
+                                        "value": tstmp}})
+
+        if self.config["debug"]:
+            self.log.debug(
+                "Time event scheduled at {}  {}.".format(second, {"subject": self.type,
+                                                                  "content_type":
+                                                                      "event",
+                                                                  "content": {"event": "time tick",
+                                                                              "target":
+                                                                                  self.type,
+                                                                              "starts":
+                                                                                  los,
+                                                                              "value": tstmp}}))
+
+
 if __name__ == "__main__":
-    log,config=configure()
+    log, config = configure()
     log.debug("Configured")
     loop = aio.get_event_loop()
     if config["debug"]:
         loop.set_debug(True)
     if config["ssl"]:
         sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-            cafile=config["ssl"]+'/'+CERTFILE)
-        
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
         sslcontext.check_hostname = False
     else:
-        sslcontext=None
-    connFuture=aio.Future()
-    fac=loop.create_connection(functools.partial(Action,loop,connFuture,config,log),config["host"], config["port"],ssl=sslcontext)
-    conn,bridgectl = loop.run_until_complete(fac)
-    loop.call_soon(bridgectl.configrequest,{"about":{"ActionBuddy":aboutstr}})
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        functools.partial(Action,
+                          loop,
+                          connFuture,
+                          config,
+                          log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"ActionBuddy": aboutstr}})
 
     try:
         loop.run_until_complete(connFuture)
-    except  KeyboardInterrupt:
-        print("\n","Exiting at user's request")
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
     finally:
         bridgectl.timer.cancel()
         conn.close()
