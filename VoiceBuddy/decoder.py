@@ -95,10 +95,11 @@ while True:
                         # logfile.write('Stream decoding result:
                         # {}'.format(decoder.hyp().hypstr))
                         if decoder.hyp().hypstr.upper() == opts.toggle.upper():
-                            # print(decoder.hyp().hypstr)
                             cmd_mode = True
                             cmd_tstmp = datetime.datetime.now() + datetime.timedelta(
                                 seconds=opts.duration)
+                            print(decoder.hyp().hypstr)
+                            sys.stdout.flush()
                         elif cmd_mode:
                             print(decoder.hyp().hypstr)
                             sys.stdout.flush()

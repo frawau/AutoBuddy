@@ -236,30 +236,37 @@ class VoiceBridge(bl.BuddyBridge):
             line = data.decode("utf8").rstrip().lower()
             self.log.debug("Received voice command {}".format(line))
             linebits = [x.lower() for x in line.split(" ") if x != ""]
-            for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in voice_config_default["command"] if x["active"]]:
-                cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
-                if len(linebits) < len(cmdbits):
-                    continue
-                allin = True
-                for x in linebits:
-                    if x not in cmdbits:
-                        allin = False
-                        break
-                if not allin:
-                    continue
+            if linebits == [x.lower() for x in voice_config_default["keyphrase"].split(" ") if x != ""]:
+                bridgectl.sending({"subject": bridgectl.target,
+                                "content_type": "event",
+                                "content": {"event": "voice trigger",
+                                            "target": bridgectl.target,
+                                            "value": voice_config_default["keyphrase"]}})
+            else:
+                for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in voice_config_default["command"] if x["active"]]:
+                    cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
+                    if len(linebits) < len(cmdbits):
+                        continue
+                    allin = True
+                    for x in linebits:
+                        if x not in cmdbits:
+                            allin = False
+                            break
+                    if not allin:
+                        continue
 
-                # So we have all the bits... are they in the right order?
-                cmdbits = [x.lower()
-                           for x in cmd.split(" ") if x.lower() in linebits]
-                self.log.debug("Compare {} to {}".format(cmdbits, linebits))
-                if cmdbits == linebits:
-                    # Got it
+                    # So we have all the bits... are they in the right order?
+                    cmdbits = [x.lower()
+                            for x in cmd.split(" ") if x.lower() in linebits]
+                    self.log.debug("Compare {} to {}".format(cmdbits, linebits))
+                    if cmdbits == linebits:
+                        # Got it
 
-                    bridgectl.sending({"subject": bridgectl.target,
-                                       "content_type": "event",
-                                       "content": {"event": event,
-                                                   "target": bridgectl.target,
-                                                   "value": evalue}})
+                        bridgectl.sending({"subject": bridgectl.target,
+                                        "content_type": "event",
+                                        "content": {"event": event,
+                                                    "target": bridgectl.target,
+                                                    "value": evalue}})
 
     def process_response(self, msg):
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:

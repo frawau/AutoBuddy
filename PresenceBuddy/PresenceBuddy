@@ -493,8 +493,8 @@ class PresenceBridge(bl.BuddyBridge):
 
         if data["mac"] in self.tracked_mac:
             self.mac_score[data["mac"]] = self.presence_config["miss"]
-
-            data["status"] = "online"
+            if "status" not in data:
+                data["status"] = "online"
             for x in self.devices:
                 x.process_mac(data)
         else:
