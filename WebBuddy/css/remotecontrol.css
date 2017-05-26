@@ -1,0 +1,20 @@
+
+.bu-remote-button {
+  fill: black;
+}
+
+.bu-remote-button-highlight {
+  fill: #aaaadd;
+}
+
+.bu-remote-button-fg {
+  fill: black;
+}
+
+.bu-remote-button-bg {
+  fill: white;
+}
+
+.bu-remote-button-fg-hidden {
+  opacity: 0.0;
+}
