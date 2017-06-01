@@ -753,10 +753,10 @@ def kodi_process(self, msg):
                         if x["entity"]["bu-cvalue"] == self.controller.type+"."+self.name:
                             delay=x["delay"]
                     self.controller.sending (
-                        {"subject": "scanner.scanner",
+                        {"subject": self.controller.config["scanner"],
                         "content_type": "command",
                         "content": {"command": "scan request",
-                                    "target": "scanner.scanner",
+                                    "target": self.controller.config["scanner"],
                                     #"token": self.controller.target,
                                     "value": {"service": SERVICE, "delay": delay}}})
 
@@ -1294,6 +1294,7 @@ cfgdefault = {
      "host": "localhost",
      "port": 8745,
      "credential": "",
+     "scanner": "scanner.ipservices",
      "ssl": ""}
 
 
@@ -1316,6 +1317,8 @@ def configure():
                         help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-I", "--scanner", default=cfgdefault["scanner"],
+                        help="The service <type>.<subtype> scanning for my services (default \"%s\")" % (cfgdefault["scanner"]))
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
@@ -1383,6 +1386,15 @@ def configure():
             kodicfg["credential"] = cfgdefault["credential"]
         if opts.debug:
             mediaplayerlog.debug("The credential is %s" % kodicfg["credential"])
+            
+        if opts.scanner != cfgdefault["scanner"]:
+            kodicfg["scanner"] = opts.scanner
+        elif "scanner" in cfgdata:
+            kodicfg["scanner"] = cfgdata["scanner"]
+        else:
+            kodicfg["scanner"] = cfgdefault["scanner"]
+        if opts.debug:
+            mediaplayerlog.debug("The scanner is %s" % kodicfg["scanner"])
 
         if opts.port != cfgdefault["port"]:
             kodicfg["port"] = opts.port
