@@ -99,7 +99,7 @@ lifx_functions = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup  type="list" name="white" label="White">
+        <controlgroup  type="list" name="white" label="White" rteffect="1">
             <control type="slider" name="value" label="Brightness" rteffect="1">
                 <start>0</start>
                 <end>100</end>
