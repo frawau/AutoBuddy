@@ -1168,16 +1168,13 @@ class KodiBridge(bl.BuddyBridge):
             
         if proceed:
             for entity in loent:
-                ename = self.subtype + "-" + entity["mac"].replace(":", "")
-                found = False
-                for device in self.devices:
-                    if device.name == ename:
-                        found = True
-                        device.conn.connect_wait = 0 #Got a new IP address
-                        break
-                if found:
-                    #We got a new one
-                    self.newplayer(entity)
+                #ename = self.subtype + "-" + entity["mac"].replace(":", "")
+                #found = False
+                #for device in self.devices:
+                    #if device.name == ename:
+                        #found = True
+                        #break
+                self.newplayer(entity)
                     
             
     def build(self):
