@@ -279,7 +279,7 @@ class light(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'light'}
 
 class mediaplayer(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'av'}
+    __mapper_args__ = {'polymorphic_identity': 'mediaplayer'}
 
 class video(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'video'}
@@ -287,11 +287,11 @@ class video(BuddyDevice):
 class voice(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'voice'}
 
-class thermostat(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'ac'}
+class aircon(BuddyDevice):
+    __mapper_args__ = {'polymorphic_identity': 'aircon'}
     
 class remotec(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'rc'}
+    __mapper_args__ = {'polymorphic_identity': 'remotec'}
     
 class fridge(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'fridge'}
@@ -300,7 +300,10 @@ class switch(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'switch'}
     
 class drape(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'flic'}
+    __mapper_args__ = {'polymorphic_identity': 'drape'}
+    
+class sensor(BuddyDevice):
+    __mapper_args__ = {'polymorphic_identity': 'sensor'}
     
 
 

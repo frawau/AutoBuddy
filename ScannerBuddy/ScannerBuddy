@@ -53,7 +53,7 @@ scanner_config = """
         <control type="spinner" name="probe" label="Scanner interval">
             <start>30</start>
             <end>3600</end>
-            <increment>1</increment>
+            <increment>5</increment>
             <postfix>secs</postfix>
             <default>600</default>
         </control>
@@ -84,6 +84,8 @@ class ScannerBridge(bl.BuddyBridge):
         self.probe_service = None
         self.seen_service = {}
         self.scanner_config = scanner_config_default
+        self.scan_request=None
+        self.towait=0
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
@@ -97,25 +99,36 @@ class ScannerBridge(bl.BuddyBridge):
                                           #"token": self.target,
                                           "value": bl.encrypt(scanner_config_default, self.config["buddykey"])}})
         elif msg["content"]["command"] == "known services":
-            if msg["subject"] == self.target:
+            if msg["subject"].startswith(self.type) and "target" in msg["content"]:
                 los=[]
                 for entity in self.seen_service.values():
-                    if msg["content"]["value"] == x.type:
+                    if msg["content"]["value"] == entity.type:
                         newprop={}
                         for x,y in entity.properties.items():
                             try:
                                 newprop[x.decode()]=y.decode()
                             except:
                                 newprop[x.decode()]=y
-                            los.append({"name":entity.name,"address":entity.address,
-                                        "port":entity.port,"properties":newprop,
-                                        "type":entity.type})
-                        self.sending({"subject": msg["content"]["target"],
-                                    "content_type": "request",
-                                    "content": {"request": "known services",
-                                                "target": msg["content"]["target"],
-                                                #"token": self.target,
-                                                "value":los }})
+                        los.append({"name":entity.name,"address":entity.address,
+                                    "port":entity.port,"properties":newprop,
+                                    "type":entity.type, "mac":entity.mac})
+                self.sending({"subject": msg["content"]["target"],
+                            "content_type": "event",
+                            "content": {"event": "known services",
+                                        "target": msg["content"]["target"],
+                                        #"token": self.target,
+                                        "value":los }})
+        elif msg["content"]["command"] == "scan request" and msg["subject"] == self.target:
+            if "service" in msg["content"]["value"]:
+                if isinstance(msg["content"]["value"]["service"],list):
+                    self.scan_request=msg["content"]["value"]["service"]
+                else:
+                    self.scan_request=[msg["content"]["value"]["service"]]
+                if "delay" in msg["content"]["value"] and isinstance(msg["content"]["value"] ["delay"],int):
+                    self.towait = msg["content"]["value"]["delay"]
+                else:
+                    self.towait = 15
+                
         # else:
             # for aconn in self.devices:
                 # aconn.process(msg)
@@ -231,9 +244,13 @@ class ScannerBridge(bl.BuddyBridge):
         # Here we actually start the probe
         while True:
             #Get the list of serivces
-            zc=Zeroconf(interfaces=self.config["addresses"])
-            los=ZeroconfServiceTypes.find(zc);
-            zc.close()
+            if self.scan_request is None:
+                zc=Zeroconf(interfaces=self.config["addresses"])
+                los=ZeroconfServiceTypes.find(zc);
+                zc.close()
+            else:
+                los=self.scan_request
+                self.scan_request = None
             
             for aserv in los:
                 if self.config["debug"]:
@@ -244,12 +261,14 @@ class ScannerBridge(bl.BuddyBridge):
                 browser = ServiceBrowser(zc, aserv, slistener)
                 await aio.sleep(5)
                 zc.close()
-
-            await aio.sleep(self.scanner_config["probe"])
+            self.towait = self.scanner_config["probe"]
+            while self.towait>0:
+                self.towait -= 5
+                await aio.sleep(5)
 
 
     def register(self, entity):
-        if entity.name not in self.seen_service or entity.address != self.seen_service[ entity.name].address:
+        if entity.name not in self.seen_service or entity.address != self.seen_service[entity.name].address:
             self.seen_service[ entity.name] = entity
             newprop={}
             for x,y in entity.properties.items():
@@ -264,7 +283,17 @@ class ScannerBridge(bl.BuddyBridge):
                     mymac=subprocess.getoutput("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'")
                 except:
                     mymac=""
+            if mymac == "":
+                #Local?
+                iplist=subprocess.getoutput("ip addr").split("\n")
+                prev=""
+                for x in iplist:
+                    if entity.address in x:
+                        mymac=[ aa for aa in prev.split(" ") if  aa ][1]
+                        break
+                    prev=x
                 
+            entity.mac = mymac
             self.sending({"subject": self.target,
                             "content_type": "event",
                             "content": {"event": "service found",

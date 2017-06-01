@@ -1,0 +1,1492 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for Kodi media player.
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import logging
+import random
+import os
+import ssl
+import socket
+import buddylib as bl
+import asyncio as aio
+import aiohttp
+import struct
+from functools import partial
+from urllib.parse import quote, unquote, urlparse, urlunparse
+
+
+SUBTYPE = "Kodi"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
+SERVICE="_xbmc-jsonrpc._tcp.local."
+
+UDP_BROADCAST_PORT = 56700
+KODIBLUE={"fill": "#31AFE1", "stroke": "transparent"}
+KODITRANS={"fill": "transparent", "stroke": "black", "stroke-width": "4"}
+
+def intround(x):
+    return int(round(x))
+
+
+kodi_functions = """
+<buddyui version="0.1">
+    <command name="kodi">
+        <controlgroup type="list" name="remote" label="Remote Control" widget="remotecontrol" rteffect="-1" onlyif="power::on">
+            <control type="button" name="up" label="Up" rteffect="1" />
+            <control type="button" name="left" label="Left" rteffect="1" />
+            <control type="button" name="right" label="Right" rteffect="1" />
+            <control type="button" name="down" label="Down" rteffect="1" />
+            <control type="button" name="enter" label="OK" rteffect="1" />
+            <control type="button" name="home" label="Home" rteffect="1" />
+            <control type="button" name="back" label="Back" rteffect="1" />
+            <control type="button" name="previous" label="Previous" rteffect="1" />
+            <control type="button" name="backward" label="Backward" rteffect="1" />
+            <control type="button" name="play" label="Play" rteffect="1" />
+            <control type="button" name="forward" label="Forward" rteffect="1" />
+            <control type="button" name="next" label="Next" rteffect="1" />
+            <control type="button" name="isplaying" label="Is Playing" rteffect="1" />
+        </controlgroup>
+        <controlgroup  type="grouplist" name="playalbum" label="Play Album" rteffect="1" onlyif="power::on">
+            <control type="text" name="name" label="Title" length="32" default="random" />
+            <control type="spinner" name="offset" label="Offset" >
+                <start>1</start>
+                <end>10</end>
+                <increment>1</increment>
+                <default>1</default>
+            </control>
+            <control type="switch" name="repeat" label="Repeat" rteffect="1">
+                <value label="On">on</value>
+                <value label="Off">off</value>
+                <default>off</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="playmusic" label="Play Music" rteffect="1">
+            <controlgroup type="choice" name="type" label="What">
+                <item value="album" label="Albums" />
+                <item value="song" label="Songs" />
+            </controlgroup>
+            <control type="text" name="genre" label="Genre" length="32" />
+            <control type="spinner" name="length" label="Nb of itemss" >
+                <start>1</start>
+                <end>20</end>
+                <increment>1</increment>
+                <default>5</default>
+            </control>
+            <control type="switch" name="repeat" label="Repeat" rteffect="1">
+                <value label="On">on</value>
+                <value label="Off">off</value>
+                <default>off</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="playsong" label="Play Song" rteffect="1">
+            <control type="text" name="name" label="Title" length="32" />
+            <control type="spinner" name="offset" label="Offset" >
+                <start>1</start>
+                <end>10</end>
+                <increment>1</increment>
+                <default>1</default>
+            </control>
+            <control type="switch" name="repeat" label="Repeat" rteffect="1">
+                <value label="On">on</value>
+                <value label="Off">off</value>
+                <default>off</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="playmvideo" label="Play Music Video" rteffect="1">
+            <control type="text" name="name" label="Title" length="32" />
+            <control type="spinner" name="offset" label="Offset" >
+                <start>1</start>
+                <end>10</end>
+                <increment>1</increment>
+                <default>1</default>
+            </control>
+            <control type="switch" name="repeat" label="Repeat" rteffect="1">
+                <value label="On">on</value>
+                <value label="Off">off</value>
+                <default>off</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="playmovie" label="Play Movie" rteffect="1">
+            <control type="text" name="name" label="Title" length="32" />
+            <control type="spinner" name="offset" label="Offset" >
+                <start>1</start>
+                <end>10</end>
+                <increment>1</increment>
+                <default>1</default>
+            </control>
+        </controlgroup>
+        <control type="switch" name="power" label="Power" rteffect="1">
+            <value label="On">on</value>
+            <value label="Off">off</value>
+        </control>
+    </command>
+</buddyui>
+"""
+
+kodi_config = """
+<buddyui version="0.1">
+    <configuration  name="kodi">
+        <control type="spinner" name="refresh" label="Check for new devices interval">
+            <start>30</start>
+            <end>3600</end>
+            <increment>5</increment>
+            <postfix>secs</postfix>
+            <default>180</default>
+        </control>
+        <controlgroup type="listmaker"  name="credential" label="Credentials">
+            <control name="label" label="Label" type="text" length="16" />
+            <control name="entity" expand="device::mediaplayer::Kodi" label="Kodi Device" type="text" length="16" />
+            <control name="user" label="User" type="text" length="32" />
+            <control name="password" label="Password" type="text" length="32" />
+        </controlgroup>
+        <controlgroup type="listmaker"  name="bootdelay" label="Boot Delay">
+            <control name="label" label="Label" type="text" length="16" />
+            <control name="entity" expand="device::mediaplayer::Kodi" label="Kodi Device" type="text" length="16" />
+            <control type="spinner" name="delay" label="How long to boot">
+                <start>10</start>
+                <end>60</end>
+                <increment>5</increment>
+                <postfix>secs</postfix>
+                <default>30</default>
+            </control>
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+kodi_config_default = {"refresh": 120, "credential":{}, "bootdelay":{}}
+
+
+class KodiConnection(object):
+    
+    def __init__(self, loop, ip_addr, port, mac, parent,log):
+        self.loop = loop
+        self.port = port
+        self.ip_addr = ip_addr
+        self.mac = mac
+        self.parent = parent
+        self.transport = None
+        self.seq = 0
+        self.goon=True
+        self.log = log
+        self.task = None
+        self.session = None
+        self.lastalbum = 0
+        self.lastsong = 0
+        self.lastmovie = 0
+        self.lastmvideo = 0
+        self.playlists = {}
+        self.album_list = None
+        self.song_list = None
+        self.genre_list = None
+        self.activeplayer = 0
+        self.connect_wait = 0
+        self.player_repeat = "off"
+        
+    async def connect(self, user=None, password=None):
+        while self.goon:
+            self.log.debug("{}: Trying to connect".format(self.parent.nickname))
+            if user:
+                self.session = aiohttp.ClientSession(loop=self.loop,auth=aiohttp.BasicAuth(user,password))
+            else:
+                self.session = aiohttp.ClientSession(loop=self.loop)
+            try:
+                ws = await self.session.ws_connect("ws://"+self.ip_addr+":%d"%self.port+"/jsonrpc")
+            except aiohttp.ClientOSError:
+                self.session.close()
+                self.connect_wait=kodi_config_default["refresh"]
+                while self.connect_wait>0:
+                    self.connect_wait-=5
+                    await aio.sleep(5)
+                continue
+            except:
+                self.log.debug("Problem connecting %s"%self.parent.name)
+                self.session.close()
+                self.connect_wait=kodi_config_default["refresh"]
+                while self.connect_wait>0:
+                    self.connect_wait-=5
+                    await aio.sleep(5)
+                continue
+
+            self.transport=ws
+            self.parent.send_status()
+            self.send_cmd("Player.GetActivePlayers",{},"activePlayer")
+            if self.lastalbum == 0 and self.lastmovie == 0:
+                self.update_last()
+            while True:
+                msg = await self.transport.receive()
+                if msg.type == aiohttp.WSMsgType.CLOSED:
+                    self.session.close()
+                    break
+                try:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        self.process_msg(json.loads(msg.data))
+                except:
+                    self.session.close()
+                    break
+            self.transport = None
+            self.parent.send_status()
+            
+    def update_last(self):
+        """Get the last album and the last movie id for random generation"""
+        self.send_cmd("AudioLibrary.GetRecentlyAddedAlbums",{"limits": { "start" : 0, "end": 1 },  "properties": ["artist", "genre", "year"]},"lastAlbum")
+        self.send_cmd("AudioLibrary.GetRecentlyAddedSongs",{"limits": { "start" : 0, "end": 100 },"albumlimit": 1,  "properties": ["artist", "genre"]},"lastSong")
+        self.send_cmd("VideoLibrary.GetRecentlyAddedMovies", {"limits": { "start" : 0, "end": 1 },  "properties": ["title", "genre", "year"]}, "lastMovie")
+        self.send_cmd("VideoLibrary.GetRecentlyAddedMusicVideos", {"limits": { "start" : 0, "end": 1 },  "properties": ["title", "genre", "year"]}, "lastMVideo")
+        self.send_cmd("Playlist.GetPlaylists", {}, "allPlaylists")
+        
+    def process_msg(self,msg):
+        print ("Message: {}".format(msg))
+        print ("-"*10)
+        sender = self.parent.controller
+        try:
+            if "method" not in msg:
+                if "result" in msg and "id" in msg:
+                    if msg["id"] == "playerStatus":
+                        if "speed" in msg["result"] and msg["result"]["speed"]:
+                            sender.sending({"subject": sender.type,
+                                            "content_type": "event",
+                                            "content": {"event": "status",
+                                                        "target": sender.type +
+                                                        "." +
+                                                        self.parent.name,
+                                                        "value": {"remote": {"isplaying": True}}}})
+                    if msg["id"] == "lastAlbum":
+                        try:
+                            self.lastalbum = msg["result"]["albums"][0]["albumid"]
+                        except:
+                            pass
+                    if msg["id"] == "lastMovie":
+                        try:
+                            self.lastmovie = msg["result"]["movies"][0]["movieid"]
+                        except:
+                            pass
+                    if msg["id"] == "lastMVideo":
+                        try:
+                            self.lastmvideo = msg["result"]["musicvideos"][0]["musicvideoid"]
+                        except:
+                            pass
+                    if msg["id"] == "lastSong":
+                        try:
+                            self.lastsong = msg["result"]["songs"][0]["songid"]
+                            if x in msg["result"]["songs"]:
+                                if self.lastsong < x["songid"]:
+                                    self.lastsong = x["songid"]
+                        except:
+                            pass
+                    if msg["id"] == "activePlayer":
+                        self.activeplayer = dict([(x["type"],x["playerid"]) for x in msg["result"]])
+                        for ptype,pid in self.activeplayer.items():
+                            self.send_cmd("Player.GetProperties", {"properties": ["speed"],"playerid":pid},"playerStatus")
+                            if ptype == "video":
+                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat}) 
+                                self.send_cmd("Player.GetItem",{ "properties": ["title", "album", "artist", "season", "episode", "duration", "showtitle", "year","thumbnail", "art"], "playerid": pid },"videoInfo")
+                            elif ptype == "audio":
+                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat}) 
+                                self.send_cmd("Player.GetItem",{ "properties": ["title", "album", "artist", "duration", "thumbnail", "year"], "playerid": pid },"musicInfo")
+                            
+                    if msg["id"] == "videoInfo":
+                        self.send_movie_info(msg["result"]["item"])
+                    if msg["id"] == "musicInfo":
+                        self.send_music_info(msg["result"]["item"])
+                    if msg["id"] == "allPlaylists":
+                        self.playlists=dict([(x["type"],x["playlistid"]) for x in  msg["result"]])
+                    if msg["id"] == "playMyAlbums":
+                        self.album_list = list(set(self.album_list))
+                        random.shuffle(self.album_list)
+                        self.send_cmd("Playlist.Add", {"item":[{"albumid":x} for x in self.album_list],"playlistid":self.playlists["audio"]},"startAudioPlaylist")
+                        self.album_list=None
+                    if msg["id"] == "playMySongs":
+                        self.song_list = list(set(self.song_list))
+                        random.shuffle(self.song_list)
+                        self.send_cmd("Playlist.Add", {"item":[{"songid":x} for x in self.song_list],"playlistid":self.playlists["audio"]},"startAudioPlaylist")
+                        self.song_list=None
+                    if msg["id"] == "startAudioPlaylist":
+                        self.send_cmd("Player.Open", {"item":{"playlistid":self.playlists["audio"]}})
+                        
+
+                        
+                    if isinstance(msg["id"], str):
+                        if msg["id"].startswith("playAlbum-"):
+                            offset=int(msg["id"].split("-")[-1])
+                            if msg["result"]["limits"]["end"] == 0:
+                                sender.sending({"subject": sender.type,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target":  sender.type +
+                                                        "." +
+                                                        self.parent.name,
+                                            "value": "We are sorry, no album matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                return
+                            if msg["result"]["limits"]["end"] < offset+1:
+                                offset=-1
+                            myalbum=msg["result"]["albums"][offset]
+                            self.send_cmd("Player.Open", {"item":{"albumid":myalbum["albumid"]}})
+                            send_music_info(myalbum)
+                            
+                        if msg["id"].startswith("playSong-"):
+                            offset=int(msg["id"].split("-")[-1])
+                            if msg["result"]["limits"]["end"] == 0:
+                                sender.sending({"subject": sender.type,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target":  sender.type +
+                                                        "." +
+                                                        self.parent.name,
+                                            "value": "We are sorry, no song matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                return
+                            if msg["result"]["limits"]["end"] < offset+1:
+                                offset=-1
+                            mysong=msg["result"]["songs"][offset]
+                            self.send_cmd("Player.Open", {"item":{"songid":mysong["songid"]}})
+                            self.send_music_info(mysong)
+                        
+                        if msg["id"].startswith("playMovie-"):
+                            offset=int(msg["id"].split("-")[-1])
+                            if msg["result"]["limits"]["end"] == 0:
+                                sender.sending({"subject": sender.type,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target":  sender.type +
+                                                        "." +
+                                                        self.parent.name,
+                                            "value": "We are sorry, no movie matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                return
+                            if msg["result"]["limits"]["end"] < offset+1:
+                                offset=-1
+                            mymovie=msg["result"]["movies"][offset]
+                            self.send_cmd("Player.Open", {"item":{"movieid":mymovie["movieid"]}})
+                            self.send_movie_info(mymovie)
+                            
+                        if msg["id"].startswith("playMVideo-"):
+                            offset=int(msg["id"].split("-")[-1])
+                            if msg["result"]["limits"]["end"] == 0:
+                                sender.sending({"subject": sender.type,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target":  sender.type +
+                                                        "." +
+                                                        self.parent.name,
+                                            "value": "We are sorry, no music video matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                return
+                            if msg["result"]["limits"]["end"] < offset+1:
+                                offset=-1
+                            mymovie=msg["result"]["musicvideos"][offset]
+                            self.send_cmd("Player.Open", {"item":{"musicvideoid":mymovie["musicvideoid"]}})
+                            self.send_movie_info(mymovie)
+                            
+                            
+                        if msg["id"].startswith("playRandomAlbum"):
+                            length=msg["id"].split("-")[-1]
+                            if length == "playRandomAlbum":
+                                length=1
+                            else:
+                                length=int(length)
+                            if "albumdetails" in msg["result"]:
+                                if msg["result"]["albumdetails"]:
+                                    if self.album_list is None:
+                                        self.album_list = [msg["result"]["albumdetails"]["albumid"]]
+                                    else:
+                                        self.album_list.append(msg["result"]["albumdetails"]["albumid"])
+                                    
+                                    length-= 1
+                                    if length == 0:
+                                        self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMyAlbums")
+                                        return
+                                self.send_cmd("AudioLibrary.GetAlbumDetails", {"albumid":random.randint(1,self.lastalbum),"properties":["title"]}, "playRandomAlbum-%d"%length)
+                            else:
+                                #Must be a list of albums
+                                if msg["result"]["limits"]["end"] == 0:
+                                    pid="playRandomAlbum-%d"%length
+                                    if self.genre_list:
+                                        self.send_cmd("AudioLibrary.GetAlbums", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"or":self.genre_list}, "properties": ["year"], "limits": { "start" : 0, "end": length*10 }}, pid)
+                                    else:
+                                        if not self.song_list:
+                                            sender.sending({"subject": sender.type,
+                                                "content_type": "event",
+                                                "content": {"event": "gui alert",
+                                                            "target":  sender.type +
+                                                                        "." +
+                                                                        self.parent.name,
+                                                            "value": "We are sorry, no album matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                            return
+                                else:
+                                    loa=msg["result"]["albums"]
+                                    random.shuffle(loa)
+                                    if length > len(loa) and self.genre_list:
+                                        self.album_list = [ x["albumid"] for x in loa ]
+                                        pid="playRandomAlbum-%d"%(length-len(loa))
+                                        self.send_cmd("AudioLibrary.GetAlbums", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"or":self.genre_list}, "properties": ["year"], "limits": { "start" : 0, "end": (length-len(loa))*5 }}, pid)
+                                    else:
+                                        if length < len(loa):
+                                            loa=loa[:length]
+                                        if self.album_list:
+                                            self.album_list += [x["albumid"] for x in loa ]
+                                        else:
+                                            self.album_list = [ x["albumid"] for x in loa ]
+                                            
+                                        self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMyAlbums")
+                                self.genre_list = None
+                           
+                        if msg["id"].startswith("playRandomSong"):
+                            length=msg["id"].split("-")[-1]
+                            if length == "playRandomSong":
+                                length=1
+                            else:
+                                length=int(length)
+                            if "songdetails" in msg["result"]:
+                                if msg["result"]["songdetails"]:
+                                    if self.song_list is None:
+                                        self.song_list = [msg["result"]["songdetails"]["songid"]]
+                                    else:
+                                        self.song_list.append(msg["result"]["songdetails"]["songid"])
+                                    
+                                    length-= 1
+                                    if length == 0:
+                                        self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMySongs")
+                                        return
+                                self.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.lastsong),"properties":["title"]}, "playRandomSong-%d"%length) 
+                            else:
+                                #Must be a list of songs
+                                if msg["result"]["limits"]["end"] == 0:
+                                    pid="playRandomSong-%d"%length
+                                    if self.genre_list:
+                                        self.send_cmd("AudioLibrary.GetSongs", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"or":self.genre_list}, "properties": ["year"], "limits": { "start" : 0, "end": length*10 }}, pid)
+                                    else:
+                                        if not self.song_list:
+                                            sender.sending({"subject": sender.type,
+                                                "content_type": "event",
+                                                "content": {"event": "gui alert",
+                                                            "target":  sender.type +
+                                                                        "." +
+                                                                        self.parent.name,
+                                                            "value": "We are sorry, no song matching your criteria could be found on {}.".format(self.parent.nickname)}})
+                                            return
+                                else:
+                                    loa=msg["result"]["songs"]
+                                    random.shuffle(loa)
+                                    if length > len(loa) and self.genre_list:
+                                        self.song_list = [ x["songid"] for x in loa ]
+                                        pid="playRandomSong-%d"%(length-len(loa))
+                                        self.send_cmd("AudioLibrary.GetSongs", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"or":self.genre_list}, "properties": ["year"], "limits": { "start" : 0, "end": (length-len(loa))*5 }}, pid)
+                                    else:
+                                        if length < len(loa):
+                                            loa=loa[:length]
+                                        if self.song_list:
+                                            self.song_list += [ x["songid"] for x in loa ]
+                                        else:
+                                            self.song_list = [ x["songid"] for x in loa ]
+                                            
+                                        self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMySongs")
+                                self.genre_list = None
+                                
+                    
+                if "error" in msg:
+                    if msg["id"] == "playRandomAlbum":
+                        self.send_cmd("Player.Open", {"item":{"albumid":random.randint(1,self.lastalbum)}}, "playRandomAlbum")
+                    elif msg["id"] == "playRandomSong":
+                        self.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.lastsong)}, "playRandomSong")
+                    elif msg["id"] == "playRandomMovie":
+                        self.send_cmd("Player.Open", {"item":{"movieid":random.randint(1,self.lastmovie)}}, "playRandomMovie")
+                    elif msg["id"] == "playRandomMusicVideo":
+                        self.send_cmd("Player.Open", {"item":{"musicvideoid":random.randint(1,self.lastmvideo)}}, "playRandomMovie")
+                    elif msg["id"].startswith("playRandomAlbum-"):
+                        self.send_cmd("AudioLibrary.GetAlbumDetails", {"albumid":random.randint(1,self.lastalbum),"properties":["title"]},msg["id"]) 
+                    #else:
+                    self.log.debug("RPC error in {}".format(msg))
+                else:
+                    self.log.debug("No method in {} ({})".format(msg,self.activeplayer))
+                return
+            if msg["method"] in ["Player.OnPlay"]:
+                sender.sending({"subject": sender.type,
+                                        "content_type": "event",
+                                        "content": {"event": "status",
+                                                    "target": sender.type +
+                                                    "." +
+                                                    self.parent.name,
+                                                    "value": {"remote": {"isplaying": True}}}})
+                self.send_cmd("Player.GetActivePlayers",{},"activePlayer")
+            if msg["method"] in ["Player.GoTo"]:
+                self.send_cmd("Player.GetActivePlayers",{},"activePlayer")
+            if msg["method"] in ["Player.OnPause", "Player.OnStop"]:
+                sender.sending({"subject": sender.type,
+                                        "content_type": "event",
+                                        "content": {"event": "status",
+                                                    "target": sender.type +
+                                                    "." +
+                                                    self.parent.name,
+                                                    "value": {"remote": {"isplaying": False}}}})
+                if msg["method"]=="Player.OnStop":
+                    self.send_clear_info()
+                
+            if msg["method"] == 'VideoLibrary.OnUpdate':
+                if "type" in msg['params']['data']:
+                    if msg['params']['data']['type'] == "movie" and \
+                        msg['params']['data']['id'] > self.lastmovie:
+                        self.update_last()
+            if msg["method"] == 'AudioLibrary.OnUpdate':
+                if "type" in msg['params']['data']:
+                    if msg['params']['data']['type'] == "album" and \
+                        msg['params']['data']['id'] > self.lastalbum:
+                        self.update_last()
+                
+        except Exception as e:
+            self.log.exception("Error: Problem processing msg from Kodi {} : Comparison failed with value \"{}\".\nTrace: ".format(
+                self.parent.name, msg, exc_info=(type(e),e,e.__traceback__)))
+        
+        
+        if "method" in msg and msg["method"] in ["System.OnQuit", "System.OnRestart"]:
+            self.send_clear_info()
+            raise Exception
+        
+    def send_cmd(self,method,param={},myid=None):
+        if not myid:
+            self.seq+=1
+            myid=self.seq
+        print ("\nSending command {}.".format({"jsonrpc": "2.0", "method": method, "params": param, "id": myid}))
+        if self.transport:
+            self.transport.send_json({"jsonrpc": "2.0", "method": method, "params": param, "id": myid})
+    
+    def set_power(self,val):
+        if val == "on":
+            macaddress = self.mac
+            if len(macaddress) == 12:
+                pass
+            elif len(macaddress) == 12 + 5:
+                sep = macaddress[2]
+                macaddress = macaddress.replace(sep, '')
+            else:
+                self.log.warning("{} is not a proper MAC Address"%self.mac)
+                return
+            
+            # Pad the synchronization stream.
+            data = ''.join(['FFFFFFFFFFFF', macaddress * 20])
+            send_data = b''
+
+            # Split up the hex values and pack.
+            for i in range(0, len(data), 2):
+                send_data = b''.join([send_data,
+                                    struct.pack('B', int(data[i: i + 2], 16))])
+
+            # Broadcast it to the LAN.
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.sendto(send_data, ("<broadcast>", 7))
+            sock.close()
+            #Request a scan for the service soon
+            sender = self.parent.controller 
+            delay=30
+            for x in sender.kodi_config["bootdelay"]:
+                if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
+                    delay=x["delay"]
+            self.connect_wait=delay #Just in case the thing is already there or has changes IP address
+        else:
+            self.send_clear_info()
+            self.send_cmd("System.Shutdown")
+
+    def send_movie_info(self,mymovie):
+        self.log.debug("Play Movie info {}".format(mymovie)) 
+        sender = self.parent.controller
+        try:
+            if not mymovie["title"]:
+                self.send_clear_info()
+                return
+            auth=""
+            infomsg=""
+            for x in sender.kodi_config["credential"]:
+                if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
+                    auth=x["user"]+":"+x["password"]+"@"
+            if "poster" in mymovie["art"] and mymovie["art"]["poster"]:
+                infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["poster"])+"\" /></div>"
+
+            elif "thumb" in mymovie["art"] and mymovie["art"]["thumb"]:
+                infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["thumb"])+"\" /></div>"
+            
+            if "type" in mymovie and mymovie["type"]=="episode":
+                infomsg +="<p style=\"margin-left: 10px;\">Playing \""+mymovie["title"]+"\""
+                if "showtitle" in mymovie and mymovie["showtitle"]:
+                    infomsg +=" in <span style=\"font-weight: bold;\">"+mymovie["showtitle"]+"</span>"
+                if "season" in mymovie and isinstance(mymovie["season"],int) and mymovie["season"] >-1:
+                    if mymovie["season"] != 0:
+                        infomsg +=" (Season %d"%mymovie["season"]
+                        if "episode" in mymovie and  isinstance(mymovie["episode"],int) and mymovie["episode"] >-1:
+                            if mymovie["episode"]==0:
+                                infomsg +=", Pilot"
+                            else:
+                                infomsg +=", Episode %d"%mymovie["episode"]
+                    else:
+                        infomsg +=" (Extras"
+                    infomsg +=")"
+                elif "artist" in mymovie and mymovie["artist"]:
+                    infomsg += " by "+",".join(mymovie["artist"])
+                    if "album" in mymovie and mymovie["album"]:
+                        infomsg += " on "+mymovie["album"]
+                        
+            else:
+                infomsg +="<p style=\"margin-left: 10px;\">Playing \""+mymovie["title"]+"\""
+            
+            if mymovie["year"]:
+                infomsg += " (%d)"%mymovie["year"]
+            infomsg += "</p>"
+            sender.sending({"subject": sender.type,
+                "content_type": "event",
+                "content": {"event": "info",
+                            "target":  sender.type +
+                                    "." +
+                                    self.parent.name,
+                            "value": infomsg}})
+        except Exception as e:
+            self.send_clear_info()
+            self.log.warning("Error: Play Movie info {} : Comparison failed with value \"{}\".\nTrace:".format(
+                self.parent.name,msg,exc_info=(type(e),e,e.__traceback__)))
+
+
+    def send_music_info(self,myalbum):
+        self.log.debug("Play Music info {}".format(myalbum)) 
+        sender = self.parent.controller
+        try:
+            auth = ""
+            infomsg = ""
+            for x in sender.kodi_config["credential"]:
+                print ("{} vs {}".format(x,self.parent.name))
+                if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
+                    auth=x["user"]+":"+x["password"]+"@"
+            if "type" in myalbum and myalbum["type"]=="song":
+                if myalbum["thumbnail"]:
+                    infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Album Cover\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(myalbum["thumbnail"])+"\" /></div>"
+                infomsg +="<p style=\"margin-left: 10px;\">Playing \""+myalbum["title"]+"\" on <span style=\"font-weight: bold;\">"+myalbum["album"]+"</span>"
+                if myalbum["artist"]:
+                    infomsg += " by "+",".join(myalbum["artist"])
+                
+                if myalbum["year"]:
+                    infomsg += " (%d)"%myalbum["year"]
+                infomsg += "</p>"
+
+                
+                sender.sending({"subject": sender.type,
+                    "content_type": "event",
+                    "content": {"event": "info",
+                                "target":  sender.type +
+                                        "." +
+                                        self.parent.name,
+                                "value": infomsg}})
+        except Exception as e:
+            self.send_clear_info()
+            self.log.debug("Error: Play Album info {} : Comparison failed with value \"{}\".\nTrace:".format(
+                self.parent.name, msg, exc_info=(type(e),e,e.__traceback__)))
+
+    def send_clear_info(self):
+        sender = self.parent.controller
+        sender.sending({"subject": sender.type,
+            "content_type": "event",
+            "content": {"event": "info",
+                        "target":  sender.type +
+                                "." +
+                                self.parent.name,
+                        "value": ""}})
+            
+
+def kodi_process(self, msg):
+    self.controller.log.debug ("Processing {} {} for {}".format(msg["content_type"],msg["content"]["command"],self.name))
+    if not self.present:
+        return None
+    try:
+        if msg["content_type"] == "command":
+
+            if msg["content"]["command"] == "power":
+                iconsts = {
+                    "bu-fill": (msg["content"]["value"] == "on" and KODIBLUE) or KODITRANS}
+                if self.conn:
+                    self.conn.set_power(msg["content"]["value"])
+                else:
+                    macaddress=self.name.split("-")[1] #We know how the name is constructed ;)
+                    if len(macaddress) == 12:
+                        pass
+                    elif len(macaddress) == 12 + 5:
+                        sep = macaddress[2]
+                        macaddress = macaddress.replace(sep, '')
+                    else:
+                        self.log.warning("{} is not a proper MAC Address"%self.mac)
+                        return
+                    
+                    # Pad the synchronization stream.
+                    data = ''.join(['FFFFFFFFFFFF', macaddress * 20])
+                    send_data = b''
+
+                    # Split up the hex values and pack.
+                    for i in range(0, len(data), 2):
+                        send_data = b''.join([send_data,
+                                            struct.pack('B', int(data[i: i + 2], 16))])
+
+                    # Broadcast it to the LAN.
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    sock.sendto(send_data, ("<broadcast>", 7))
+                    sock.close()
+                if msg["content"]["value"] == "on":
+                    #Request a scan for the service soon
+                    delay=30
+                    for x in self.controller.kodi_config["bootdelay"]:
+                        if x["entity"]["bu-cvalue"] == self.controller.type+"."+self.name:
+                            delay=x["delay"]
+                    self.controller.sending (
+                        {"subject": "scanner.scanner",
+                        "content_type": "command",
+                        "content": {"command": "scan request",
+                                    "target": "scanner.scanner",
+                                    #"token": self.controller.target,
+                                    "value": {"service": SERVICE, "delay": delay}}})
+
+            elif msg["content"]["command"] == "status":
+                self.send_status()
+                if self.conn:
+                    self.conn.send_cmd("Player.GetActivePlayers",{},"activePlayer")
+            elif msg["content"]["command"] == "nickname":
+                # print msg
+                
+                self.controller.sending (
+                    {"subject": "control" + "." + self.name,
+                     "content_type": "request",
+                     "content": {"request": "nickname",
+                                 "target": self.controller.type +
+                                 "." +
+                                 self.name,
+                                 #"token": self.controller.target,
+                                 "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+                
+
+            elif msg["content"]["command"] == "deletion":
+                self.controller.sending(
+                    {"subject": "control" + "." + self.controller.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": self.controller.type,
+                                    "value": self.name}})
+                        
+            elif msg["content"]["command"] == "remote":
+                if 'realtime mode' in msg["content"]:
+                    rtmode = msg["content"]['realtime mode']
+                else:
+                    rtmode = False
+                    
+                rpcval={}
+                rpcmethod=None
+                if "isplaying" in msg["content"]["value"]:
+                    isplaying = msg["content"]["value"]["isplaying"]
+                else:
+                    isplaying = False
+                    
+                for x,y in msg["content"]["value"].items():
+                    rpcval={}
+                    rpcmethod=None
+                    allplayers=False
+                    if y:
+                        if x == "left":
+                            rpcmethod = "Input.Left"
+                        elif x == "right":
+                            rpcmethod = "Input.Right"
+                        elif x == "up":
+                            rpcmethod = "Input.Up"
+                        elif x == "down":
+                            rpcmethod = "Input.Down"
+                        elif x == "enter":
+                            rpcmethod = "Input.Select"
+                        elif x == "back":
+                            rpcmethod = "Input.Back"
+                        elif x == "home":
+                            rpcmethod = "Input.Home"
+                        elif x == "next":
+                            rpcmethod = "Player.GoTo"
+                            allplayers=True
+                            rpcval = { "playerid": 0,"to":"next"}
+                        elif x == "previous":
+                            rpcmethod = "Player.GoTo"
+                            allplayers=True
+                            rpcval = { "playerid": 0,"to":"previous"}
+                        elif x == "forward":
+                            rpcmethod = "Player.Seek"
+                            rpcval = { "playerid": -1,"value":"smallforward"}
+                            for ptype,pid in self.activeplayer:
+                                if ptype in ["audio","video"]:
+                                     rpcval["playerid"]= pid
+                        elif x == "backward":
+                            rpcmethod = "Player.Seek"
+                            rpcval = { "playerid": -1,"value":"smallbackward"}
+                            for ptype,pid in self.activeplayer:
+                                if ptype in ["audio","video"]:
+                                     rpcval["playerid"]= pid
+                        elif x == "play":
+                            rpcmethod = "Player.PlayPause"
+                            allplayers=True
+                            if isplaying:
+                                rpcval = { "playerid": -1,"play":True}
+                            else:
+                                rpcval = { "playerid": -1,"play":False}
+                        if rpcmethod:
+                            if self.conn:
+                                if allplayers:
+                                    for pid in self.conn.activeplayer.values():
+                                        rpcval["playerid"]= pid
+                                        self.conn.send_cmd(rpcmethod,rpcval)
+                                else:
+                                    self.conn.send_cmd(rpcmethod,rpcval)
+
+            elif msg["content"]["command"] == "playalbum":
+                if self.conn:
+                    if "repeat" in msg["content"]["value"]:
+                        self.conn.player_repeat=(msg["content"]["value"]["repeat"]=="on" and "all") or "off"
+                    if msg["content"]["value"]["name"].strip().lower() in ["", "random"]:
+                        self.conn.send_cmd("Player.Open", {"item":{"albumid":random.randint(1,self.conn.lastalbum)}}, "playRandomAlbum")
+                    else:
+                        pid = "playAlbum-%d"%(msg["content"]["value"]["offset"]-1)
+                        self.conn.send_cmd("AudioLibrary.GetAlbums", {"sort": { "order": "ascending", "method": "album", "ignorearticle": True } ,"filter": {"operator": "is", "field": "album", "value":msg["content"]["value"]["name"] }, "properties": ["artist",  "thumbnail", "year"], "limits": { "start" : 0, "end": 10 }}, pid)
+            elif msg["content"]["command"] == "playsong":
+                if self.conn:
+                    if "repeat" in msg["content"]["value"]:
+                        self.conn.player_repeat=(msg["content"]["value"]["repeat"]=="on" and "all") or "off"
+                    if msg["content"]["value"]["name"].strip().lower() in ["", "random"]:
+                        self.conn.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.conn.lastsong)}, "playRandomSong")
+                    else:
+                        pid = "playSong-%d"%(msg["content"]["value"]["offset"]-1)
+                        self.conn.send_cmd("AudioLibrary.GetSongs", {"sort": { "order": "ascending", "method": "title", "ignorearticle": True } ,"filter": {"operator": "is", "field": "title", "value":msg["content"]["value"]["name"] }, "properties": ["artist",  "album", "year","track"], "limits": { "start" : 0, "end": 10 }}, pid)
+            elif msg["content"]["command"] == "playmusic":
+                if self.conn:
+                    if "repeat" in msg["content"]["value"]:
+                        self.conn.player_repeat=(msg["content"]["value"]["repeat"]=="on" and "all") or "off"
+                    if msg["content"]["value"]["genre"].strip().lower() in [""]:
+                        if "type" in msg["content"]["value"] and msg["content"]["value"]["type"]["bu-cvalue"]=="song":
+                            self.conn.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.conn.lastsong),"properties":["title"]}, "playRandomSong-%d"%msg["content"]["value"]["length"])
+                        else:
+                            self.conn.send_cmd("AudioLibrary.GetAlbumDetails", {"albumid":random.randint(1,self.conn.lastalbum),"properties":["title"]}, "playRandomAlbum-%d"%msg["content"]["value"]["length"])
+                    else:
+                        logenre = [{"field": "genre", "operator": "contains", "value": x.lower()} for x in msg["content"]["value"]["genre"].split(" ") if x ]
+                        self.conn.genre_list=logenre
+                        if "type" in msg["content"]["value"] and msg["content"]["value"]["type"]["bu-cvalue"]=="song":
+                            pid = "playRandomSong-%d"%(msg["content"]["value"]["length"])
+                            self.conn.send_cmd("AudioLibrary.GetSongs", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"and":logenre}, "properties": ["year"], "limits": { "start" : 0, "end": msg["content"]["value"]["length"]*10 }}, pid)
+                        else:
+                            pid = "playRandomAlbum-%d"%(msg["content"]["value"]["length"])
+                            self.conn.send_cmd("AudioLibrary.GetAlbums", {"sort": { "order": "ascending", "method": "playcount"} ,"filter": {"and":logenre}, "properties": ["year"], "limits": { "start" : 0, "end": msg["content"]["value"]["length"]*10 }}, pid)
+            elif msg["content"]["command"] == "playmovie":
+                if self.conn:
+                    if "repeat" in msg["content"]["value"]:
+                        self.conn.player_repeat=(msg["content"]["value"]["repeat"]=="on" and "all") or "off"
+                    if msg["content"]["value"]["name"].strip().lower() in ["", "random"]:
+                        self.conn.send_cmd("Player.Open", {"item":{"movieid":random.randint(1,self.conn.lastmovie)}}, "playRandomMovie")
+                    else:
+                        pid = "playMovie-%d"%(msg["content"]["value"]["offset"]-1)
+                        self.conn.send_cmd("VideoLibrary.GetMovies", {"sort": { "order": "ascending", "method": "year"} ,"filter": {"operator": "is", "field": "title", "value":msg["content"]["value"]["name"] }, "properties": [ "title", "art", "year"], "limits": { "start" : 0, "end": 10 }}, pid)
+            elif msg["content"]["command"] == "playmvideo":
+                if self.conn:
+                    if "repeat" in msg["content"]["value"]:
+                        self.conn.player_repeat=(msg["content"]["value"]["repeat"]=="on" and "all") or "off"
+                    if msg["content"]["value"]["name"].strip().lower() in ["", "random"]:
+                        self.conn.send_cmd("Player.Open", {"item":{"musicvideoid":random.randint(1,self.conn.lastmvideo)}}, "playRandomMusicVideo")
+                        #Bug in Kodi
+                        #pid = "playMVideo-%d"%(msg["content"]["value"]["offset"]-1)
+                        #self.conn.send_cmd("VideoLibrary.GetMusicVideos", {"sort": { "order": "ascending", "method": "year"} ,"filter": {"operator": "is", "field": "title", "value":"GobbledidockXXX"}, "properties": [ "title", "art", "year","artist"], "limits": { "start" : 0, "end": 10 }}, pid)
+                    else:
+                        pid = "playMVideo-%d"%(msg["content"]["value"]["offset"]-1)
+                        self.conn.send_cmd("VideoLibrary.GetMusicVideos", {"sort": { "order": "ascending", "method": "year"} ,"filter": {"operator": "is", "field": "title", "value":msg["content"]["value"]["name"] }, "properties": [ "title", "art", "year","artist"], "limits": { "start" : 0, "end": 10 }}, pid)
+                
+    except Exception as e:
+        bridgectl.log.warning(
+            "Bloody process problem",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
+    return None
+
+def kodi_status(self):
+    current = self.conn and (
+        (self.conn.transport and "on") or "off")
+    iconsts = {
+        "bu-fill": (self.conn and 
+                    self.conn.transport and KODIBLUE) or KODITRANS}
+    if current:
+        self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":iconsts,
+                                                "value": {"power": current}}})
+    else:
+        self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "value": {"power": "off"},
+                                                "icon status": iconsts}})
+
+# Hop we go....
+bl.mediaplayer._process = kodi_process
+bl.mediaplayer.send_status = kodi_status
+
+
+class KodiBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of kodi.
+    It will report any new player
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(KodiBridge, self).__init__(loop, future, config, log)
+        self.kodi_config = kodi_config_default
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    kodi_config_default[k] = v
+
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "value": bl.encrypt(kodi_config_default, self.config["buddykey"])}})
+        else:
+            for aconn in self.devices:
+                aconn.process(msg)
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            newconfig = {}
+            fromconfig = []
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.kodi_config[x] = storedconfig[x]
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [kodi_config, kodi_config_default]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": kodi_config_default}})
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"token": self.target,
+                                            #"value":bl.encrypt(newconfig,self.config["buddykey"])}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            elif self.state == "wait config save":
+                if msg["content"]["status"] == "done":
+                    raise bl.Exit(0, "Configuration was saved")
+                else:
+                    raise bl.Exit(2, "Error: Configuration was not saved")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [kodi_config, kodi_config_default]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": kodi_config_default}})
+
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                mediaplayer = sess.query(bl.mediaplayer).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          mediaplayer.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": mediaplayer.name, "nickname": mediaplayer.nickname}}})
+                bidx = 0
+                for b in self.pending:
+                    bname=self.subtype + "-" + b["mac"].replace(":", "")
+                    if bname == mediaplayer.name:
+                        mediaplayer.conn = KodiConnection(self.loop,b["address"], b["port"], b["mac"], mediaplayer,self.log)
+                        mediaplayer.present = True
+                        mediaplayer.controller = self
+                        self.devices.append(mediaplayer)
+                        self.pending = self.pending[
+                            :bidx] + self.pending[
+                                bidx + 1:]
+                        
+                        if mediaplayer.name in self.kodi_config["credentials"]:
+                            mycred=self.config["credentials"][mediaplayer.name]
+                            print ("Starting connection for {} with credential {} {}".format(mediaplayer.nickname,myc["user"],myc["password"]))
+                            mediaplayer.conn.task = self.loop.create_task(
+                                mediaplayer.conn.connect(myc["user"],myc["password"])
+                                )
+                        else:
+                            print ("Starting connection for {} with no credential".format(mediaplayer.nickname))
+                            mediaplayer.conn.task = self.loop.create_task(
+                                mediaplayer.conn.connect()
+                            )
+                        break
+                    bidx += 1
+                self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "presence",
+                                            "target": self.type +
+                                            "." +
+                                            mediaplayer.name,
+                                            "value": "online",
+                                            "icon status": {"bu-fill": KODITRANS}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for mediaplayer in self.devices:
+                        if mediaplayer.name == msg["subject"].split(".")[-1]:
+                            mediaplayer.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      mediaplayer.name,
+                                                      "value": mediaplayer.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for mediaplayer in self.devices:
+                        if mediaplayer.name == msg["subject"].split(".")[-1]:
+                            mediaplayer.conn.transport.close()
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      mediaplayer.name,
+                                                      "value": mediaplayer.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+    def process_event(self, msg):
+        proceed = False
+        if msg["content"]["event"] == "known services" and msg["content"]["target"] == self.target:
+            proceed=True
+            loent = msg["content"]["value"]
+        elif msg["content"]["event"] == "service found" and msg["content"]["value"]["type"] == SERVICE:
+            proceed=True
+            loent = [msg["content"]["value"]]
+            
+        if proceed:
+            for entity in loent:
+                ename = self.subtype + "-" + entity["mac"].replace(":", "")
+                found = False
+                for device in self.devices:
+                    if device.name == ename:
+                        found = True
+                        device.conn.connect_wait = 0 #Got a new IP address
+                        break
+                if found:
+                    #We got a new one
+                    self.newplayer(entity)
+                    
+            
+    def build(self):
+        sess = bl.getSession(self.config["database"])
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": kodi_functions, "configs": [kodi_config, kodi_config_default]}}})
+
+        self.devices = sess.query(
+            bl.mediaplayer).filter_by(
+                subtype=self.subtype).all(
+        )
+        for mediaplayer in self.devices:
+            mediaplayer.present = True
+            mediaplayer.conn = None
+            mediaplayer.controller = self
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type + "." + mediaplayer.name,
+                                      "value": "online",
+                                      "icon status": {"bu-fill": KODITRANS}}})
+
+        self.sending(
+                    {"subject": "scanner" + "." + self.type,
+                        "content_type": "command",
+                        "content": {"command": "known services",
+                                    "target": self.target,
+                                    "value": SERVICE}})
+
+    # 
+    def newplayer(self, entity):
+        ename = self.subtype + "-" + entity["mac"].replace(":", "")
+        notseen = True
+        for mediaplayer in self.devices:
+
+            if ename == mediaplayer.name:
+                if not mediaplayer.conn:
+                    mediaplayer.conn = KodiConnection(self.loop,entity["address"], entity["port"], entity["mac"], mediaplayer,self.log)
+                    mediaplayer.controller = self
+                    mediaplayer.present = True
+                    self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                mediaplayer.name,
+                                                "value": "online",
+                                                "icon status": {"bu-fill": KODITRANS }}})
+                else:
+                    #Update the IP address
+                    mediaplayer.conn.ip_addr=entity["address"]
+                notseen = False
+                break
+        if notseen:
+            self.pending.append(entity)
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                      "value": {"name": ename, "nickname": entity["name"], "subtype": self.subtype}}})
+        else:
+            print(self.kodi_config["credential"])
+            if mediaplayer.name in self.kodi_config["credential"]:
+                mycred=self.kodi_config["credential"][mediaplayer.name]
+                print ("\n\nStarting connection for {} with credential {} {}".format(mediaplayer.nickname,mycred["user"],mycred["password"]))
+                mediaplayer.conn.task = self.loop.create_task(
+                    mediaplayer.conn.connect(myc["user"],myc["password"])
+                    )
+            else:
+                print ("\n\nStarting connection for {} with no credential".format(mediaplayer.nickname))
+                mediaplayer.conn.task = self.loop.create_task(
+                    mediaplayer.conn.connect()
+                )
+
+
+aboutstr = """<p>KodiBuddy is a bridge talking to <a href="http://www.kodi.com">Kodi</a> mediaplayers. 
+<p>The icon used to represent Kodi devices has been lifted and adapted from Kodi.</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr = """
+<svg class="bu-device-icon" xmlns="http://www.w3.org/2000/svg"
+     width="60" height="60" viewBox="0 0 265 265">
+<g transform="translate(-176, -159)">
+    <path fill-rule="evenodd" clip-rule="evenodd" class="bu-fill" style="fill: transparent; stroke: black; stroke-width: 4;" d="M431.521,293.719c-0.791,2.568-2.526,4.448-4.384,6.299
+        c-12.448,12.406-24.857,24.852-37.278,37.284c-4.476,4.478-9.259,4.465-13.752-0.032c-12.82-12.83-25.641-25.659-38.456-38.491
+        c-4.366-4.372-4.364-9.144,0.013-13.526c12.888-12.906,25.778-25.809,38.671-38.708c4.195-4.198,9.124-4.2,13.318-0.004
+        c12.499,12.501,24.979,25.02,37.499,37.496c1.859,1.852,3.586,3.741,4.369,6.31V293.719z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" class="bu-fill" style="fill: transparent; stroke: black; stroke-width: 4;" d="M307.953,413.914c-2.556-0.812-4.408-2.582-6.251-4.436
+        c-12.395-12.458-24.828-24.877-37.247-37.312c-4.444-4.45-4.449-9.198-0.015-13.638c12.855-12.865,25.709-25.729,38.567-38.592
+        c4.274-4.274,9.171-4.29,13.422-0.037c12.856,12.864,25.711,25.729,38.563,38.597c4.415,4.421,4.428,9.264,0.031,13.664
+        c-12.527,12.541-25.075,25.066-37.573,37.633c-1.789,1.798-3.629,3.415-6.123,4.12H307.953z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" class="bu-fill" style="fill: transparent; stroke: black; stroke-width: 4;" d="M262.841,261.207c0-14.303,0.129-28.608-0.081-42.909
+        c-0.061-4.14,0.928-7.374,4.089-10.104c2.543-2.198,4.797-4.733,7.179-7.118c9.423-9.433,18.845-18.867,28.271-28.296
+        c4.433-4.432,9.213-4.429,13.643,0.002c12.821,12.825,25.641,25.653,38.459,38.482c4.403,4.407,4.4,9.254-0.003,13.663
+        c-15.16,15.179-30.326,30.356-45.49,45.533c-13.391,13.405-26.78,26.809-40.173,40.212c-2.481,2.482-4.679,1.905-5.581-1.536
+        c-0.278-1.066-0.3-2.219-0.301-3.332C262.835,290.938,262.841,276.072,262.841,261.207"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" class="bu-fill" style="fill: transparent; stroke: black; stroke-width: 4;" d="M232.182,292.201c0,13.127,0.019,26.256-0.026,39.383
+        c-0.005,1.247-0.203,2.567-0.65,3.724c-0.876,2.279-2.52,2.561-4.241,0.844c-6.037-6.027-12.057-12.071-18.083-18.107
+        c-6.965-6.977-13.932-13.953-20.894-20.934c-2.882-2.889-2.895-6.898-0.024-9.801c12.82-12.967,25.643-25.933,38.472-38.895
+        c0.848-0.857,1.648-2.02,3.089-1.475c1.378,0.52,1.922,1.763,2.118,3.141c0.122,0.854,0.218,1.722,0.22,2.583
+        c0.013,13.179,0.009,26.359,0.009,39.537H232.182z"/>
+</g>
+</svg>
+"""
+cfgdefault = {
+    "type": "mediaplayer",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": ""}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Track Kodi mediaplayer bulbs.")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default  \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default  \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/kodi.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/kodi.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    mediaplayerlog = logging.getLogger('')
+    kodicfg = {"debug": opts.debug}
+    try:
+    # if True:
+        if opts.configonly:
+            try:
+                cfgdata = json.load(opts.config)
+                opts.config.close()
+            except:
+                cfgdata = {}
+        else:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        if opts.type != cfgdefault["type"]:
+            kodicfg["type"] = opts.type
+        elif "type" in cfgdata:
+            kodicfg["type"] = cfgdata["type"]
+        else:
+            kodicfg["type"] = opts.type
+        if opts.debug:
+            mediaplayerlog.debug("The type is %s." % kodicfg["type"])
+
+        if opts.subtype != cfgdefault["subtype"]:
+            kodicfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            kodicfg["subtype"] = cfgdata["subtype"]
+        else:
+            kodicfg["subtype"] = opts.subtype
+        if opts.debug:
+            mediaplayerlog.debug("The subtype is %s." % kodicfg["subtype"])
+
+        if opts.credential != cfgdefault["credential"]:
+            kodicfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            kodicfg["credential"] = cfgdata["credential"]
+        else:
+            kodicfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            mediaplayerlog.debug("The credential is %s" % kodicfg["credential"])
+
+        if opts.port != cfgdefault["port"]:
+            kodicfg["port"] = opts.port
+        elif "port" in cfgdata:
+            kodicfg["port"] = cfgdata["port"]
+        else:
+            kodicfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            mediaplayerlog.debug("The port is %s" % (kodicfg["port"]))
+
+        if opts.host != cfgdefault["host"]:
+            kodicfg["host"] = opts.host
+        elif "host" in cfgdata:
+            kodicfg["host"] = cfgdata["host"]
+        else:
+            kodicfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            mediaplayerlog.debug("The host is %s" % kodicfg["host"])
+
+        if "buddykey" in cfgdata:
+            kodicfg["buddykey"] = cfgdata["buddykey"]
+
+        if opts.ssl != cfgdefault["ssl"]:
+            kodicfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            kodicfg["ssl"] = cfgdata["ssl"]
+        else:
+            kodicfg["ssl"] = cfgdefault["ssl"]
+        if kodicfg["ssl"] and not (os.path.isfile(kodicfg["ssl"] + "/" + CERTFILE)):
+            mediaplayerlog.critical("Encryption: Could not find {} .".format(
+                kodicfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if kodicfg["ssl"]:
+                mediaplayerlog.debug(
+                    "The ssl certificates can be found in %s" %
+                    kodicfg["ssl"])
+            else:
+                mediaplayerlog.debug("The connection is not encrypted")
+
+        if opts.configonly:
+
+            if "buddykey" not in kodicfg:
+                if opts.debug:
+                    mediaplayerlog.debug("Generating random key")
+                kodicfg["buddykey"] = bl.keygen()
+            try:
+                del(kodicfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(kodicfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        mediaplayerlog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (mediaplayerlog, kodicfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(KodiBridge,
+                          loop,
+                          connFuture,
+                          config,
+                          log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"KodiBuddy": aboutstr},
+         "display": {"Kodi": iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+        for x in bridgectl.devices:
+            if x.conn:
+                x.conn.goon=False
+                try:
+                    if x.conn.task:
+                        x.conn.session.close()
+                        x.conn.task.cancel()
+                except:
+                    pass
+        conn.close()
+        loop.close()

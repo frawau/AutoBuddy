@@ -393,7 +393,7 @@ function bu_parse_xml(txt) {
                 var mylist=[];
                 $.each( deviceById, function (idx, dev) {
                     if ( dtype==undefined || dev.type==dtype) {
-                        if ( dstype==undefined || dev.type==dstype) {
+                        if ( dstype==undefined || dev.subtype==dstype) {
                             mylist.push([dev.type,dev.subtype,dev.nickname,dev.name])
                         }
                     }
@@ -478,8 +478,10 @@ function bu_parse_xml(txt) {
                         clist={}
                         cxml=$( jQuery.parseXML(buddy.functions[ctype][cstype])).find( "command" );
                         $.each(cxml.children(),function(idx,part) {
-                            cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
-                            clist[$(part).attr("name")]=part.outerHTML;
+                            if ( $(part).attr("rteffect") == undefined || $(part).attr("rteffect") >= 0 ) {
+                                cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
+                                clist[$(part).attr("name")]=part.outerHTML;
+                            }
                         });
                     }
                     if (options == undefined || !options.includes("simplelist")) {
@@ -693,6 +695,9 @@ function module_import_config_bis() {
 }
 
 function module_command() {
+    if (buddy.mcommands === undefined ) {
+        return
+    }
     var msg = "<div id=\"bu-mod-cmd-choice\">";
     var ordered = {};
     Object.keys(buddy.mcommands).sort().forEach(function(key) {
@@ -841,20 +846,23 @@ var BuddyDevice = Class.extend({
         }
         $.each(this.iconstatus, function (eclass,val) {
             if ( eclass != "animation" ) {
-                var mylelt=$(document.getElementById( self.name ).getElementsByClassName(eclass)[0]);
-                mylelt.removeClass("run-animation-"+self.name);
-                mylelt.attr("style","");
-                $.each(val, function (attr,aval) {
-                    try {
-                        mylelt.css(attr,aval);
-                        //document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                //var mylelt=$(document.getElementById( self.name ).getElementsByClassName(eclass)[0]);
+                $.each($("#"+self.name+" ."+eclass ), function(idx,anelt) {
+                    var mylelt = $(anelt);
+                    mylelt.removeClass("run-animation-"+self.name);
+                    mylelt.attr("style","");
+                    $.each(val, function (attr,aval) {
+                        try {
+                            mylelt.css(attr,aval);
+                            //document.getElementById( self.name ).getElementsByClassName(eclass)[0].setAttribute(attr,aval);
+                        }
+                        catch (err)  {console.log("Anim oops:"+err); };
+                    })
+                    if ("animation" in self.iconstatus ) {
+                        void mylelt.offsetWidth
+                        mylelt.addClass("run-animation-"+self.name)
                     }
-                    catch (err)  {console.log("Anim oops:"+err); };
                 })
-                if ("animation" in self.iconstatus ) {
-                    void mylelt.offsetWidth
-                    mylelt.addClass("run-animation-"+self.name)
-                }
             }
         });
 //         if ("animation" in this.iconstatus ) {
@@ -878,44 +886,59 @@ var BuddyDevice = Class.extend({
                     }
                 }
             });
-        } else {
-            //Command and control
-        }
+        } 
         return false;
     },
     
-    device_click: function() {
+    device_click: function(e) {
         if (! buddy.editmode && deviceById[this.id].presence) {
-            /*Create a modal with an on/off switch*/
+            /*Create a modal with commands rendered*/
             var oname = this.id;
-            var otype = deviceById[this.id].type;
-            var stype = deviceById[this.id].subtype;
-            var zz = deviceById[this.id].nickname;
             var self = deviceById[this.id];
-
-            if(buddy.functions[otype] && buddy.functions[otype][stype] ) {
-                self.cmd_panel = new buddyPanel(oname,bu_parse_xml(buddy.functions[otype][stype]).find( "buddyui" ),true);
-                var msg = self.cmd_panel.render("command");
-
-                bootbox.dialog({
-                    title: "Control "+otype+" "+zz,
-                    value: zz,
-                    message:msg,
-                    buttons: {
-                        close: {
-                            label: "Close",
-                            className: "btn-close",
-                            callback: function () {
-                                //$("#"+oname+"-power").destroy();
-                                //return false;
-                            //    deviceById[oname].match_status();
+            var otype = self.type;
+            var stype = self.subtype;
+            var zz = self.nickname;
+            if ( e.ctrlKey ) {
+                if ( deviceById[this.id].info ) {
+                    bootbox.dialog({
+                        title: "Info for "+deviceById[this.id].nickname,
+                        value: zz,
+                        message:deviceById[this.id].info,
+                        buttons: {
+                            close: {
+                                label: "Close",
+                                className: "btn-close",
+                                callback: function () {
+                                }
                             }
                         }
-                    }
-                });
-                self.cmd_panel.activate([250,0]);
-                self.cmd_panel.setValue(deviceById[oname].status);
-                self.cmd_panel.setCallback(deviceById[oname].exec_rtcommand)
+                    });
+                }
+            } else {
+                if(buddy.functions[otype] && buddy.functions[otype][stype] ) {
+                    self.cmd_panel = new buddyPanel(oname,bu_parse_xml(buddy.functions[otype][stype]).find( "buddyui" ),true);
+                    var msg = self.cmd_panel.render("command");
+
+                    bootbox.dialog({
+                        title: "Control "+otype+" "+zz,
+                        value: zz,
+                        message:msg,
+                        buttons: {
+                            close: {
+                                label: "Close",
+                                className: "btn-close",
+                                callback: function () {
+                                    //$("#"+oname+"-power").destroy();
+                                    //return false;
+                                //    deviceById[oname].match_status();
+                                }
+                            }
+                        }
+                    });
+                    self.cmd_panel.activate([250,0]);
+                    self.cmd_panel.setValue(deviceById[oname].status);
+                    self.cmd_panel.setCallback(deviceById[oname].exec_rtcommand)
+                }
             }
         }
         return false;
@@ -1308,6 +1331,7 @@ var BuddyApp = Class.extend({
         this.tokento={};
         this.functions={};
         this.configs={};
+        this.mcommands={};
         this.socket = ws;
         this.subject = subject;
         this.isopen = false;

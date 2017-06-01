@@ -8,6 +8,7 @@ remotecontrol = function(target, size, prefix){
     var buttons={"up":false, "down":false, "left":false, "right":false, "enter":false,
                  "back":false, "home":false, "play":false, "previous":false, "next":false,
                  "forward":false, "backward":false, "isplaying": false}, // isplaying...true: displaying pause foreground, false; displaying play foregrounf 
+        bu_callback,
         bu_gencallback,
         idprefix = prefix || "bu-";
 
@@ -196,7 +197,7 @@ remotecontrol = function(target, size, prefix){
         onewElement = document.createElementNS("http://www.w3.org/2000/svg", 'path');
         onewElement.setAttribute("id",idprefix+"play-button-fg-alt");
         onewElement.setAttribute("class","bu-remote-button-fg bu-remote-button-fg-hidden");
-        mypath = `M515 1440 l0 120 l30 0 l0 -120 l-30 0 m40 0 l0 120 l30 0 l0 -120 l-30 0`;
+        mypath = `M510 1440 l0 120 l30 0 l0 -120 l-30 0 m50 0 l0 120 l30 0 l0 -120 l-30 0`;
         onewElement.setAttribute("d",mypath);
         newElement.appendChild(onewElement);
         svgElement.appendChild(newElement);
@@ -284,7 +285,7 @@ remotecontrol = function(target, size, prefix){
     
     };
     
-    function toggle_button(butname) {
+    function toggle_button(butname,e) {
         
         if ( ['up','down','left','right','enter'].includes(butname) ) {
             var myelt =  document.getElementById(idprefix+butname+"-button");
@@ -296,7 +297,11 @@ remotecontrol = function(target, size, prefix){
         buttons[butname] = true;
         
         if ( bu_gencallback ) { //We are live!
-            bu_gencallback(buttons)
+            bu_gencallback(e)
+            buttons[butname] = false;
+            setTimeout(reset_button,100,butname);
+        } else if ( bu_callback ) { //We are live!
+            bu_callback(buttons)
             buttons[butname] = false;
             setTimeout(reset_button,100,butname);
         }
@@ -304,7 +309,7 @@ remotecontrol = function(target, size, prefix){
     };
     
         
-    function process_button(bname) {
+    function process_button(bname,e) {
         //Revert any other button set
         Object.keys(buttons).forEach(function(key, index) {
             if (key != "isplaying") {
@@ -315,74 +320,81 @@ remotecontrol = function(target, size, prefix){
                 }
             }
         });
-        toggle_button(bname)
+        toggle_button(bname,e)
     }; 
     
     //Event handlers
     function up_click(e) {
-        process_button("up");
+        process_button("up",e);
         return false;
     };
     function right_click(e) {
-        process_button("right");
+        process_button("right",e);
         return false;
     };
     function down_click(e) {
-        process_button("down");
+        process_button("down",e);
         return false;
     };
     function left_click(e) {
-        process_button("left");
+        process_button("left",e);
         return false;
     };
     function back_click(e) {
-        process_button("back");
+        process_button("back",e);
         return false;
     };
     function home_click(e) {
-        process_button("home");
+        process_button("home",e);
         return false;
     };
     function previous_click(e) {
-        process_button("previous");
+        process_button("previous",e);
         return false;
     };
     function backward_click(e) {
-        process_button("backward");
+        process_button("backward",e);
         return false;
     };
     function play_click(e) {
         if ( bu_gencallback ) {
             buttons["isplaying"] = ! buttons["isplaying"];
         }
-        process_button("play");
+        process_button("play",e);
         return false;
     };
     function forward_click(e) {
-        process_button("forward");
+        process_button("forward",e);
         return false;
     };
     function next_click(e) {
-        process_button("next");
+        process_button("next",e);
         return false;
     };
     function enter_click(e) {
-        process_button("enter");
+        process_button("enter",e);
         return false;
+    };
+    
+    //Signature functions
+    function onchange(fcnt) {
+        bu_callback=fcnt;
+        reset_button("play");
     };
     
     //Signature functions
     function onChange(fcnt) {
         bu_gencallback=fcnt;
+        reset_button("play");
     };
     
     function setValue(V) {
         Object.keys(V).forEach(function(key, index) {
-            if ( buttons.includes(key) ) {
+            if ( key in buttons ) {
                 buttons[key] = V[key];
             }
         })
-        if (V.includes("isplaying")) {
+        if ( "isplaying" in V ) {
             if ( bu_gencallback ) {
                 reset_button("play");
             }
@@ -407,6 +419,7 @@ remotecontrol = function(target, size, prefix){
             setValue: setValue,
             getValue: getValue,
             onChange: onChange,
+            onchange: onchange,
         };
     }
     
