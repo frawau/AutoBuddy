@@ -1085,8 +1085,8 @@ class KodiBridge(bl.BuddyBridge):
                             :bidx] + self.pending[
                                 bidx + 1:]
                         
-                        if mediaplayer.name in self.kodi_config["credentials"]:
-                            mycred=self.config["credentials"][mediaplayer.name]
+                        if mediaplayer.name in self.kodi_config["credential"]:
+                            mycred=self.config["credential"][mediaplayer.name]
                             print ("Starting connection for {} with credential {} {}".format(mediaplayer.nickname,myc["user"],myc["password"]))
                             mediaplayer.conn.task = self.loop.create_task(
                                 mediaplayer.conn.connect(myc["user"],myc["password"])
