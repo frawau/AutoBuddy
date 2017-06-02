@@ -269,7 +269,6 @@ class ScannerBridge(bl.BuddyBridge):
 
     def register(self, entity):
         if entity.name not in self.seen_service or entity.address != self.seen_service[entity.name].address:
-            self.seen_service[ entity.name] = entity
             newprop={}
             for x,y in entity.properties.items():
                 try:
@@ -278,8 +277,9 @@ class ScannerBridge(bl.BuddyBridge):
                     newprop[x.decode()]=y
             #Mac address if IPv4Address
             if isinstance(ipaddress.ip_address(entity.address),ipaddress.IPv4Address):
-                #Cheat... uses arp command
+                #Cheat... uses arp command after a quick ping
                 try:
+                    cheat=subprocess.getoutput("ping -c 1 -t 5 "+entity.address)
                     mymac=subprocess.getoutput("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'")
                 except:
                     mymac=""
@@ -292,7 +292,12 @@ class ScannerBridge(bl.BuddyBridge):
                         mymac=[ aa for aa in prev.split(" ") if  aa ][1]
                         break
                     prev=x
-                
+            if mymac == "":
+                self.log.debug(
+                    "Could not figure out mac address for service {}".format(entity))
+                return
+            
+            self.seen_service[ entity.name] = entity
             entity.mac = mymac
             self.sending({"subject": self.target,
                             "content_type": "event",
@@ -301,6 +306,7 @@ class ScannerBridge(bl.BuddyBridge):
                                         "value": {"name":entity.name,"address":entity.address,
                                                   "port":entity.port,"properties":newprop,
                                                   "type":entity.type, "mac": mymac}}})
+            
             if self.config["debug"]:
                 self.log.debug(
                     "Found new service {}".format(entity))
