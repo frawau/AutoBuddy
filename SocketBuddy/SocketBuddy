@@ -70,7 +70,7 @@ async def websocket_handler(request):
         except:
             pass
         
-        if msg.type == aiohttp.MsgType.error:
+        if msg.type == aiohttp.WSMsgType.error:
             sysctl.log.debug('ws connection closed with exception %s' %
                   ws.exception())
 

@@ -579,7 +579,7 @@ class KodiConnection(object):
                 sep = macaddress[2]
                 macaddress = macaddress.replace(sep, '')
             else:
-                self.log.warning("{} is not a proper MAC Address"%self.mac)
+                self.log.warning("{} is not a proper MAC Address".format(self.mac))
                 return
             
             # Pad the synchronization stream.
