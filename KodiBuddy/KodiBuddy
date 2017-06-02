@@ -259,8 +259,8 @@ class KodiConnection(object):
         self.send_cmd("Playlist.GetPlaylists", {}, "allPlaylists")
         
     def process_msg(self,msg):
-        print ("Message: {}".format(msg))
-        print ("-"*10)
+        #print ("Message: {}".format(msg))
+        #print ("-"*10)
         sender = self.parent.controller
         try:
             if "method" not in msg:
@@ -566,7 +566,6 @@ class KodiConnection(object):
         if not myid:
             self.seq+=1
             myid=self.seq
-        print ("\nSending command {}.".format({"jsonrpc": "2.0", "method": method, "params": param, "id": myid}))
         if self.transport:
             self.transport.send_json({"jsonrpc": "2.0", "method": method, "params": param, "id": myid})
     
@@ -671,7 +670,6 @@ class KodiConnection(object):
             auth = ""
             infomsg = ""
             for x in sender.kodi_config["credential"]:
-                print ("{} vs {}".format(x,self.parent.name))
                 if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
                     auth=x["user"]+":"+x["password"]+"@"
             if "type" in myalbum and myalbum["type"]=="song":
@@ -1085,14 +1083,12 @@ class KodiBridge(bl.BuddyBridge):
                             :bidx] + self.pending[
                                 bidx + 1:]
                         
-                        if mediaplayer.name in self.kodi_config["credential"]:
+                        if mediaplayer.name in self.kodi_config["credential"]: #For credential, should be "bu-cvalue"
                             mycred=self.config["credential"][mediaplayer.name]
-                            print ("Starting connection for {} with credential {} {}".format(mediaplayer.nickname,myc["user"],myc["password"]))
                             mediaplayer.conn.task = self.loop.create_task(
                                 mediaplayer.conn.connect(myc["user"],myc["password"])
                                 )
                         else:
-                            print ("Starting connection for {} with no credential".format(mediaplayer.nickname))
                             mediaplayer.conn.task = self.loop.create_task(
                                 mediaplayer.conn.connect()
                             )

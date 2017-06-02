@@ -3,7 +3,7 @@
 #
 # This application is used to configure an AutoBuddy appliance
 # 
-# Copyright (c) 2015 François Wautier
+# Copyright (c) 2015-2017 François Wautier
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy 
 # of this software and associated documentation files (the "Software"), to deal
@@ -226,17 +226,17 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 command should be run:\n")
-        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip")
-        print("\tsudo pip3 install aiolifx aioarping aiobtname pyalsaaudio\n")
+        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip")
+        print("\tsudo pip3 install aiolifx aioarping aiobtname pyalsaaudio aiohttp\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip"
+        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip"
         remindmeattheend+="\n\tsudo pip3 install aiolifx aioarping aiobtname\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-aiohttp","python3-ephem","python3-dateutil","python3-crontab","python3-bitstring"])
-            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "pyalsaaudio"])
+            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring"])
+            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "pyalsaaudio","aiohttp"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -402,6 +402,8 @@ dovoice=False
 dopresence=False
 dopresencelan=False
 dopresencebt=False
+dokodi=False
+doscanner=False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -465,6 +467,13 @@ if dovoice:
             os.system('clear')
             print ("\nInput must be an integer!")
 
+print("\n\nKodiBuddy allows you to control your Kodi instances.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dokodi=True
+    doscanner=True
+
 print("\nYou have decided:")
 if dolifx:
     print("\tto run LifxBuddy")
@@ -490,6 +499,11 @@ if dovoice:
     print("\tto run VoiceBuddy with {}".format(voicedev))
 else:
     print("\tnot to run VoiceBuddy")
+    
+if dovoice:
+    print("\tto run KodiBuddy")
+else:
+    print("\tnot to run KodiBuddy")
     
 
 if doflic and dopresencebt:
@@ -674,6 +688,77 @@ else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n FlicBuddy "+fn
 
 print ("Just a little longer!")
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "mediaplayer"
+mycfg["subtype"] = "Kodi"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["scanner"]="scanner.ipservices"
+mycfg["buddykey"] = keygen()
+
+fn=BUDDYLOCATION+"/.buddyconfig/kodi.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/KodiBuddy/KodiBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/KodiBuddy/KodiBuddy -c "+fn
+mycmd+="\nsleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/30-kodi"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dokodi:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n KodiBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n KodiBuddy "+fn
+
+
+
+mycfg={}
+mycfg["host"]= "localhost"
+mycfg["type"] = "scanner"
+mycfg["subtype"] = "ipservices"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+
+fn=BUDDYLOCATION+"/.buddyconfig/scanner.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ScannerBuddy/ScannerBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/ScannerBuddy/ScannerBuddy -c "+fn
+mycmd+="\nsleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/60-scanner"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doscanner:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ScannerBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ScannerBuddy "+fn
+
+print ("Just a teeny weeny little longer!")
 
 mycfg={}
 mycfg["host"]= "localhost"
@@ -912,22 +997,46 @@ for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
     with open(BUDDYLOCATION+"/BuddyTools/"+fn, 'w') as file :
         file.write(filedata)
 try:
-    from crontab import CronTab
-    cron=CronTab(user=username)
-    job  = cron.new(command=BUDDYLOCATION+"/.start-autobuddy")
-    job.every_reboot()
-    cron.write()
-    print ("\n\n\n\n We are done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
-    print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
+    systemdfile="""
+[Unit]
+Description=AutoBuddy Start/Stop
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart="""
+    systemdfile+=BUDDYLOCATION+"/.start-autobuddy\n"
+    systemdfile+="ExecStop="+BUDDYLOCATION+"/.stop-autobuddy\n"
+    systemdfile+="""
+[Install]
+WantedBy=multi-user.target
+"""
+    if iamsuper:
+        with open("/etc/systemd/system/autobuddy.service","w") as cfile:
+            cfile.write(systemdfile)
+        chpass=subprocess.Popen(["systemctl", "enable", "autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+        print ("\n\n\n\n We are done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+    else:
+        remindmeattheend+="\n\nIn order for AutoBuddy to start automatically after a reboot, must create a file:\n"
+        remindmeattheend+="\t/etc/systemd/system/autobuddy.service\ncontaining the following:\n\n"
+        remindmeattheend+=systemdfile
+        remindmeattheend+="\n\nThen you should enable it with:\n\t\tsystemctl enable autobuddy\n"
+        print ("\n\n\n\n We are almost done... See below for what still needs to be done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+
     #choice = input(" Press '<enter>' to reboot")
     #os.system("reboot")
 except:
-    print ("\n\n\n\n We are done. We are about to reboot but ...")
-    print ("For some reason we were not able to schedule the start of the AutoBuddy system. In the terminal, please do:")
-    print ("\n          (crontab -l 2>/dev/null; echo \"@reboot "+BUDDYLOCATION+"/.start-autobuddy\") | crontab -\n")
-    print ("Cut and paste if possible. After that you should reboot with \"sudo reboot\"")
-    print("\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+    remindmeattheend+="\n\nIn order for AutoBuddy to start automatically after a reboot, must create a file:\n"
+    remindmeattheend+="\t/etc/systemd/system/autobuddy.service\ncontaining the following:\n\n"
+    remindmeattheend+=systemdfile
+    remindmeattheend+="\n\nThen you should enable it with:\n\t\tsystemctl enable autobuddy\n"
+    print ("\n\n\n\n We are almost done... See below for what still needs to be done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+    print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
 
 if remindmeattheend:
     print("\n\nHere is a reminder of what you still need to do before you can reboot:")
     print(remindmeattheend)
+    
+print ("\nIf you plan to connect remote buddies, you'll need enable remote access to PostgreSQL\nand use the credential {}".format(credential))
