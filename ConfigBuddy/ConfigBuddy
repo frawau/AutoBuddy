@@ -251,10 +251,12 @@ try:
 except:
     print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
 
-if iamsuper and os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
-    subprocess.run(["chown","autobuddy:autobuddy",BUDDYLOCATION+"/VoiceBuddy/autobuddy.dic"])
-    subprocess.run(["chown","autobuddy:autobuddy",BUDDYLOCATION+"/VoiceBuddy/autobuddy.lm"])
-    print("Ownership updated.")
+if iamsuper and os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):    
+    try:
+        chpass=subprocess.Popen(["find","AutoBuddy","-exec","chown", currentowner+":"+currentowner, "{}",";"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+    except:
+        print("Could not change ownership of untarred files.")
+
 
 choice = input(" Press '<enter>' to continue")
 os.system('clear')
@@ -996,13 +998,6 @@ for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
     
     with open(BUDDYLOCATION+"/BuddyTools/"+fn, 'w') as file :
         file.write(filedata)
-    
-if iamsuper:
-    try:
-        chpass=subprocess.Popen(["find","AutoBuddy","-exec","chown", "autobuddy:autobuddy", "{}",";"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-    except:
-        print("Could not change ownership of untarred files.")
-
 
 try:
     systemdfile="""
