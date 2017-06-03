@@ -838,6 +838,7 @@ if __name__ == "__main__":
                     config["btiface"],
                     '-l',
                     '/tmp/flic.log')
+                loop.run_until_complete(aio.sleep(5)) #Giveth a little time
             except:
                 sys.exit(0)
 
