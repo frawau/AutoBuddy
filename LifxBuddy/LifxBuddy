@@ -553,12 +553,12 @@ def lifx_process(self, msg):
             elif msg["content"]["command"] == "status":
                 current = self.conn and (
                     (self.conn.power_level and "on") or "off")
+                self.conn.infosent = False
                 if current:
                     # Not gone the way of the dodo
                     colour = self.conn.color
 
                     try:
-                        self.conn.infosent = False
                         self.controller.sending({"subject": self.controller.type,
                                              "content_type": "event",
                                              "content": {"event": "status",
