@@ -783,7 +783,7 @@ var BuddyDevice = Class.extend({
         this.presence=false;
         this.status={};
         this.iconstatus={};
-        this.info={};
+        this.info=undefined;
         this.last_cmd;
         this.cmd_panel;
     },

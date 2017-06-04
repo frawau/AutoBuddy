@@ -1240,12 +1240,12 @@ class KodiBridge(bl.BuddyBridge):
             print(self.kodi_config["credential"])
             if mediaplayer.name in self.kodi_config["credential"]:
                 mycred=self.kodi_config["credential"][mediaplayer.name]
-                print ("\n\nStarting connection for {} with credential {} {}".format(mediaplayer.nickname,mycred["user"],mycred["password"]))
+                #print ("\n\nStarting connection for {} with credential {} {}".format(mediaplayer.nickname,mycred["user"],mycred["password"]))
                 mediaplayer.conn.task = self.loop.create_task(
                     mediaplayer.conn.connect(myc["user"],myc["password"])
                     )
             else:
-                print ("\n\nStarting connection for {} with no credential".format(mediaplayer.nickname))
+                #print ("\n\nStarting connection for {} with no credential".format(mediaplayer.nickname))
                 mediaplayer.conn.task = self.loop.create_task(
                     mediaplayer.conn.connect()
                 )

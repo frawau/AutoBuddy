@@ -37,6 +37,7 @@ import string
 import buddylib as bl
 import asyncio as aio
 import aiolifx
+from aiolifx.products import product_map as lifx_products
 from functools import partial
 
 SUBTYPE = "Lifx"
@@ -294,6 +295,8 @@ def lifx_process(self, msg):
                             "; animation-iteration-count: 1; }"
                         if alen:
                             iconsts["animation"] = anim
+                            if self.conn.hbtimer < alen:
+                                self.conn.hbtimer=alen+5
                 mypartial = partial(self.controller.sending,
                                     {"subject": self.controller.type,
                                      "content_type": "event",
@@ -348,6 +351,8 @@ def lifx_process(self, msg):
                             "; animation-iteration-count: 1; }"
                         if alen:
                             iconsts["animation"] = anim
+                            if self.conn.hbtimer < alen:
+                                self.conn.hbtimer=alen+5
                 else:
                     iconsts = {"bu-fill": {"fill": "transparent"}}
 
@@ -415,6 +420,8 @@ def lifx_process(self, msg):
                             "; animation-iteration-count: 1; }"
                         if alen:
                             iconsts["animation"] = anim
+                            if self.conn.hbtimer < alen:
+                                self.conn.hbtimer=alen+5
                 else:
                     iconsts = {"bu-fill": {"fill": "transparent"}}
 
@@ -510,6 +517,9 @@ def lifx_process(self, msg):
                             "; animation-iteration-count: %d; }" % (arep)
                     iconsts["animation"] = anim
                     iconsts["bu-fill"] = {"fill": fillcolour}
+                    tdur=int((alen*arep)/1000)
+                    if self.conn.hbtimer <= tdur:
+                        self.conn.hbtimer=tdur+5
 
                 else:
                     iconsts = {"bu-fill": {"fill": "transparent"}}
@@ -547,8 +557,9 @@ def lifx_process(self, msg):
                     # Not gone the way of the dodo
                     colour = self.conn.color
 
-                    # try:
-                    self.controller.sending({"subject": self.controller.type,
+                    try:
+                        self.conn.infosent = False
+                        self.controller.sending({"subject": self.controller.type,
                                              "content_type": "event",
                                              "content": {"event": "status",
                                                          "target": self.controller.type +
@@ -565,12 +576,12 @@ def lifx_process(self, msg):
                                                                               "value": (100.0 * colour[2]) / 65365.0},
                                                                    "white": {"value": (100.0 * colour[2]) / 65365.0,
                                                                              "temperature": colour[3]}}}})
-                    # except:
-                        # self.sending({"subject":self.controller.type,
-                                    #"content_type": "event",
-                                    #"content":{"event":"presence",
-                                                #"target": self.controller.type + "." + self.name,
-                                                #"value":"offline"}})
+                    except:
+                        self.sending({"subject":self.controller.type,
+                                    "content_type": "event",
+                                    "content":{"event":"presence",
+                                                "target": self.controller.type + "." + self.name,
+                                                "value":"offline"}})
                 else:
                     self.controller.sending({"subject": self.controller.type,
                                              "content_type": "event",
@@ -616,13 +627,25 @@ def lifx_process(self, msg):
     return None
 
 
-def lighthb(self, duration=30):
-    try:  # Could happen that conn is None... Maybe a race condition with unregister
-        self.conn.get_color(callb=self.sendStatus)
+def lighthb(self, duration=5):
+    #try:  # Could happen that conn is None... Maybe a race condition with unregister
+    if True:
+        if self.conn.hbtimer<= 0:
+            self.conn.hbtimer = self.controller.lifx_config["heartbeat"]
+            if self.conn.product is None or not self.conn.infosent:
+                self.conn.get_color(callb=self.sendStatus)
+                self.conn.get_hostfirmware()
+                self.conn.get_version(callb=self.sendInfo)
+                self.conn.get_color(callb=self.sendStatus)
+                self.conn.infosent = True
+            else:
+                self.conn.get_color(callb=self.sendStatus)
+        else:
+            self.conn.hbtimer -= 5
         self.controller.lifxhb[self.name] = self.controller.loop.call_later(
-            duration, partial(self.lighthb, self.controller.lifx_config["heartbeat"]))
-    except:
-        pass
+                duration, partial(self.lighthb, 5))
+    #except:
+        #pass
 
 
 def sendStatus(self, lifx=None, resp=None):
@@ -647,11 +670,40 @@ def sendStatus(self, lifx=None, resp=None):
                                                        "white": {"value": (100.0 * colour[2]) / 65365.0,
                                                                  "temperature": colour[3]}}}})
     except:
-        self.log.warning(
+        self.controller.log.warning(
             "Ooops could not send status",
             exc_info=(type(e),
                       e,
                       e.__traceback__))
+            
+def sendInfo(self, lifx=None, resp=None):
+    # Can be used in callback
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x in ["label","location","group","product","version","vendor","ip_addr","mac_addr","host_firmware_version"]:
+            if getattr(self.conn,x):
+                if x=="product":
+                    msg+=prefix+"<dt>Product:</dt><dd>"+lifx_products[getattr(self.conn,x)]+"</dd>"
+                else:
+                    msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>"+str(getattr(self.conn,x))+"</dd>"
+                prefix=""
+        if msg:
+            msg+="</dl></div>"
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except:
+        self.controller.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
 
 
 def cssColour(self, col=None, force=False):
@@ -680,6 +732,7 @@ def cssColour(self, col=None, force=False):
 # Hop we go....
 bl.light._process = lifx_process
 bl.light.sendStatus = sendStatus
+bl.light.sendInfo = sendInfo
 bl.light.lighthb = lighthb
 bl.light.cssColour = cssColour
 
@@ -703,7 +756,7 @@ class LifxBridge(bl.BuddyBridge):
                 for k, v in msg["content"]["value"].items():
                     lifx_config_default[k] = v
                     if k == "refresh":
-                        print("Setting  interval on {}".format(dir(fac)))
+                        #print("Setting  interval on {}".format(dir(fac)))
                         self.probelights.discovery_interval = v
 
                 self.sending({"subject": "control" + "." + self.subtype,
@@ -930,6 +983,8 @@ class LifxBridge(bl.BuddyBridge):
         alight.name = self.subtype + "-" + alight.mac_addr.replace(":", "")
         alight.nickname = alight.label
         notseen = True
+        alight.hbtimer = 0
+        alight.infosent = False
         for light in self.devices:
             ispresent = False
 
@@ -962,10 +1017,9 @@ class LifxBridge(bl.BuddyBridge):
                                       "value": {"name": alight.name, "nickname": alight.nickname or alight.name, "subtype": self.subtype}}})
         else:
             self.lifxhb[self.subtype] = self.loop.call_later(
-                self.lifx_config["heartbeat"] + random.randrange(
+                random.randrange(
                     int(self.lifx_config["heartbeat"])),
-                partial(light.lighthb,
-                        self.lifx_config["heartbeat"]))
+                partial(light.lighthb,5))
 
     def register(self, alight):
         alight.log = self.log

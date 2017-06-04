@@ -444,7 +444,7 @@ class Controller():
 
             if opts.configonly:
                 newconfig = {"port": buddycfg["port"], "host": buddycfg[
-                    "host"], "subject": buddycfg["subject"]}
+                    "host"],"type": buddycfg["type"],"ssl": buddycfg["ssl"] }
 
                 if buddycfg["dbronly"]:
                     userpass = buddycfg["dbronly"].split("://")[-1]
@@ -482,7 +482,7 @@ class Controller():
                         self.log.debug("Generating random key")
                     newconfig["credential"] = bl.keygen()
 
-                with file(opts.configonly, "w") as cfile:
+                with open(opts.configonly, "w") as cfile:
                     json.dump(newconfig, cfile)
                 os.chmod(opts.configonly, 384)
                 print("The configuration has been saved")
