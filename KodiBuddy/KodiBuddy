@@ -207,6 +207,7 @@ class KodiConnection(object):
         self.player_repeat = "off"
         
     async def connect(self, user=None, password=None):
+        await aio.sleep(5)  #Looks like it is needed on RPi
         while self.goon:
             self.log.debug("{}: Trying to connect".format(self.parent.nickname))
             if user:
@@ -1237,7 +1238,6 @@ class KodiBridge(bl.BuddyBridge):
                                       "target": self.type,
                                       "value": {"name": ename, "nickname": entity["name"], "subtype": self.subtype}}})
         else:
-            print(self.kodi_config["credential"])
             if mediaplayer.name in self.kodi_config["credential"]:
                 mycred=self.kodi_config["credential"][mediaplayer.name]
                 #print ("\n\nStarting connection for {} with credential {} {}".format(mediaplayer.nickname,mycred["user"],mycred["password"]))
