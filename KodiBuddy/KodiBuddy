@@ -70,6 +70,14 @@ kodi_functions = """
             <control type="button" name="next" label="Next" rteffect="1" />
             <control type="button" name="isplaying" label="Is Playing" rteffect="1" />
         </controlgroup>
+        <controlgroup type="choice" name="player" label="Player Command" rteffect="0">
+            <item value="play" label="Play" />
+            <item value="pause" label="Pause" />
+            <item value="playpause" label="Play/Pause Toggle" />
+            <item value="stop" label="Stop" />
+            <item value="next" label="Next" />
+            <item value="previous" label="Previous" />
+        </controlgroup>
         <controlgroup  type="grouplist" name="playalbum" label="Play Album" rteffect="1" onlyif="power::on">
             <control type="text" name="name" label="Title" length="32" default="random" />
             <control type="spinner" name="offset" label="Offset" >
@@ -84,7 +92,7 @@ kodi_functions = """
                 <default>off</default>
             </control>
         </controlgroup>
-        <controlgroup  type="grouplist" name="playmusic" label="Play Music" rteffect="1">
+        <controlgroup  type="grouplist" name="playmusic" label="Play Music" rteffect="1" onlyif="power::on">
             <controlgroup type="choice" name="type" label="What">
                 <item value="album" label="Albums" />
                 <item value="song" label="Songs" />
@@ -102,7 +110,7 @@ kodi_functions = """
                 <default>off</default>
             </control>
         </controlgroup>
-        <controlgroup  type="grouplist" name="playsong" label="Play Song" rteffect="1">
+        <controlgroup  type="grouplist" name="playsong" label="Play Song" rteffect="1" onlyif="power::on">
             <control type="text" name="name" label="Title" length="32" />
             <control type="spinner" name="offset" label="Offset" >
                 <start>1</start>
@@ -116,7 +124,7 @@ kodi_functions = """
                 <default>off</default>
             </control>
         </controlgroup>
-        <controlgroup  type="grouplist" name="playmvideo" label="Play Music Video" rteffect="1">
+        <controlgroup  type="grouplist" name="playmvideo" label="Play Music Video" rteffect="1" onlyif="power::on">
             <control type="text" name="name" label="Title" length="32" />
             <control type="spinner" name="offset" label="Offset" >
                 <start>1</start>
@@ -130,7 +138,7 @@ kodi_functions = """
                 <default>off</default>
             </control>
         </controlgroup>
-        <controlgroup  type="grouplist" name="playmovie" label="Play Movie" rteffect="1">
+        <controlgroup  type="grouplist" name="playmovie" label="Play Movie" rteffect="1" onlyif="power::on">
             <control type="text" name="name" label="Title" length="32" />
             <control type="spinner" name="offset" label="Offset" >
                 <start>1</start>
@@ -262,6 +270,7 @@ class KodiConnection(object):
     def process_msg(self,msg):
         #print ("Message: {}".format(msg))
         #print ("-"*10)
+        self.log.debug("Got from Kodi: {}".format(msg))
         sender = self.parent.controller
         try:
             if "method" not in msg:
@@ -564,6 +573,7 @@ class KodiConnection(object):
             raise Exception
         
     def send_cmd(self,method,param={},myid=None):
+        self.log.debug("Send to Kodi: {} {}".format(method,param))
         if not myid:
             self.seq+=1
             myid=self.seq
@@ -709,7 +719,7 @@ class KodiConnection(object):
             
 
 def kodi_process(self, msg):
-    self.controller.log.debug ("Processing {} {} for {}".format(msg["content_type"],msg["content"]["command"],self.name))
+    self.controller.log.debug ("Processing {} {} for {}".format(msg["content_type"],msg["content"]["command"],self.nickname))
     if not self.present:
         return None
     try:
@@ -786,11 +796,6 @@ def kodi_process(self, msg):
                                     "value": self.name}})
                         
             elif msg["content"]["command"] == "remote":
-                if 'realtime mode' in msg["content"]:
-                    rtmode = msg["content"]['realtime mode']
-                else:
-                    rtmode = False
-                    
                 rpcval={}
                 rpcmethod=None
                 if "isplaying" in msg["content"]["value"]:
@@ -853,6 +858,46 @@ def kodi_process(self, msg):
                                 else:
                                     self.conn.send_cmd(rpcmethod,rpcval)
 
+            elif msg["content"]["command"] == "player":
+                rpcval={}
+                rpcmethod=None
+                allplayers=False
+                cmd=msg["content"]["value"]["bu-cvalue"]
+                
+                self.controller.log.debug ("Player command is {}".format(cmd))
+                if cmd == "play":
+                    rpcmethod = "Player.PlayPause"
+                    allplayers=True
+                    rpcval = { "playerid": -1,"play":True}
+                elif cmd == "pause":
+                    rpcmethod = "Player.PlayPause"
+                    allplayers=True
+                    rpcval = { "playerid": -1,"play":False}
+                elif cmd == "playpause":
+                    rpcmethod = "Player.PlayPause"
+                    allplayers=True
+                    rpcval = { "playerid": -1}
+                elif cmd == "stop":
+                    rpcmethod = "Player.Stop"
+                    allplayers=True
+                elif cmd == "next":
+                    rpcmethod = "Player.GoTo"
+                    allplayers=True
+                    rpcval = { "playerid": 0,"to":"next"}
+                elif cmd == "previous":
+                    rpcmethod = "Player.GoTo"
+                    allplayers=True
+                    rpcval = { "playerid": 0,"to":"previous"}
+                
+                if rpcmethod:
+                    if self.conn:
+                        if allplayers:
+                            for pid in self.conn.activeplayer.values():
+                                rpcval["playerid"]= pid
+                                self.conn.send_cmd(rpcmethod,rpcval)
+                        else:
+                            self.conn.send_cmd(rpcmethod,rpcval)
+                
             elif msg["content"]["command"] == "playalbum":
                 if self.conn:
                     if "repeat" in msg["content"]["value"]:
