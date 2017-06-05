@@ -559,23 +559,7 @@ def lifx_process(self, msg):
                     colour = self.conn.color
 
                     try:
-                        self.controller.sending({"subject": self.controller.type,
-                                             "content_type": "event",
-                                             "content": {"event": "status",
-                                                         "target": self.controller.type +
-                                                         "." +
-                                                         self.name,
-                                                         "icon status":
-                                                         {"bu-fill": {"fill": self.cssColour()}, "bu-not-present": {
-                                                          "opacity": 0}},
-                                                         "value": {"power": {"power": current},
-                                                                   "colour": {"hue": (360.0 * colour[0]) / 65365.0,
-                                                                              "saturation":
-                                                                              (100.0 * colour[
-                                                                               1]) / 65365.0,
-                                                                              "value": (100.0 * colour[2]) / 65365.0},
-                                                                   "white": {"value": (100.0 * colour[2]) / 65365.0,
-                                                                             "temperature": colour[3]}}}})
+                        self.sendStatus()
                     except:
                         self.sending({"subject":self.controller.type,
                                     "content_type": "event",
@@ -632,14 +616,14 @@ def lighthb(self, duration=5):
     if True:
         if self.conn.hbtimer<= 0:
             self.conn.hbtimer = self.controller.lifx_config["heartbeat"]
-            if self.conn.product is None or not self.conn.infosent:
-                self.conn.get_color(callb=self.sendStatus)
+            if self.conn.vendor is None:
                 self.conn.get_hostfirmware()
                 self.conn.get_version(callb=self.sendInfo)
-                self.conn.get_color(callb=self.sendStatus)
                 self.conn.infosent = True
-            else:
-                self.conn.get_color(callb=self.sendStatus)
+            elif not self.conn.infosent:
+                self.sendInfo()
+                self.conn.infosent = True
+            self.conn.get_color(callb=self.sendStatus)
         else:
             self.conn.hbtimer -= 5
         self.controller.lifxhb[self.name] = self.controller.loop.call_later(
