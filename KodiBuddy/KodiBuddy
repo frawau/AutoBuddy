@@ -182,10 +182,18 @@ kodi_config = """
                 <default>30</default>
             </control>
         </controlgroup>
+        <controlgroup type="listmaker"  name="shutdown" label="Shutdown">
+            <control name="label" label="Label" type="text" length="16" />
+            <control name="entity" expand="device::mediaplayer::Kodi" label="Kodi Device" type="text" length="16" />
+            <control type="switch" name="method" label="Method">
+                <value label="Quit">quit</value>
+                <value label="Shutdown">shutdown</value>
+            </control>
+        </controlgroup>
     </configuration>
 </buddyui>
 """
-kodi_config_default = {"refresh": 120, "credential":{}, "bootdelay":{}}
+kodi_config_default = {"refresh": 120, "credential":{}, "shutdown":{},"bootdelay":{}}
 
 
 class KodiConnection(object):
@@ -615,7 +623,15 @@ class KodiConnection(object):
             self.connect_wait=delay #Just in case the thing is already there or has changes IP address
         else:
             self.send_clear_info()
-            self.send_cmd("System.Shutdown")
+            method="System.Shutdown"
+            sender = self.parent.controller 
+            for x in sender.kodi_config["shutdown"]:
+                if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
+                    if x["method"]=="quit":
+                        method="Application.Quit"
+                        break
+                    
+            self.send_cmd(method)
 
     def send_movie_info(self,mymovie):
         self.log.debug("Play Movie info {}".format(mymovie)) 
