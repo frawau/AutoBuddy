@@ -917,6 +917,7 @@ var BuddyDevice = Class.extend({
             } else {
                 if(buddy.functions[otype] && buddy.functions[otype][stype] ) {
                     self.cmd_panel = new buddyPanel(oname,bu_parse_xml(buddy.functions[otype][stype]).find( "buddyui" ),true);
+                    self.cmd_panel.setStateValue(deviceById[oname].status);
                     var msg = self.cmd_panel.render("command");
 
                     bootbox.dialog({

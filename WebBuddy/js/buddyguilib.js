@@ -21,9 +21,11 @@ var buddyPanel = Class.extend({
         this.def = xmldef;
         this.realtime = realtime || false;
         this.locontrols = [];
+        this.statevalue = {};
     },
     
     render: function ( what ) {
+        var self = this;
         var ctxname=this.ctxname;
         var dotabs = this.def.find(what).children().length >1;
         if ( dotabs ) {
@@ -41,68 +43,76 @@ var buddyPanel = Class.extend({
         var active = true;
         $.each(this.def.find(what), function (idx, tpart) {
             $.each($(tpart).children(),  function (idx, part) {
-                var lbl = $(part).attr("label") || $(part).attr("name");
-                var cname = $(part).attr("name").replace(/\s+/g, "_-_");
-                if ( dotabs ) {
-                    if ( active ) {
-                        active=false;
-                        msg+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+
-                            "\"  data-toggle=\"tab\">"+lbl+"</a></li>\n";
-                        tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"\">\n";
-                    } else {
-                        msg+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+
-                            "\"  data-toggle=\"tab\">"+lbl+"</a></li>\n";
-                        tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"\">\n";
+                if (self.checkDoAdd($(part))) {
+                    var lbl = $(part).attr("label") || $(part).attr("name");
+                    var cname = $(part).attr("name").replace(/\s+/g, "_-_");
+                    if ( dotabs ) {
+                        if ( active ) {
+                            active=false;
+                            msg+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+
+                                "\"  data-toggle=\"tab\">"+lbl+"</a></li>\n";
+                            tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"\">\n";
+                        } else {
+                            msg+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+
+                                "\"  data-toggle=\"tab\">"+lbl+"</a></li>\n";
+                            tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"\">\n";
+                        }
                     }
-                }
-                if ( $(part).is("controlgroup") ) {
-                    var ncg = false;
-                    if ( $(part).attr("type") == "list" ) {
-                        ncg = new listCG(ctxname,cname,$(part), realtime)
-                    } else if ( $(part).attr("type") == "grouplist" ) {
-                        ncg = new grouplistCG(ctxname,cname,$(part), realtime)
-                    } else if ( $(part).attr("type") == "choice" ) {
-                        ncg = new choiceCG(ctxname,cname,$(part), realtime)
-                    } else if ( $(part).attr("type") == "listmaker" ) {
-                        ncg = new listmakerCG(ctxname,cname,$(part), realtime)
-                    } else {
-                        console.log("Unknown controlgroup type "+$(part).attr("type"))
-                        return "";
+                    if ( $(part).is("controlgroup") ) {
+                        var ncg = false;
+                        if ( $(part).attr("type") == "list" ) {
+                            ncg = new listCG(ctxname,cname,$(part), realtime)
+                        } else if ( $(part).attr("type") == "grouplist" ) {
+                            ncg = new grouplistCG(ctxname,cname,$(part), realtime)
+                        } else if ( $(part).attr("type") == "choice" ) {
+                            ncg = new choiceCG(ctxname,cname,$(part), realtime)
+                        } else if ( $(part).attr("type") == "listmaker" ) {
+                            ncg = new listmakerCG(ctxname,cname,$(part), realtime)
+                        } else {
+                            console.log("Unknown controlgroup type "+$(part).attr("type"))
+                            return "";
+                        }
+                        if ( ncg ) {
+                            if (self.statevalue) {
+                                ncg.setStateValue(self.statevalue)
+                            }
+                            tabmsg+=ncg.render();
+                            locontrols.push(ncg)
+                        }
+                    } else if ( $(part).is("control") ) {
+                        var nco = false;
+                        if ( $(part).attr("type") == "slider" ) {
+                            nco = new sliderControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if  ( $(part).attr("type") == "knob" ) {
+                            nco = new knobControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if   ( $(part).attr("type") == "spinner" ) {
+                            nco = new spinnerControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if   ( $(part).attr("type") == "switch" ) {
+                            nco = new switchControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if   ( $(part).attr("type") == "time" ) {
+                            nco = new switchControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if   ( $(part).attr("type") == "time range" ) {
+                            nco = new switchControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else if   ( $(part).attr("type") == "text" ) {
+                            nco = new textControl(ctxname,cname,$(part),realtime)
+                            tabmsg+=nco.render();
+                        } else {
+                            console.log("Unknown control type " + $(part).attr("type") )
+                        }
+                        if ( nco ) {
+                            if (self.statevalue) {
+                                nco.setStateValue(self.statevalue)
+                            }
+                            locontrols.push(nco)
+                        }
+                            
                     }
-                    if ( ncg ) {
-                        tabmsg+=ncg.render();
-                        locontrols.push(ncg)
-                    }
-                } else if ( $(part).is("control") ) {
-                    var nco = false;
-                    if ( $(part).attr("type") == "slider" ) {
-                        nco = new sliderControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if  ( $(part).attr("type") == "knob" ) {
-                        nco = new knobControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if   ( $(part).attr("type") == "spinner" ) {
-                        nco = new spinnerControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if   ( $(part).attr("type") == "switch" ) {
-                        nco = new switchControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if   ( $(part).attr("type") == "time" ) {
-                        nco = new switchControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if   ( $(part).attr("type") == "time range" ) {
-                        nco = new switchControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else if   ( $(part).attr("type") == "text" ) {
-                        nco = new textControl(ctxname,cname,$(part),realtime)
-                        tabmsg+=nco.render();
-                    } else {
-                        console.log("Unknown control type " + $(part).attr("type") )
-                    }
-                    if ( nco ) {
-                        locontrols.push(nco)
-                    }
-                        
                 }
             })
         })
@@ -147,6 +157,44 @@ var buddyPanel = Class.extend({
         $.each(this.locontrols, function (idx, actrl) {
             actrl.setValue(vals);
         })
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -170,111 +218,114 @@ var listCG = Class.extend({
         this.widget = undefined;
         this.locontrols = [];
         this.paramlist = [];
+        this.statevalue = {};
     },
     
     render: function (classes) {
         var tabmsg = "";
         var self = this;
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
+        if (this.checkDoAdd(this.part)) {
         
-        if (this.part.attr("widget") && this.part.attr("widget") in buwidgetRegistry) {
-            this.widget_name = this.part.attr("widget")
-            tabmsg += "<div id=\""+this.jsid+"\"";
-            tabmsg += " class=\"bu-widget bu-widget-"+this.part.attr("widget")
-            if ( classes != undefined ) { 
-                tabmsg += classes;
-            }
-            tabmsg += "\" paramlist=\"";
-            var sep="";
-            $.each($(this.part).children(),  function (idx, part) {
-                if ( $(part).attr("name") !== undefined ) {
-                    tabmsg +=sep+$(part).attr("name");
-                    self.paramlist.push($(part).attr("name"));
-                    sep=",";
+            if (this.part.attr("widget") && this.part.attr("widget") in buwidgetRegistry) {
+                this.widget_name = this.part.attr("widget")
+                tabmsg += "<div id=\""+this.jsid+"\"";
+                tabmsg += " class=\"bu-widget bu-widget-"+this.part.attr("widget")
+                if ( classes != undefined ) { 
+                    tabmsg += classes;
                 }
-            })
-            tabmsg += "\" />";
-        } else {
-            var ctxname = this.newctxname;
-            var cname = this.pname;
-            var realtime = this.realtime;
-            var locontrols = this.locontrols;
-            var ctxname = this.ctxname;
-            var tabstr=undefined;
-            var active=true;
-            $.each(this.part.children(), function (jdx, actrl) {
-                if ($(actrl).is("[newtab=\"true\"]")) {
-                    if ( active ) {
-                        active=false;
-                        tabstr= tabmsg+"<ul class=\"nav nav-tabs\">";
-                        tabmsg = "<div id=\""+ctxname+"-tab-content\" class=\"tab-content\">";
-                        tabstr+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+"-"+
-                            $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
-                        tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"-"+
-                            $(actrl).attr("name")+"-tab-pane\" >\n";
-                    } else {
-                        tabstr+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+"-"+
-                            $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
-                        tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"-"+
-                            $(actrl).attr("name")+"-tab-pane\" >\n";
+                tabmsg += "\" paramlist=\"";
+                var sep="";
+                $.each($(this.part).children(),  function (idx, part) {
+                    if ( $(part).attr("name") !== undefined ) {
+                        tabmsg +=sep+$(part).attr("name");
+                        self.paramlist.push($(part).attr("name"));
+                        sep=",";
                     }
+                })
+                tabmsg += "\" />";
+            } else {
+                var ctxname = this.newctxname;
+                var cname = this.pname;
+                var realtime = this.realtime;
+                var locontrols = this.locontrols;
+                var ctxname = this.ctxname;
+                var tabstr=undefined;
+                var active=true;
+                $.each(this.part.children(), function (jdx, actrl) {
+                    if ($(actrl).is("[newtab=\"true\"]")) {
+                        if ( active ) {
+                            active=false;
+                            tabstr= tabmsg+"<ul class=\"nav nav-tabs\">";
+                            tabmsg = "<div id=\""+ctxname+"-tab-content\" class=\"tab-content\">";
+                            tabstr+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+"-"+
+                                $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
+                            tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"-"+
+                                $(actrl).attr("name")+"-tab-pane\" >\n";
+                        } else {
+                            tabstr+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+"-"+
+                                $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
+                            tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"-"+
+                                $(actrl).attr("name")+"-tab-pane\" >\n";
+                        }
+                    }
+                    if ( $(actrl).is("controlgroup") ) {
+                        var ncg = false;
+                        if ( $(actrl).attr("type") == "list" ) {
+                            ncg = new listCG(ctxname,cname,$(actrl), realtime)
+                        } else if ( $(actrl).attr("type") == "grouplist" ) {
+                            ncg = new grouplistCG(ctxname,cname,$(actrl), realtime)
+                        } else if ( $(actrl).attr("type") == "choice" ) {
+                            ncg = new choiceCG(ctxname,cname,$(actrl), realtime)
+                        } else if ( $(actrl).attr("type") == "listmaker" ) {
+                            ncg = new listmakerCG(ctxname,cname,$(actrl), realtime)
+                        }
+                        if ( ncg ) {
+                            if (self.statevalue) {
+                                ncg.setStateValue(self.statevalue)
+                            }
+                            tabmsg+=ncg.render(classes);
+                            locontrols.push(ncg)
+                        }
+                    } else if ( $(actrl).is("control") ) {
+                        var nco = false;
+                        if ( $(actrl).attr("type") == "slider" ) {
+                            nco = new sliderControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if  ( $(actrl).attr("type") == "knob" ) {
+                            nco = new knobControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "spinner" ) {
+                            nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "switch" ) {
+                            nco = new switchControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "time" ) {
+                            nco = new timeControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "time range" ) {
+                            nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "date" ) {
+                            nco = new dateControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else if   ( $(actrl).attr("type") == "text" ) {
+                            nco = new textControl(ctxname,cname,$(actrl),realtime)
+                            tabmsg+=nco.render(classes);
+                        } else {
+                            console.log("Unknown control type " + $(actrl).attr("type") )
+                        }
+                        if ( nco ) {
+                            if (self.statevalue) {
+                                nco.setStateValue(self.statevalue)
+                            }
+                            locontrols.push(nco)
+                        }
+                    }
+                })
+                if ( !active ) {
+                    tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
                 }
-                if ( $(actrl).is("controlgroup") ) {
-                    var ncg = false;
-                    if ( $(actrl).attr("type") == "list" ) {
-                        ncg = new listCG(ctxname,cname,$(actrl), realtime)
-                    } else if ( $(actrl).attr("type") == "grouplist" ) {
-                        ncg = new grouplistCG(ctxname,cname,$(actrl), realtime)
-                    } else if ( $(actrl).attr("type") == "choice" ) {
-                        ncg = new choiceCG(ctxname,cname,$(actrl), realtime)
-                    } else if ( $(actrl).attr("type") == "listmaker" ) {
-                        ncg = new listmakerCG(ctxname,cname,$(actrl), realtime)
-                    }
-                    if ( ncg ) {
-                        tabmsg+=ncg.render(classes);
-                        locontrols.push(ncg)
-                    }
-                } else if ( $(actrl).is("control") ) {
-                    var nco = false;
-                    if ( $(actrl).attr("type") == "slider" ) {
-                        nco = new sliderControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if  ( $(actrl).attr("type") == "knob" ) {
-                        nco = new knobControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "spinner" ) {
-                        nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "switch" ) {
-                        nco = new switchControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "time" ) {
-                        nco = new timeControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "time range" ) {
-                        nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "date" ) {
-                        nco = new dateControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else if   ( $(actrl).attr("type") == "text" ) {
-                        nco = new textControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
-                    } else {
-                        console.log("Unknown control type " + $(actrl).attr("type") )
-                    }
-                    if ( nco ) {
-                        locontrols.push(nco)
-                    }
-                }
-            })
-            if ( !active ) {
-                tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
             }
         }
         return tabmsg;
@@ -371,6 +422,44 @@ var listCG = Class.extend({
         $.each(this.locontrols, function (idx, actrl) {
             actrl.resetMe();
         })
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -391,21 +480,22 @@ var grouplistCG = Class.extend({
             this.newctxname += "__"+this.pname.replace(/\s+/g, "_-_");
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_")+"__groupdiv";
+        this.statevalue = {};
     },
     
     render: function (classes) {
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
-        if ( this.realtime ) {
-            tabmsg = "<div id=\""+this.jsid+"\" class=\"bu-grouplist\">";
-            tabmsg +=this.list.render(classes)
-            tabmsg += "<div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bapply\" class=\"btn btn-primary\" type=\"button\" value=\""+(this.part.attr("label")||"Apply")+"\"></div></div>";
-        } else {
-            tabmsg=this.list.render(classes)
+        var tabmsg = "";
+        if ( this.checkDoAdd(this.part)) {
+            if (this.statevalue) {
+                this.list.setStateValue(this.statevalue);
+            }
+            if ( this.realtime ) {
+                tabmsg = "<div id=\""+this.jsid+"\" class=\"bu-grouplist\">";
+                tabmsg +=this.list.render(classes)
+                tabmsg += "<div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bapply\" class=\"btn btn-primary\" type=\"button\" value=\""+(this.part.attr("label")||"Apply")+"\"></div></div>";
+            } else {
+                tabmsg=this.list.render(classes)
+            }
         }
         return tabmsg;
     },
@@ -435,6 +525,44 @@ var grouplistCG = Class.extend({
     
     resetMe: function() {
         this.list.resetMe()
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -472,6 +600,7 @@ var listmakerCG = Class.extend({
             this.dfltname = undefined;
         }
         this.dnidx = 0;
+        this.statevalue = {};
     },
     
     genname: function () {
@@ -491,118 +620,120 @@ var listmakerCG = Class.extend({
         var tabmsg = "";
         var self = this;
         
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
+        if (this.checkDoAdd(this.part)) {
         
-        var ctxname = this.newctxname;
-        var cname = this.pname;
-        var realtime = this.realtime;
-        var locontrols = this.locontrols;
-        tabmsg += "<div id=\""+this.jsid+"_bulmdiv\"";
-        if ( classes != undefined ) { 
-            tabmsg += " class=\""+classes+"\" ";
-        }
-        tabmsg += ">"
-        if ( this.part.attr("label") ) {
-            tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"__selector\">"+this.part.attr("label")+"</label>"
-        }
-        tabmsg += "<select class=\"selectpicker\" data-width=\"fit\" id=\""+this.jsid+"__selector\" >";
-        tabmsg += "<option value=\"bulmknew\" >Add New</option>";
-        tabmsg += "</select></div>";
-        tabmsg += "<div id=\""+this.jsid+"_budiv\"";
-        if ( classes != undefined ) { 
-            tabmsg += " class=\""+classes+"\" ";
-        }
-        tabmsg += ">"
-        var tabstr=undefined;
-        var active=true;
-        $.each(this.part.children(), function (jdx, actrl) {
-            if ($(actrl).is("[newtab=\"true\"]")) {
-                if ( active) {
-                    active=false;
-                    tabstr= tabmsg+"<ul class=\"nav nav-tabs\">";
-                    tabmsg = "<div id=\""+ctxname+"-tab-content\" class=\"tab-content\">";
-                    tabstr+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+"-"+
-                        $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
-                    tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"-"+
-                        $(actrl).attr("name")+"-tab-pane\" >\n";
-                } else {
-                    tabstr+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+"-"+
-                        $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
-                    tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"-"+
-                        $(actrl).attr("name")+"-tab-pane\" >\n";
-                }
-                self.lotab.push("#"+ctxname+"-"+cname+"-"+$(actrl).attr("name")+"-tab-pane");
+            var ctxname = this.newctxname;
+            var cname = this.pname;
+            var realtime = this.realtime;
+            var locontrols = this.locontrols;
+            tabmsg += "<div id=\""+this.jsid+"_bulmdiv\"";
+            if ( classes != undefined ) { 
+                tabmsg += " class=\""+classes+"\" ";
             }
-            if ( $(actrl).is("controlgroup") ) {
-                var ncg = false; 
-                if ( $(actrl).attr("type") == "list" ) {
-                    ncg = new listCG(ctxname,cname,$(actrl), realtime)
-                    } else if ( $(actrl).attr("type") == "grouplist" ) {
-                        ncg = new grouplistCG(ctxname,cname,$(actrl), realtime)
-                } else if ( $(actrl).attr("type") == "choice" ) {
-                    ncg = new choiceCG(ctxname,cname,$(actrl), realtime)
-                } else if ( $(actrl).attr("type") == "listmaker" ) {
-                    ncg = new listmakerCG(ctxname,cname,$(actrl), realtime)
+            tabmsg += ">"
+            if ( this.part.attr("label") ) {
+                tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"__selector\">"+this.part.attr("label")+"</label>"
+            }
+            tabmsg += "<select class=\"selectpicker\" data-width=\"fit\" id=\""+this.jsid+"__selector\" >";
+            tabmsg += "<option value=\"bulmknew\" >Add New</option>";
+            tabmsg += "</select></div>";
+            tabmsg += "<div id=\""+this.jsid+"_budiv\"";
+            if ( classes != undefined ) { 
+                tabmsg += " class=\""+classes+"\" ";
+            }
+            tabmsg += ">"
+            var tabstr=undefined;
+            var active=true;
+            $.each(this.part.children(), function (jdx, actrl) {
+                if ($(actrl).is("[newtab=\"true\"]")) {
+                    if ( active) {
+                        active=false;
+                        tabstr= tabmsg+"<ul class=\"nav nav-tabs\">";
+                        tabmsg = "<div id=\""+ctxname+"-tab-content\" class=\"tab-content\">";
+                        tabstr+="<li role=\"presentation\" class=\"bu-commandtab active\"><a href=\"#"+ctxname+"-"+cname+"-"+
+                            $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
+                        tabmsg+="<div class=\"tab-pane bu-commandpanel active\" id=\""+ctxname+"-"+cname+"-"+
+                            $(actrl).attr("name")+"-tab-pane\" >\n";
+                    } else {
+                        tabstr+="<li role=\"presentation\" class=\"bu-commandtab\"><a href=\"#"+ctxname+"-"+cname+"-"+
+                            $(actrl).attr("name")+"-tab-pane\"  data-toggle=\"tab\">"+$(actrl).attr("label")||$(actrl).attr("name")+"</a></li>\n";
+                        tabmsg+="</div><div class=\"tab-pane bu-commandpanel\" id=\""+ctxname+"-"+cname+"-"+
+                            $(actrl).attr("name")+"-tab-pane\" >\n";
+                    }
+                    self.lotab.push("#"+ctxname+"-"+cname+"-"+$(actrl).attr("name")+"-tab-pane");
                 }
-                if ( ncg ) {
-                    tabmsg+=ncg.render(classes);
-                    locontrols.push(ncg)
-                }
-            } else if ( $(actrl).is("control") ) {
-                var nco = false;
-                if ( $(actrl).attr("type") == "slider" ) {
-                    nco = new sliderControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if  ( $(actrl).attr("type") == "knob" ) {
-                    nco = new knobControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "spinner" ) {
-                    nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "switch" ) {
-                    nco = new switchControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "time" ) {
-                    nco = new timeControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "time range" ) {
-                    nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "date" ) {
-                    nco = new dateControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else if   ( $(actrl).attr("type") == "text" ) {
-                    nco = new textControl(ctxname,cname,$(actrl),realtime)
-                    tabmsg+=nco.render(classes);
-                } else {
-                    console.log("Unknown control type " + $(actrl).attr("type") )
-                }
-                if ( nco ) {
-                    locontrols.push(nco);
-                    if ( self.key === undefined ) {
-                        self.key = nco.part.attr("name");
+                if ( $(actrl).is("controlgroup") ) {
+                    var ncg = false; 
+                    if ( $(actrl).attr("type") == "list" ) {
+                        ncg = new listCG(ctxname,cname,$(actrl), realtime)
+                        } else if ( $(actrl).attr("type") == "grouplist" ) {
+                            ncg = new grouplistCG(ctxname,cname,$(actrl), realtime)
+                    } else if ( $(actrl).attr("type") == "choice" ) {
+                        ncg = new choiceCG(ctxname,cname,$(actrl), realtime)
+                    } else if ( $(actrl).attr("type") == "listmaker" ) {
+                        ncg = new listmakerCG(ctxname,cname,$(actrl), realtime)
+                    }
+                    if ( ncg ) {
+                        if (this.statevalue) {
+                            ncg.setStateValue(self.statevalue)
+                        }
+                        tabmsg+=ncg.render(classes);
+                        locontrols.push(ncg)
+                    }
+                } else if ( $(actrl).is("control") ) {
+                    var nco = false;
+                    if ( $(actrl).attr("type") == "slider" ) {
+                        nco = new sliderControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if  ( $(actrl).attr("type") == "knob" ) {
+                        nco = new knobControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "spinner" ) {
+                        nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "switch" ) {
+                        nco = new switchControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "time" ) {
+                        nco = new timeControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "time range" ) {
+                        nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "date" ) {
+                        nco = new dateControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else if   ( $(actrl).attr("type") == "text" ) {
+                        nco = new textControl(ctxname,cname,$(actrl),realtime)
+                        tabmsg+=nco.render(classes);
+                    } else {
+                        console.log("Unknown control type " + $(actrl).attr("type") )
+                    }
+                    if ( nco ) {
+                        if (this.statevalue) {
+                            ncg.setStateValue(self.statevalue)
+                        }
+                        locontrols.push(nco);
+                        if ( self.key === undefined ) {
+                            self.key = nco.part.attr("name");
+                        }
                     }
                 }
+            })
+            if ( !active ) {
+                tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
             }
-        })
-        if ( !active ) {
-            tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
+            var addlbl="Commit";
+            if (this.part.attr("alabel")) {
+                addlbl = this.part.attr("alabel");
+            }
+            var dellbl="Delete";
+            if (this.part.attr("dlabel")) {
+                dellbl = this.part.attr("dlabel");
+            }
+            tabmsg += "</div><div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__badd\" class=\"btn btn-primary\" type=\"button\" value=\""+addlbl+"\">";
+            tabmsg += "<input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bdel\"class=\"btn btn-danger\" type=\"button\" value=\""+dellbl+"\"></div> ";
         }
-        var addlbl="Commit";
-        if (this.part.attr("alabel")) {
-            addlbl = this.part.attr("alabel");
-        }
-        var dellbl="Delete";
-        if (this.part.attr("dlabel")) {
-            dellbl = this.part.attr("dlabel");
-        }
-        tabmsg += "</div><div><input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__badd\" class=\"btn btn-primary\" type=\"button\" value=\""+addlbl+"\">";
-        tabmsg += "<input style=\"margin-left:20px; margin-right: 20px; margin-top: 30px;\" id=\""+this.jsid+"__bdel\"class=\"btn btn-danger\" type=\"button\" value=\""+dellbl+"\"></div> ";
         return tabmsg;
     },
             
@@ -793,6 +924,44 @@ var listmakerCG = Class.extend({
             $("#"+self.jsid+"__selector").selectpicker('refresh');
         }
  
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 }) 
 var choiceCG = Class.extend({
@@ -820,43 +989,40 @@ var choiceCG = Class.extend({
         this.afterme=undefined;
         this.subchoices=[];
         this.aboveclasses = "";
+        this.statevalue = {};
     },
     
     render: function (classes) {
         
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
         var tabmsg = "";
-        var self = this;
-        var locontrols = this.locontrols;
-        tabmsg += "<div id=\""+this.jsid+"_budiv\"";
-        if ( classes != undefined ) { 
-            tabmsg += " class=\""+classes+"\" ";
-            this.aboveclasses = classes;
-        }
-        tabmsg += ">"
-        if ( this.part.attr("label") ) {
-            tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"\">"+this.part.attr("label")+"</label>";
-        }
-        tabmsg += "<select class=\"selectpicker\" data-width=\"fit\" id=\""+this.jsid+"\" >";
-        $.each(this.part.children(), function (jdx, actrl) {
-            if ( $(actrl).is("item") ) {
-                tabmsg += "<option value=\""+$(actrl).attr("value")+"\" >";
-                tabmsg += $(actrl).attr("label") || $(actrl).attr("value")+"</option>";
-                self.itemlist[$(actrl).attr("value")] = $(actrl).children();
-            } else if ( $(actrl).is("itemgroup") ) {
-                tabmsg += "<optgroup label=\""+$(actrl).attr("value")+"\" />";
-            } else if ( $(actrl).is("control") ) {
-                console.log("Only \"item\" and \"itemgroup\" elements can appear in a \"choice\", not: "+actrl.nodeName);
-            } else if ( $(actrl).is("controlgroup") ) {
-                console.log("Only \"item\" and \"itemgroup\" elements can appear in a \"choice\", not: "+actrl.nodeName);
+        if (this.checkDoAdd(this.part)) {
+            var self = this;
+            var locontrols = this.locontrols;
+            tabmsg += "<div id=\""+this.jsid+"_budiv\"";
+            if ( classes != undefined ) { 
+                tabmsg += " class=\""+classes+"\" ";
+                this.aboveclasses = classes;
             }
-        })
-        tabmsg += "</select></div>";
+            tabmsg += ">"
+            if ( this.part.attr("label") ) {
+                tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"\">"+this.part.attr("label")+"</label>";
+            }
+            tabmsg += "<select class=\"selectpicker\" data-width=\"fit\" id=\""+this.jsid+"\" >";
+            $.each(this.part.children(), function (jdx, actrl) {
+                if ( $(actrl).is("item") ) {
+                    tabmsg += "<option value=\""+$(actrl).attr("value")+"\" >";
+                    tabmsg += $(actrl).attr("label") || $(actrl).attr("value")+"</option>";
+                    self.itemlist[$(actrl).attr("value")] = $(actrl).children();
+                } else if ( $(actrl).is("itemgroup") ) {
+                    tabmsg += "<optgroup label=\""+$(actrl).attr("value")+"\" />";
+                } else if ( $(actrl).is("control") ) {
+                    console.log("Only \"item\" and \"itemgroup\" elements can appear in a \"choice\", not: "+actrl.nodeName);
+                } else if ( $(actrl).is("controlgroup") ) {
+                    console.log("Only \"item\" and \"itemgroup\" elements can appear in a \"choice\", not: "+actrl.nodeName);
+                }
+            })
+            tabmsg += "</select></div>";
+        }
         return tabmsg;
     },
             
@@ -1003,6 +1169,44 @@ var choiceCG = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
   
@@ -1023,33 +1227,30 @@ var sliderControl = Class.extend({
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
         this.widget = undefined;
+        this.statevalue = {};
     },
     
     render: function (classes) {
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
         var tabmsg = "";
-        tabmsg += "<div id=\""+this.jsid+"_bucont\"";
-        if (classes != undefined ) {
-            tabmsg += " class=\""+classes+"\"";
-        }
-        tabmsg += ">";
-        tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"\">"+$(this.part).attr("label")+"</label>"
-        tabmsg += "<input id=\""+this.jsid+ "\" type=\"text\" ";
-        tabmsg += "data-slider-min=\""+(this.part.find("start").text() || "0") +"\" data-slider-max=\""+this.part.find("end").text() || "100";
-        tabmsg += "\" data-slider-step=\""+(this.part.find("increment").text() || "1");
-        var dval = this.part.find("default").text();
+        if (this.checkDoAdd(this.part) ) { 
+            tabmsg += "<div id=\""+this.jsid+"_bucont\"";
+            if (classes != undefined ) {
+                tabmsg += " class=\""+classes+"\"";
+            }
+            tabmsg += ">";
+            tabmsg += "<label class=\"bu-label\"  for=\""+this.jsid+"\">"+$(this.part).attr("label")+"</label>"
+            tabmsg += "<input id=\""+this.jsid+ "\" type=\"text\" ";
+            tabmsg += "data-slider-min=\""+(this.part.find("start").text() || "0") +"\" data-slider-max=\""+this.part.find("end").text() || "100";
+            tabmsg += "\" data-slider-step=\""+(this.part.find("increment").text() || "1");
+            var dval = this.part.find("default").text();
 
-        if ( dval != undefined ) {
-            tabmsg += "\" data-slider-value=\""+dval+"\" ";
-        } else {
-                tabmsg += "\" data-slider-value=\""+(this.part.find("start").text() || "0")+"\" ";
+            if ( dval != undefined ) {
+                tabmsg += "\" data-slider-value=\""+dval+"\" ";
+            } else {
+                    tabmsg += "\" data-slider-value=\""+(this.part.find("start").text() || "0")+"\" ";
+            }
+            tabmsg += " class=\"bu-slider-for-"+this.jsid+"\" /></div>"
         }
-        tabmsg += " class=\"bu-slider-for-"+this.jsid+"\" /></div>"
         return tabmsg;
     },   
     
@@ -1082,6 +1283,44 @@ var sliderControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -1100,47 +1339,44 @@ var switchControl = Class.extend({
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
+        this.statevalue = {};
     },
     
     render: function (classes) { 
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
         var tabmsg = "";
-        tabmsg += "<div  id=\""+this.jsid+"_bucont\"";
-        if (classes != undefined ) {
-            tabmsg += " class=\""+classes+"\"";
-        }
-        tabmsg += ">";
-        tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>"
-        tabmsg +="<input type=\"checkbox\" id=\""+this.jsid+"\" ";
-        var self = this;
-        var dval = this.part.find("default").text();
-        var wascheck = false;
-        $.each(this.part.children().filter("value"), function (idx, aval) {
-            var  val=$(aval);
-            if (idx == 0) {
-                tabmsg+=" data-on-text=\""+val.attr("label")+"\" "
-                tabmsg+=" bu-on-cmdvalue=\""+val.text()+"\" ";
-                if (dval == undefined && !wascheck) {
-                    tabmsg +="checked ";
-                    wascheck = true;
-                } else {
-                    if ( dval == val.text() ) {
+        if ( this.checkDoAdd(this.part) ) {
+            tabmsg += "<div  id=\""+this.jsid+"_bucont\"";
+            if (classes != undefined ) {
+                tabmsg += " class=\""+classes+"\"";
+            }
+            tabmsg += ">";
+            tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>"
+            tabmsg +="<input type=\"checkbox\" id=\""+this.jsid+"\" ";
+            var self = this;
+            var dval = this.part.find("default").text();
+            var wascheck = false;
+            $.each(this.part.children().filter("value"), function (idx, aval) {
+                var  val=$(aval);
+                if (idx == 0) {
+                    tabmsg+=" data-on-text=\""+val.attr("label")+"\" "
+                    tabmsg+=" bu-on-cmdvalue=\""+val.text()+"\" ";
+                    if (dval == undefined && !wascheck) {
                         tabmsg +="checked ";
                         wascheck = true;
+                    } else {
+                        if ( dval == val.text() ) {
+                            tabmsg +="checked ";
+                            wascheck = true;
+                        }
                     }
+                } else {
+                    tabmsg+=" data-off-text=\""+val.attr("label")+"\" "
+                    tabmsg+=" bu-off-cmdvalue=\""+val.text()+"\" "
                 }
-            } else {
-                tabmsg+=" data-off-text=\""+val.attr("label")+"\" "
-                tabmsg+=" bu-off-cmdvalue=\""+val.text()+"\" "
-            }
-        }) 
-        
-        tabmsg += " class=\"bu-switch-for-"+this.jsid+"\"  /></div>";
+            }) 
+            
+            tabmsg += " class=\"bu-switch-for-"+this.jsid+"\"  /></div>";
+        }
         return tabmsg;
             
     },   
@@ -1167,6 +1403,44 @@ var switchControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })    
     
@@ -1184,26 +1458,23 @@ var spinnerControl = Class.extend({
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
+        this.statevalue = {};
     },
     
-    render: function (classes) {  
-        if (this.realtime && (this.part.attr("rteffect") === undefined || this.part.attr("rteffect")==0)) {
-            return "";
-        };
-        if (! this.realtime && (this.part.attr("rteffect") && this.part.attr("rteffect")==-1)) {
-            return "";
-        };
+    render: function (classes) { 
         var tabmsg = "";
-        tabmsg += "<span  id=\""+this.jsid+"_bucont\" ";
-        if (classes != undefined ) {
-            tabmsg += " class=\""+classes+"\"";
+        if ( this.checkDoAdd(this.part) ) {
+            tabmsg += "<span  id=\""+this.jsid+"_bucont\" ";
+            if (classes != undefined ) {
+                tabmsg += " class=\""+classes+"\"";
+            }
+            tabmsg += ">";
+            tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>";
+            tabmsg +="<input type=\"text\"  id=\""+this.jsid+"\" class=\"form-control text-center\"";
+            var spvalue = this.part.find("default").text() || this.part.find("start").text();
+            tabmsg += "\" value=\""+(spvalue || "0")+"\" ";
+            tabmsg += " class=\"bu-spinner bu-spinner-for-"+this.jsid+"\"  /></span>";
         }
-        tabmsg += ">";
-        tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>";
-        tabmsg +="<input type=\"text\"  id=\""+this.jsid+"\" class=\"form-control text-center\"";
-        var spvalue = this.part.find("default").text() || this.part.find("start").text();
-        tabmsg += "\" value=\""+(spvalue || "0")+"\" ";
-        tabmsg += " class=\"bu-spinner bu-spinner-for-"+this.jsid+"\"  /></span>";
 
         return tabmsg;
     },   
@@ -1243,6 +1514,44 @@ var spinnerControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })    
 
@@ -1261,11 +1570,12 @@ var textControl = Class.extend({
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
+        this.statevalue = {};
     },
     
     render: function (classes) {
         var tabmsg = "";
-        if ( ! this.realtime ) {
+        if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<span  id=\""+this.jsid+"_bucont\"";
             if (classes != undefined ) {
                 tabmsg += " class=\""+classes+"\"";
@@ -1284,11 +1594,8 @@ var textControl = Class.extend({
                 tabmsg +=" maxlength=\""+this.part.attr("length")+"\""
             }
             tabmsg += " /></span>";
-
-            return tabmsg;
-        } else {
-            return "";
         }
+        return tabmsg;
     },   
     
     activate: function( size ) {
@@ -1320,6 +1627,44 @@ var textControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -1338,11 +1683,12 @@ var dateControl = Class.extend({
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
+        this.statevalue = {};
     },
     
     render: function (classes) {
         var tabmsg = "";
-        if ( ! this.realtime ) {
+        if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             if ( classes != undefined ) { 
                 tabmsg += " class=\""+classes;
@@ -1354,10 +1700,8 @@ var dateControl = Class.extend({
 
             tabmsg += "<div id=\""+this.jsid+"\" ></div>";
             tabmsg += "</div>";
-            return tabmsg;
-        } else {
-            return "";
         }
+        return tabmsg;
     },   
     
     activate: function( size ) {
@@ -1388,6 +1732,44 @@ var dateControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -1407,11 +1789,12 @@ var timeControl = Class.extend({
         }
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
+        this.statevalue = {};
     },
     
     render: function (classes) {
         var tabmsg = "";
-        if ( ! this.realtime ) {
+        if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             tabmsg +=" class=\"input-group ";
             if ( classes != undefined ) { 
@@ -1425,10 +1808,8 @@ var timeControl = Class.extend({
             tabmsg += "<input id=\""+this.jsid+"\" type=\"text\" class=\"form-control input-small\">"
             tabmsg += "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-time\"></i></span>"
             tabmsg += "</span>";
-            return tabmsg;
-        } else {
-            return "";
         }
+        return tabmsg;
     },   
     
     activate: function( size ) {
@@ -1458,6 +1839,44 @@ var timeControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
@@ -1476,11 +1895,12 @@ var timerangeControl = Class.extend({
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_");
         this.realtime = realtime || false;
         this.callback = undefined;
+        this.statevalue = {};
     },
     
     render: function (classes) {
         var tabmsg = "";
-        if ( ! this.realtime ) {
+        if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             tabmsg +=" class=\"input-group ";
             if ( classes != undefined ) { 
@@ -1496,10 +1916,8 @@ var timerangeControl = Class.extend({
             tabmsg += "<span class=\"input-group-addon\"> and </span><input id=\""+this.jsid+"-after\" type=\"text\" class=\"form-control input-small\">"
             tabmsg += "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-time\"></i></span>"
             tabmsg += "</span>";
-            return tabmsg;
-        } else {
-            return "";
         }
+        return tabmsg;
     },   
     
     activate: function( size ) {
@@ -1564,6 +1982,44 @@ var timerangeControl = Class.extend({
     },
     
     resetMe: function() {
+    },
+    
+    setStateValue: function(val) {
+        this.statevalue = val;
+    },
+    
+    checkDoAdd: function(part) {
+        if (! this.realtime) {
+            if (part.attr("rteffect") == undefined) {
+                return true;
+            } else if (part.attr("rteffect") >= 0 ) {
+                return true;
+            }
+            return false;
+        }
+        if (part.attr("rteffect") == undefined) {
+                return false;
+        } else if (part.attr("rteffect") == 0 ) {
+                return false;
+        }
+        if ( this.statevalue == {} ) {
+            return true;
+        }
+        if (part.attr("onlyif") == undefined) {
+            return true;
+        }
+        var keys = part.attr("onlyif").split("::");
+        if (keys.length == 0) {
+            return true;
+        }
+        var cvalue=this.statevalue
+        for (i=0;i<keys.length-1;i++) {
+            cvalue=cvalue[keys[i]];
+        }
+        if (cvalue == keys[keys.length-1]) {
+            return true;
+        }
+        return false;
     }
 })
 
