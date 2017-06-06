@@ -429,7 +429,7 @@ class VoiceBridge(bl.BuddyBridge):
             self.voice_device = sess.query(
                 bl.voice).filter_by(
                     name=self.type +
-                    "_" +
+                    "-" +
                     self.subtype).one(
             )
             self.voice_device.controller = self
@@ -439,7 +439,7 @@ class VoiceBridge(bl.BuddyBridge):
                                       "target": self.type +
                                       "." +
                                       self.type +
-                                      "_" +
+                                      "-" +
                                       self.subtype,
                                       "value": "online",
                                       "icon status": {"bu-not-present": {"opacity": 0}}}})
@@ -452,7 +452,7 @@ class VoiceBridge(bl.BuddyBridge):
                                       "target": self.type,
                                           # Here we need the type
                                       #"token": self.target,
-                                      "value": {"name": self.type + "_" + self.subtype, "nickname": self.subtype, "subtype": self.subtype}}})
+                                      "value": {"name": self.type + "-" + self.subtype, "nickname": self.subtype, "subtype": self.subtype}}})
         finally:
             sess.close()
 
