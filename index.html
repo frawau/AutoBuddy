@@ -131,7 +131,26 @@
           </p>
           <img src="images/webbuddy-action-rule.jpg" />
           <p>WebBuddy uses BuddyGuiLib to render all the command and configuration described in XML by each modules on
-          the bus.</p>
+          the bus.</p> 
+          <h2>KodiBuddy</h2>
+          <p>KodiBuddy is a bridge allowing AutoBuddy to interact with <a href="https://kodi.tv/">Kodi</a> instances. </p>
+          <p>It currently offers the following functions
+          <dl>
+          <dt>Remote control</dt><dd>A simple remote control available only as a device command.</dd>
+          <dt>Player Commands</dt><dd>A few, simple, player commands: play, pause, play/pause toggle, stop, next and, previous. Only available
+          defining commands (<span style="font-style: italic;"><span style="font-style: italic;">e.g.</span></span> in ActionBuddy). </dd>
+          <dt>Play Album</dt><dd>Play a random or a specific album. The album title can be specified. One can use "%" and "_" to represent "any string" and "any character respectively. The offset is to specify which one to select when more than 1 album meet the given title.</dd>
+          <dt>Play Music</dt><dd>Plays a set number of albums or songs. One can specify a music genre or more. (You can use "_" to supply multi-words genres)</dd>
+          <dt>Play Song</dt><dd>Play a random or a specific song. The song title can be specified. One can use "%" and "_" to represent "any string" and "any character respectively. The offset is to specify which one to select when more than 1 song meet the given title.</dd>
+          <dt>Play Music Video</dt><dd>Play a random or a specific music video. The music video title can be specified. One can use "%" and "_" to represent "any string" and "any character respectively. The offset is to specify which one to select when more than 1 music video meet the given title.</dd>
+          <dt>Play Movie</dt><dd>Play a random or a specific movie. The movie title can be specified. One can use "%" and "_" to represent "any string" and "any character respectively. The offset is to specify which one to select when more than 1 movie meet the given title.</dd>
+          <dt>Power</dt><dd>Turning the Kodi device power "On" or "Off". For "On" to work, the device must be configured to respond to "Wake-On-LAN" packets. By default
+          the "Off" command tells the Kodi device to shutdown. One can configure the Kodi mudule to use "quit" for a specific device.</dd>
+          </dl></p>
+          <p>When the device if deemed "Off", only the power command is available as device command.</p>
+          <p>KodiBuddy talks to kodi devices using the <a href="http://kodi.wiki/?title=JSON-RPC_API">JSON-RPC</a> protocol over WebSocket.</p>
+          <h2>ScannerBuddy</h2>
+          <p>ScannerBuddy scans the network looking for Avahi/Bonjour services. It reports newly discoverd service, as well as known service where the IP address has changed. It can be asked for "known services" and can be asked to perform a scan for a specific service (<span style="font-style: italic;">e.g.</span> _xbmc-jsonrpc._tcp.local.)</p>
           <h2>BuddyTools</h2>
           <p>BuddyTools is a set of tools that can be used to trigger event from other application. Currently there is:
           <dl>
@@ -165,6 +184,15 @@
           <p>Description of the messages and their function is somewhat documented on
           <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>.</p>
           <h1>Status</h1>
+          <h3>June 2017</h3>
+          <p>Added KodiBuddy and ScannerBuddy.</p>
+          <p>Module can now send specific devices information. The information can be accesses by Ctrl-Click'ing the device icon.</p>
+          <p>Added Location and RemoteControl widgets to buddyguilib.</p>
+          <p>In buddyguilib, a command can now be specified to appear only when defining actions (attribute <code>rteffect</code> not defined ot == 0), both when
+          defining actions and in the device's realtime command panel (<code>rteffect</code> == 1) or only in the  device's realtime command panel (<code>rteffect</code> == -1)</p>
+          <p>In buddyguilib, appearance of commands in the device's command panel can be predicated to a state value with the <code>onlyif</code> attribute. For instance 
+          to ensure that a command appears only if the device in "On" you can set <code>onlyif="power::on"</code> (Kodi) or  <code>onlyif="power::power::on"</code> (Lifx).
+          <code>onlyif</code> is effective only when <code>rteffect == 1 or -1</code></p>
           <h3>March 2017</h3>
           <p>System is soon to have its first release.</p>
           <p>I have it installed on a Raspberry Pi 3 with 10 Lifx and 6 flics and I use it everyday. It just works.</p>
