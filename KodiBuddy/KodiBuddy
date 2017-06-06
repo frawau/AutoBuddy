@@ -646,10 +646,10 @@ class KodiConnection(object):
                 if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
                     auth=x["user"]+":"+x["password"]+"@"
             if "poster" in mymovie["art"] and mymovie["art"]["poster"]:
-                infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["poster"])+"\" /></div>"
+                infomsg += "<img  style=\"float: left; width: 80px; padding: 5px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["poster"])+"\" />"
 
             elif "thumb" in mymovie["art"] and mymovie["art"]["thumb"]:
-                infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["thumb"])+"\" /></div>"
+                infomsg += "<img  style=\"wfloat: left; width: 80px; padding: 5px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["thumb"])+"\" />"
             
             if "type" in mymovie and mymovie["type"]=="episode":
                 infomsg +="<p style=\"margin-left: 10px;\">Playing \""+mymovie["title"]+"\""
@@ -701,7 +701,7 @@ class KodiConnection(object):
                     auth=x["user"]+":"+x["password"]+"@"
             if "type" in myalbum and myalbum["type"]=="song":
                 if myalbum["thumbnail"]:
-                    infomsg += "<div style=\"float: left; padding: 5;\"><img  style=\"width: 80px;\" alt=\"Album Cover\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(myalbum["thumbnail"])+"\" /></div>"
+                    infomsg += "<img  style=\"float: left; width: 80px; padding: 5px;\" alt=\"Album Cover\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(myalbum["thumbnail"])+"\" />"
                 infomsg +="<p style=\"margin-left: 10px;\">Playing \""+myalbum["title"]+"\" on <span style=\"font-weight: bold;\">"+myalbum["album"]+"</span>"
                 if myalbum["artist"]:
                     infomsg += " by "+",".join(myalbum["artist"])
@@ -1189,7 +1189,8 @@ class KodiBridge(bl.BuddyBridge):
                     doremove = False
                     for mediaplayer in self.devices:
                         if mediaplayer.name == msg["subject"].split(".")[-1]:
-                            mediaplayer.conn.transport.close()
+                            if mediaplayer.conn and mediaplayer.conn.transport:
+                                mediaplayer.conn.transport.close()
                             self.sending({"subject": self.type,
                                           "content_type": "event",
                                           "content": {"event": "deletion",
