@@ -18,7 +18,12 @@ var childstep = 4;
 var zoneById={};
 var deviceById={};
 var nznametmpl = "New Zone "; /* New Zone name template */
-
+var gui_config = `
+<buddyui version="0.1">
+    <configuration  name="gui">
+            <control type="text" name="zprefix" label="Zone Prefix" length="32"/>
+    </configuration>
+</buddyui>`;
 /*
 * Some utility functions
 * This one is for indenting the options to reflect
@@ -525,6 +530,7 @@ function bu_parse_xml(txt) {
 
 function module_config() {
     var msg = "<div id=\"bu-mod-config-choice\">";
+    msg+="<button type = \"button\" class = \"btn btn-default bu-mod-config-button\"  id=\"bu-mod-config-gui\">GUI</button>";
     var ordered = {};
     Object.keys(buddy.configs).sort().forEach(function(key) {
         ordered[key] = buddy.configs[key];
@@ -558,8 +564,13 @@ function module_config_bis(e) {
     var elt = e.target.id.split("-").slice(-1)[0];
     var etype = elt.split(".")[0];
     var estype = elt.split(".")[1];
-    buddy.cmd_panel = new buddyPanel("config",bu_parse_xml(buddy.configs[etype][estype][0]).find( "buddyui" ),false);
-    buddy.cmd_panel.tgt = etype+"."+estype;
+    if ( etype == "gui" ) {
+        buddy.cmd_panel = new buddyPanel("config",bu_parse_xml(gui_config).find( "buddyui" ),false);
+        buddy.cmd_panel.tgt = etype;
+    } else {
+        buddy.cmd_panel = new buddyPanel("config",bu_parse_xml(buddy.configs[etype][estype][0]).find( "buddyui" ),false);
+        buddy.cmd_panel.tgt = etype+"."+estype;
+    }
     var msg = buddy.cmd_panel.render("configuration");
 
     bootbox.dialog({
@@ -574,15 +585,26 @@ function module_config_bis(e) {
                     var cval = buddy.cmd_panel.getValue();
                     var etype = buddy.cmd_panel.tgt.split(".")[0];
                     var ename = buddy.cmd_panel.tgt.split(".")[1];
-                    var token=buddy.send_command("update config",ename,etype,cval,false,buddy.cmd_panel.tgt);
-                    buddy.tokens.splice( $.inArray(token, buddy.tokens), 1 );
+                    if ( etype == "gui" ) {
+                        nval = {}
+                        nval[buddy.user]=cval;
+                        var token=buddy.send_request("save user config","control.users", buddy.subject,nval,["Config could not be saved.",{"user config":nval}])
+                        buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_property, buddy, token, "Save User Config"), buddy.timeout);
+                    } else {
+                        var token=buddy.send_command("update config",ename,etype,cval,false,buddy.cmd_panel.tgt);
+                        buddy.tokens.splice( $.inArray(token, buddy.tokens), 1 );
+                    }
                     buddy.cmd_panel=null;
                 }
             }
         }
     });
     buddy.cmd_panel.activate([250,0]);
-    buddy.cmd_panel.setValue(buddy.configs[etype][estype][1])
+    if ( etype == "gui" ) {
+        buddy.cmd_panel.setValue(buddy.user_config)
+    } else {
+        buddy.cmd_panel.setValue(buddy.configs[etype][estype][1])
+    }
 }
 
 function module_export_config() {
@@ -832,9 +854,12 @@ var BuddyDevice = Class.extend({
         } else {
             $device=$("#"+this.name).detach()
         }
-        parent.devices.push(this);
-        $("#"+parent.name).append($device);
-        this.parent=parent;
+        if ( parent ) {
+            //For zone constrained users, parent may not exit
+            parent.devices.push(this);
+            $("#"+parent.name).append($device);
+            this.parent=parent;
+        }
     },
     
     match_status: function() {
@@ -1050,7 +1075,7 @@ var BuddyZone = Class.extend({
     
     add_zone_div: function(child) {
         var cdiv=$("<div>", {id: child.name, class: "bu-zone zonedroppable"});
-        var ldiv =$("<p>", {class: "bu-zonelabel label"}).html("Zone "+child.nickname);
+        var ldiv =$("<p>", {class: "bu-zonelabel label"}).html(buddy.user_config["zprefix"]+ " " + child.nickname);
         cdiv.append(ldiv);
         cdiv.draggable( {revert:  function(dropped) {
             if ($(this).hasClass('drag-revert')) {
@@ -1192,7 +1217,7 @@ var BuddyZone = Class.extend({
                     buddy.drop_zone(event,ui,this);
                 }
                 });
-        $("#"+this.name).append($("<p>", {class: "bu-zonelabel label"}).html("Zone "+this.nickname));
+        $("#"+this.name).append($("<p>", {class: "bu-zonelabel label"}).html(buddy.user_config["zprefix"]+" "+this.nickname));
         this.refresh()
     },
      
@@ -1332,6 +1357,7 @@ var BuddyApp = Class.extend({
         this.tokento={};
         this.functions={};
         this.configs={};
+        this.user_config={"zprefix": "Zone"};
         this.mcommands={};
         this.socket = ws;
         this.subject = subject;
@@ -1519,8 +1545,16 @@ var BuddyApp = Class.extend({
             } else {
                 this.topzone=msg.content.zone
             }
+            if ( msg.content.value) {
+                if ( msg.content.value["user config"] ) {
+                    this.user_config=msg.content.value["user config"];
+                }
+            }
             buddy.build_panel();
             $("#bu-navbar-menu > li").removeClass("disabled");
+            if ( ! this.isadmin ) {
+                $(".adminonly").remove();
+            }
         }
     },
     
@@ -1566,8 +1600,10 @@ var BuddyApp = Class.extend({
             })
             this.zonecnt = ccount;
             this.functions= msg.content["value"]["functions"];
-            this.configs= msg.content["value"]["configs"];
-            this.mcommands= msg.content["value"]["module commands"];
+            if (this.isadmin) {
+                this.configs= msg.content["value"]["configs"];
+                this.mcommands= msg.content["value"]["module commands"];
+            }
             $('[data-toggle="tooltip"]').tooltip({placement : 'top'});
             $(window).resize(function() {
                 $("#"+buddy.currenttop).css("width",$("#bu-topzonec").innerWidth());
@@ -2104,10 +2140,18 @@ var BuddyApp = Class.extend({
         var device=msg.content.target.split(".")[1];
         var parent=msg.content.value["parent"];
         if ( deviceById[device] ) {
-            deviceById[device].set_parent(zoneById[parent]);
-            zoneById[parent].refresh();
+            if ( parent && zoneById[parent] ) {
+                deviceById[device].set_parent(zoneById[parent]);
+                zoneById[parent].refresh();
+            } else { //we do not have access to that zone
+                deviceById[device].set_parent(undefined);
+                $("#"+device).remove();
+                delete deviceById[device];
+            }
         } else {
-            var token = this.send_request("define device", "control.zone", this.subject,{"name":name});
+            if ( parent && zoneById[parent] ) { //only if we are going to do something with it
+                var token = this.send_request("define device", "control.zone", this.subject,{"name":device});
+            }
         }
     },
     
@@ -2123,13 +2167,15 @@ var BuddyApp = Class.extend({
    
     handle_device_define: function(msg) {
         if ( msg.content.status == 'done' ) {
-            var type=msg.content.target.split(".")[0];
-            var device=msg.content.target.split(".")[1];
+            var device=msg.content.value["name"];
             if (! deviceById[device]) {
                 var adevice=new BuddyDevice(msg.content.value["type"],msg.content.value["subtype"],msg.content.value["nickname"],msg.content.value["name"]);
-                adevice.set_parent(zoneById[msg.content.value["parent"]])
+                adevice.set_parent(zoneById[msg.content.value["zone"]])
                 deviceById[adevice.name]=adevice
                 $('[data-toggle="tooltip"]').tooltip({placement : 'top'});
+                zoneById[msg.content.value["zone"]].refresh();
+                buddy.send_command("status",adevice.name,adevice.type,"");
+                
             }
         }
     },
@@ -2174,6 +2220,11 @@ var BuddyApp = Class.extend({
                         this.lousers[this.tokeninfo[msg.content.token][1]["add user"][0]]=this.tokeninfo[msg.content.token][1]["add user"][1]
                     } else if (this.tokeninfo[msg.content.token][1]["delete user"]) {
                         delete(this.lousers[this.tokeninfo[msg.content.token][1]["delete user"]])
+                    } else if (this.tokeninfo[msg.content.token][1]["user config"]) {
+                        this.user_config=this.tokeninfo[msg.content.token][1]["user config"][this.user]
+                        $.each(zoneById, function ( key, val ) {
+                            $("#"+key+" > .bu-zonelabel").html(buddy.user_config["zprefix"]+ " " + val.nickname)
+                        })
                     }
                 }
                 delete this.tokeninfo[msg.content.token];

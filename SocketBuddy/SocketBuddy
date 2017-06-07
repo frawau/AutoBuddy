@@ -27,6 +27,7 @@ import argparse, json, random, traceback, logging, os, aiohttp, ssl, functools
 import buddylib as bl
 from aiohttp import web,WSCloseCode, log as aiohlog
 import asyncio as aio
+from copy import deepcopy
 
 CERTFILE="autobuddy.crt"
 WCERTFILE="autobuddy.crt"
@@ -89,6 +90,7 @@ class GuiWSBridge(bl.BuddyBridge):
     def __init__(self, loop,future,config,log):
         super(GuiWSBridge, self).__init__(loop,future,config,log)
         self.users={}
+        self.user_config={}
         self.requestids= []
         self.tasks = []
         self.allowedsocket = set()
@@ -104,6 +106,7 @@ class GuiWSBridge(bl.BuddyBridge):
                 self.saveUsers()
         else:
             self.getUsers()
+            self.getUserConf()
      
 
     def sendMessage(self, payload):
@@ -119,16 +122,28 @@ class GuiWSBridge(bl.BuddyBridge):
         if msg["subject"].startswith(self.type):
             self.processMessage(msg)
         else:
+            cleanmsg=msg
             #Forward to the connected gui clients
+            #But first cleanup some responses
+            if msg["content_type"] == "response":
+                if msg["content"]["response"]=="functions":
+                    cleanmsg=deepcopy(msg)
+                    if "configs" in cleanmsg:
+                        del(cleanmsg["configs"])
+                    if "module commands" in cleanmsg:
+                        del(cleanmsg["module commands"])
+
             for client in self.devices:
                 try:
                     if client.name in self.allowedsocket:
-                        client.send_json(msg)
+                        if client.name in self.adminsocket:
+                            client.send_json(msg)
+                        else:
+                            client.send_json(cleanmsg)
                 except:
                     pass
    
     def msgfromWS(self,msg,orig):
-        forwardmsg = False
         try:
         #if True:
             if msg["content_type"] == "request" and msg["content"]["request"]=="login":
@@ -142,9 +157,13 @@ class GuiWSBridge(bl.BuddyBridge):
                     newmsg["content"]["token"]= msg["content"]["token"]
                     orig.user=msg["content"]["user"]
                     self.allowedsocket.add(orig.name)
+                    newmsg["content"]["value"]= {}
                     if self.users[msg["content"]["user"]][1]=="admin":
                         self.adminsocket.add(orig.name)
-                        newmsg["content"]["value"]={"list of users": dict([(x,y[1]) for x,y in self.users.items()])}
+                        newmsg["content"]["value"]["list of users"] = dict([(x,y[1]) for x,y in self.users.items()])
+                    if msg["content"]["user"] in self.user_config:
+                        newmsg["content"]["value"]["user config"] = self.user_config[msg["content"]["user"]] 
+                        
                 else:
                     newmsg={"content_type":"response","subject":msg["content"]["target"],"content":{}}
                     newmsg["content"]["response"]="login"
@@ -183,6 +202,10 @@ class GuiWSBridge(bl.BuddyBridge):
                         self.saveUsers(token=msg["content"]["token"])
                     except:
                         return
+            elif msg["content_type"] == "request" and msg["content"]["request"]=="save user config":
+                for uid in msg["content"]["value"]:
+                    self.user_config = { **self.user_config, **msg["content"]["value"]}
+                self.saveUserConf(token=msg["content"]["token"])
             elif orig.name in self.allowedsocket or orig.name in self.adminsocket:
                 self.sending(msg)
 
@@ -250,6 +273,26 @@ class GuiWSBridge(bl.BuddyBridge):
         self.sendMessage(msg)
 
    
+    def saveUserConf(self,token=None):
+        msg={"content_type":"request","subject":"control.gui","content":{}}
+        msg["content"]["request"]="save property"
+        msg["content"]["target"]= self.type
+        msg["content"]["token"] = token or bl.genid()
+        self.requestids.append(msg["content"]["token"])
+        msg["content"]["name"] = "user_config"
+        msg["content"]["value"] = bl.encrypt(self.user_config,self.config["buddykey"])
+        self.log.debug("SAVE: {}\n\n\n".format(msg))
+        self.sendMessage(msg)
+
+    def getUserConf(self):
+        newmsg={"content_type":"request","subject":"control."+self.type,"content":{}}
+        newmsg["content"]["request"]="get property"
+        newmsg["content"]["target"]= self.type
+        newmsg["content"]["token"] = bl.genid()
+        self.requestids.append(newmsg["content"]["token"])
+        newmsg["content"]["name"]="user_config"
+        msg = newmsg
+        self.sendMessage(msg)
    
 cfgdefault={"broker":"localhost","tls":False,"type":"gui","credential":"",
             "application":"./html/buddyctrl.html","brokerport":8745,"host":"localhost","port":8080,"ssl":""}

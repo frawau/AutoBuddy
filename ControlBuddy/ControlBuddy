@@ -806,7 +806,6 @@ class Controller():
                                          "status": (sts and "done") or "failed"}})
 
                     elif msg["content"]["request"] == "define device":
-                        mytype = getattr(bl, msg["content"]["target"])
                         try:
                             device = self.getDevice(
                                 msg["content"]["value"]["name"])
@@ -815,11 +814,12 @@ class Controller():
                             thisval["type"] = device.type
                             thisval["subtype"] = device.subtype
                             thisval["zone"] = device.location.name
+                            sts = True
                         except:
                             sts = False
                             thisval = {}
                         self.sending(
-                            {"subject": msg["content"]["target"] + "." + newent.name,
+                            {"subject": msg["content"]["target"] + "." + device.name,
                              "content_type": "response",
                              "content": {"response": "define device",
                                          "token":
