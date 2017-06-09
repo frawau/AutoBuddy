@@ -229,8 +229,8 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip")
         print("\tsudo pip3 install aiolifx aioarping aiobtname pyalsaaudio aiohttp\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-zeroconf"
-        remindmeattheend+="\n\tsudo pip3 install aiolifx aioarping aiobtname\n\n"
+        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname zeroconf\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")

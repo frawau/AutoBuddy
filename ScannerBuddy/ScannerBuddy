@@ -268,7 +268,7 @@ class ScannerBridge(bl.BuddyBridge):
 
 
     def register(self, entity):
-        if entity.name not in self.seen_service or entity.address != self.seen_service[entity.name].address:
+        if entity.name not in self.seen_service or entity.address != self.seen_service[entity.name].address or entity.port != self.seen_service[entity.name].port:
             newprop={}
             for x,y in entity.properties.items():
                 try:
