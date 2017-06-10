@@ -6,9 +6,11 @@ AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.i
 
 RPi3 and RPi2 are supported.
 
+It is not recommended to use Wifi with RPi3. 
+
 Download the image from 
 
-    https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing
+    [https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing](https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing)
 
 Write the image to an SD card the usual way
     
@@ -46,9 +48,9 @@ recent distribution. On Raspberry Pi, you can use Jessie and use Stretch to upda
 
 To install all the needed packages, on a recent Ubuntu/Debian distro, you could run
 
-    sudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 python3-aiohttp \
+    sudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 python3-zeronconf \
                         python3-ephem python3-dateutil python3-crontab python3-bitstring python3-pip git
-    sudo pip3 install aiolifx aioarping aiobtname
+    sudo pip3 install aiolifx aioarping aiobtname aiohttp
 
 You must make sure that Postgres is running! Currently (03/17), the configuration tool will blissfully
 ignore any error when trying to set up the datanase (If asked to that is).
@@ -169,7 +171,8 @@ The Menu also contains quite a few things.
 # Known Problems
 
 
-BuddyWheel is sometimes jumpy, meaning that it jumps to a position nowhere near the mouse.
+Actually more like missing features....
 
-In "Condition" and "Command" associated with Rules, it sometimes happen that one or more 
-empty Condition/Command are created and need to be deleted
+Play music by artist
+
+Parametrize Voice uterances
