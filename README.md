@@ -10,7 +10,7 @@ It is not recommended to use Wifi with RPi3.
 
 Download the image from 
 
-    <a href="https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing">https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing</a>
+    https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing
 
 Write the image to an SD card the usual way
     
