@@ -55,6 +55,8 @@ To install all the needed packages, on a recent Ubuntu/Debian distro, you could 
 You must make sure that Postgres is running! Currently (03/17), the configuration tool will blissfully
 ignore any error when trying to set up the datanase (If asked to that is).
 
+If you plan on using KodiBuddy the python3-aiohttp package won't work, you need aiohttp from PyPi.
+
 On a Ubuntu/Debian distro, you can test that Postgres is running OK by doing, in a terminal:
 
     sudo bash
@@ -106,10 +108,12 @@ ConfigBuddy will ask you a few question and proceed to create a number of files/
     AutoBuddy/.tls/              for certificates
     AutoBuddy/.buddyconfig/      for the json configuration files
     AutoBuddy/.run/              for the various starting files
-    AutoBuddy/.start-autobuddy  the file starting the applications in tmux sessions.
+    AutoBuddy/.start-autobuddy   the file starting the applications in tmux sessions.
+    AutoBuddy/.stop-autobuddy    the file stopping the applications.
 
-At the end it will also schedule AutoBuddy/.start-autobuddy to start on boot in the user
-crontab.
+At the end it will also schedule AutoBuddy/.start-autobuddy to start on boot by adding an "autobuddy" service
+to systemd. If you want to run AutoBuddy as an unprivildged user, you could schedule it to run at boot time
+with crontab "@boot"
 
 If you did not run under sudo, or did not provide username and password for Postgres, ConfigBuddy
 will list all the actions that need to be done:
@@ -127,7 +131,7 @@ If everything went OK, you can run AutoBuddy by either:
     1- rebooting
     2- run AutoBuddy/.start-autobuddy
 
-After 10/15 seconds, you can access WebBuddy at:
+After 30/45 seconds, you can access WebBuddy at:
     
     https://localhost:8090
     
@@ -145,7 +149,9 @@ In WebBuddy you have two modes:
                         
                         To toggle, click on the "Edit Mode" button
                         
-        User Mode:      You can send command to devices. Change your zone view.
+        User Mode:      You can send command to devices (click on device).
+                        Get device info if any (Ctrl-Click on device)
+                        Change your zone view. (Double-Click zone)
         
 
 Here is how you do a few things:
