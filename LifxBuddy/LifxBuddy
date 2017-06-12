@@ -612,8 +612,8 @@ def lifx_process(self, msg):
 
 
 def lighthb(self, duration=5):
-    #try:  # Could happen that conn is None... Maybe a race condition with unregister
-    if True:
+    try:  # Could happen that conn is None... Maybe a race condition with unregister
+    #if True:
         if self.conn.hbtimer<= 0:
             self.conn.hbtimer = self.controller.lifx_config["heartbeat"]
             if self.conn.vendor is None:
@@ -628,8 +628,8 @@ def lighthb(self, duration=5):
             self.conn.hbtimer -= 5
         self.controller.lifxhb[self.name] = self.controller.loop.call_later(
                 duration, partial(self.lighthb, 5))
-    #except:
-        #pass
+    except:
+        pass
 
 
 def sendStatus(self, lifx=None, resp=None):
@@ -653,7 +653,7 @@ def sendStatus(self, lifx=None, resp=None):
                                                                   "value": (100.0 * colour[2]) / 65365.0},
                                                        "white": {"value": (100.0 * colour[2]) / 65365.0,
                                                                  "temperature": colour[3]}}}})
-    except:
+    except Exception as e:
         self.controller.log.warning(
             "Ooops could not send status",
             exc_info=(type(e),
@@ -665,7 +665,7 @@ def sendInfo(self, lifx=None, resp=None):
     try:
         msg=""
         prefix="<div><dl class=\"dl-horizontal\">"
-        for x in ["label","location","group","product","version","vendor","ip_addr","mac_addr","host_firmware_version"]:
+        for x in ["label","location","group","product","version","vendor","ip_addr","port","mac_addr","host_firmware_version"]:
             if getattr(self.conn,x):
                 if x=="product":
                     msg+=prefix+"<dt>Product:</dt><dd>"+lifx_products[getattr(self.conn,x)]+"</dd>"
@@ -681,7 +681,7 @@ def sendInfo(self, lifx=None, resp=None):
                                              "." +
                                              self.name,
                                              "value": msg }})
-    except:
+    except Exception as e:
         self.controller.log.debug(
             "Ooops could not send info",
             exc_info=(type(e),
