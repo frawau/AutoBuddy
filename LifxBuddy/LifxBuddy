@@ -731,6 +731,7 @@ class LifxBridge(bl.BuddyBridge):
     def __init__(self, loop, future, config, log):
         super(LifxBridge, self).__init__(loop, future, config, log)
         self.probelights = None
+        self.probedg = None
         self.lifxhb = {}
         self.lifx_config = lifx_config_default
 
@@ -740,8 +741,12 @@ class LifxBridge(bl.BuddyBridge):
                 for k, v in msg["content"]["value"].items():
                     lifx_config_default[k] = v
                     if k == "refresh":
-                        #print("Setting  interval on {}".format(dir(fac)))
-                        self.probelights.discovery_interval = v
+                        if self.probedg is None:
+                            self.probedg = self.probelights.result()[1]
+                        print("\n\nSetting  interval on {}".format(self.probedg))
+                        self.probedg.discovery_interval = v
+                        if self.probedg.discovery_countdown > v:
+                            self.probedg.discovery_countdown=v
 
                 self.sending({"subject": "control" + "." + self.subtype,
                               "content_type": "request",
@@ -1034,6 +1039,11 @@ class LifxBridge(bl.BuddyBridge):
                                                                   "bu-not-present": {"opacity": 1}}}})
                 except:
                     pass
+        # Just in case it is one of those spurious disconnect,
+        # ask for a probe in 5 to 10 secs
+        if self.probedg is None:
+            self.probedg = self.probelights.result()[1]
+        self.probedg.discovery_countdown=5
 
 aboutstr = """<p>LifxBuddy is a bridge talking to <a href="http://www.lifx.com">Lifx</a> lights. A library called <a href="https://github.com/frawau/aiolifx">aiolifx</a>
  is used when communicating with the actual device.</p>
