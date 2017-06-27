@@ -13,8 +13,8 @@
 */
 
 var colourSchemes = [340,300,270,220] //hue 
-var maxchild = 12;
-var childstep = 4;
+//var maxchild = 12;
+var childstep = 8;
 var zoneById={};
 var deviceById={};
 var nznametmpl = "New Zone "; /* New Zone name template */

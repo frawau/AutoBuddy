@@ -69,8 +69,9 @@ class MyService(object):
 
     def add_service(self, zeroconf, type, name):
         info = zeroconf.get_service_info(type, name)
-        info.address=socket.inet_ntoa(pack('>L',unpack('>L',info.address)[0]))
-        bridgectl.register(info)
+        if info:
+            info.address=socket.inet_ntoa(pack('>L',unpack('>L',info.address)[0]))
+            bridgectl.register(info)
 
 class ScannerBridge(bl.BuddyBridge):
 
