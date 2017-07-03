@@ -1,0 +1,774 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application listen for events and process them according
+# to a set of rules. Commands and/or state changes may ensue.
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import os
+import ssl
+import logging
+import subprocess
+import ipaddress
+import datetime as dt
+import asyncio as aio
+import colorsys
+import aioblescan as aiobs
+import buddylib as bl
+from functools import partial
+import importlib
+
+SUBTYPE = ""  # more than 1 subtypes, male,female, trans? dog? cat?
+__version__ = "0.10"
+CERTFILE = "autobuddy.crt"
+blesensor_function = """
+<buddyui version="0.1">
+    <command name="blesensor">
+        <control type="switch" name="calibrate" label="Calibrate" rteffect="1">
+            <value label="On">on</value>
+            <value label="Off">off</value>
+        </control>
+    </command>
+</buddyui>
+"""
+
+blesensor_config = """
+<buddyui version="0.1">
+    <configuration  name="blesensor">
+        <controlgroup type="list" name="throttle" label="Timing">
+            <control type="spinner" name="temperature" label="Temp Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="pressure" label="Pressure Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="humidity" label="Humidity Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="battery" label="Battery Sensing interval">
+                <start>0</start>
+                <end>3600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>3600</default>
+            </control>
+            <control type="spinner" name="luminosity" label="Luminosity Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list"  name="runplugin" label="Plugins">
+"""
+blesensor_config_default = {"throttle":{"temperature": 60, 
+                                        "humidity": 60, 
+                                        "pressure": 60, 
+                                        "accelerometer":0,
+                                        "luminosity":60,
+                                        "battery": 3600},
+                            "runplugin":{}, "calibrate":{},"probe":60}
+ble_plugins={}
+dir_path = os.path.join(os.path.dirname(__file__),'plugins')
+# import parent module / namespace
+importlib.import_module('plugins')
+for filename in os.listdir(dir_path):
+    name, ext = os.path.splitext(filename)
+    if ext.endswith(".py"):
+        mod = importlib.import_module("."+name, package="plugins")
+        ble_plugins[mod.PluginObject.name]=mod.PluginObject
+        blesensor_config +="        <control type=\"switch\" name=\"%s\" label=\"%s\" default=\"off\">"%(mod.PluginObject.name,mod.PluginObject.name)
+        blesensor_config +="""
+                <value label="Yes">on</value>
+                <value label="No">off</value>
+            </control>
+            """
+blesensor_config +="""
+        </controlgroup>
+        <control type="spinner" name="probe" label="Probing interval">
+            <start>0</start>
+            <end>600</end>
+            <increment>1</increment>
+            <postfix>secs</postfix>
+            <default>60</default>
+        </control>
+    </configuration>
+</buddyui>
+"""
+
+def blesensor_process(self, msg):
+    global ble_plugins
+    global bridgectl
+    if msg["content_type"] == "command":
+        if msg["content"]["command"] == "calibrate" and msg["content"]["value"] == "on" :
+            myplug=bridgectl.map_plug[name_to_mac(self.name)]
+            if myplug and myplug in ble_plugins and ble_plugins[myplug].is_running:
+                ble_plugins[myplug].do_calibrate(name_to_mac(self.name))
+        elif msg["content"]["command"] == "nickname":
+            bridgectl.sending({
+                    "subject": "control" + "." + self.name,
+                    "content_type": "request",
+                    "content": {"request": "nickname",
+                                "target": bridgectl.type +
+                                "." +
+                                self.name,
+                                #"token": bridgectl.target,
+                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+
+        elif msg["content"]["command"] == "deletion":
+            bridgectl.sending(
+                {"subject": "control" + "." + bridgectl.type,
+                    "content_type": "request",
+                    "content": {"request": "deletion",
+                                "target": bridgectl.type,
+                                "value": self.name}})
+                
+                
+
+bl.sensor._process = blesensor_process
+
+# Utility
+def name_to_mac(name):
+    global bridgectl
+    mac=name.replace(bridgectl.subtype+"-","")
+    return ':'.join(a+b for a,b in zip(mac[::2], mac[1::2]))
+
+def mac_to_name(mac):
+    global bridgectl
+    return bridgectl.subtype+"-"+mac.replace(":", "")
+
+
+class BLESensorBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of sensor .
+    It will report any new sensor
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(BLESensorBridge, self).__init__(loop, future, config, log)
+        self.blesensor_config = blesensor_config_default
+        self.ble_adv = None
+        self.probe_sensor = None
+        self.map_plug = {}    #Key is address, value is plugin name
+        
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    blesensor_config_default[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(blesensor_config_default, self.config["buddykey"])}})
+        else:
+            for aconn in self.devices:
+                aconn.process(msg)
+
+    def process_response(self, msg):
+        global ble_plugins
+        
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            newconfig = {}
+            fromconfig = []
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.blesensor_config[x] = storedconfig[x]
+                # Now let's update the plugins
+                for aplug,dorun in self.blesensor_config["runplugin"].items():
+                    if dorun and not ble_plugins[aplug].is_running:
+                        if aplug in self.blesensor_config["calibrate"]:
+                            cal = self.blesensor_config["calibrate"][aplug]
+                        else:
+                            cal={}
+                        ble_plugins[aplug]=ble_plugins[aplug](self,cal,self.blesensor_config["throttle"])
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [blesensor_config, self.blesensor_config]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": self.blesensor_config}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            elif self.state == "wait config save":
+                if msg["content"]["status"] == "done":
+                    raise bl.Exit(0, "Configuration was saved")
+                else:
+                    raise bl.Exit(2, "Error: Configuration was not saved")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [blesensor_config, self.blesensor_config]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": self.blesensor_config}})
+                              
+                for aplug,dorun in self.blesensor_config["runplugin"].items():
+                    if dorun and not ble_plugins[aplug].is_running:
+                        if aplug in self.blesensor_config["calibrate"]:
+                            cal = self.blesensor_config["calibrate"][aplug]
+                        else:
+                            cal={}
+                        ble_plugins[aplug]=ble_plugins[aplug](self,cal,self.blesensor_config["throttle"])
+                    elif not dorun and  ble_plugins[aplug].is_running:
+                        ble_plugins[aplug].is_running=False
+                    elif ble_plugins[aplug].is_running:
+                        if aplug in self.blesensor_config["calibrate"]:
+                            ble_plugins[aplug].calibration = self.blesensor_config["calibrate"][aplug]
+                        ble_plugins[aplug].throttle = self.blesensor_config["throttle"]
+    
+                
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                sensor = sess.query(bl.sensor).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          sensor.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": sensor.name, "nickname": sensor.nickname}}})
+
+                self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "presence",
+                                            "target": self.type +
+                                            "." +
+                                            sensor.name,
+                                            "value": "online",
+                                            "icon status": {"bu-not-present": {"opacity": 0}}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for light in self.devices:
+                        if light.name == msg["subject"].split(".")[-1]:
+                            light.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      light.name,
+                                                      "value": light.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for light in self.devices:
+                        if light.name == msg["subject"].split(".")[-1]:
+                            light.conn.transport.close()
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      light.name,
+                                                      "value": light.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+
+    def process_event(self, msg):
+        # We can react to 2 events. "dhcp" events on devices and "gui info" info requests
+        # TODO
+        if msg["content"]["event"] == "gui refresh":
+            for sensor in self.devices:
+                sensor.present = True
+                self.sending({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": self.type + "." + sensor.name,
+                                        "value": "online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
+    def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions":blesensor_function, "configs": [blesensor_config, self.blesensor_config]}}})
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(
+            bl.sensor).filter_by(
+                subtype=self.subtype).all(
+        )
+        for sensor in self.devices:
+            sensor.present = True
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type + "." + sensor.name,
+                                      "value": "online",
+                                      "icon status": {"bu-not-present": {"opacity": 0}}}})
+            self.map_plug[name_to_mac(sensor.name)]=None
+        
+        coro = partial(BLESensorBridge.probe_blesensor, self)
+        self.probe_sensor = aio.ensure_future(coro(), loop=self.loop)
+        
+    def ble_process(self,packet):
+        global ble_plugins
+        
+        ev=aiobs.HCI_Event()
+        xx=ev.decode(packet)
+        for plugname,plug in ble_plugins.items():
+            if plug.is_running:
+                #try:
+                if True:
+                    result = plug.Process(ev)
+                    if result:
+                        if result["mac address"] not in self.map_plug:
+                            self.newsensor(result,plug)
+                        if self.map_plug[result["mac address"]] is None:
+                            self.map_plug[result["mac address"]]=plug.name
+                        
+                        for x in plug.measurements:
+                            if x in result:
+                                self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "measurement",
+                                                "target": self.type + "." + mac_to_name(result["mac address"]) ,
+                                                "name": x,
+                                                "value":result[x]}})
+                #except Exception as e:
+                    #if self.log:
+                        #self.log.debug(
+                            #"Could not process packet with {}".format(plug.name,exc_info=(type(e),e,e.__traceback__)))
+        
+
+    async def probe_blesensor(self):
+        global ble_plugins
+        # Give time for things to settle
+        await aio.sleep(2)
+        # Star BT but gently
+        if "btdev" in self.config and self.config["btdev"] is not None:
+            btdev=self.config["btdev"]
+        else:
+            btdev = 0
+          
+        sock = aiobs.create_bt_socket(btdev)
+        #create a connection with the raw socket
+        fac=self.loop.create_connection(aiobs.BLEScanRequester,sock=sock)
+        #Start it
+        self.ble_adv = self.loop.create_task(fac)
+        await aio.sleep(2) #Let it start
+        #Attach your processing 
+        btctrl = self.ble_adv.result()[1]
+        btctrl.process=self.ble_process
+        #Set the LE Scan mode
+        btctrl.send_scan_request()
+        #Now look for the sensors needing to be probed
+        while True:
+            # Till the end of time
+            for plug in ble_plugins.values():
+                if plug.is_running:
+                    for cmd in plug.SetUp():
+                        bctrl.transport.write(cmd.encode())
+            await aio.sleep(self.blesensor_config["probe"])
+            #TODO what to do with TearDown?
+
+    def newsensor(self,info,plug):
+        asensor={}
+        asensor["name"] = mac_to_name(info["mac address"])
+        self.map_plug[info["mac address"]]=plug.name
+        asensor["nickname"] = plug.name +" "+asensor["name"]
+        self.sending({"subject": "control" + "." + self.type,
+                        "content_type": "request",
+                        "content": {"request": "creation",
+                                    "target": self.type,
+                                    "value": {"name": asensor["name"], "nickname": asensor["nickname"], "subtype": self.subtype}}})
+
+
+    def register(self, entity):
+        self.devices.append(entity)
+
+    def unregister(self, entity):
+        self.devices = [x for x in self.devices if x.name != entity.name]
+        
+    def update_calibrate(self,name,val):
+        blesensor_config_default["calibrate"][name]=val
+        self.sending({"subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {"request": "save configuration",
+                                    "target": self.type,
+                                    #"token": self.target,
+                                    "value": bl.encrypt(blesensor_config_default, self.config["buddykey"])}})
+
+
+aboutstr = """<p>BLESensorBuddy is an application tracking BLE sensors advertising their values. A this time, only <a href="https://tag.ruuvi.com/">
+Ruuvi Tag</a> is supported.</p>
+<p>The icon was designed by lifting icons from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a> and
+adding to it parts.
+</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 2100 2100" xmlns="http://www.w3.org/2000/svg">
+<g transform="scale(1,-1)">
+<g transform="translate(0, -1650)">
+<path class="bu-fill" 
+d="M640 192q0 -80 -56 -136t-136 -56t-136 56t-56 136q0 60 35 110t93 71v395h128v-395q58 -21 93 -71t35 -110zM768 192q0 77 -34 144t-94 112v768q0 80 -56 136t-136 56t-136 -56t-56 -136v-768q-60 -45 -94 -112t-34 -144q0 -133 93.5 -226.5t226.5 -93.5t226.5 93.5
+t93.5 226.5zM896 192q0 -185 -131.5 -316.5t-316.5 -131.5t-316.5 131.5t-131.5 316.5q0 182 128 313v711q0 133 93.5 226.5t226.5 93.5t226.5 -93.5t93.5 -226.5v-711q128 -131 128 -313zM1024 768v-128h-192v128h192zM1024 1024v-128h-192v128h192zM1024 1280v-128h-192
+v128h192z" />
+</g></g>
+<g transform="translate(1400, 900)">
+<g transform="scale(0.5,-0.5)">
+<path class="bu-fill" 
+d="M512 384q0 36 -20 69q-1 1 -15.5 22.5t-25.5 38t-25 44t-21 50.5q-4 16 -21 16t-21 -16q-7 -23 -21 -50.5t-25 -44t-25.5 -38t-15.5 -22.5q-20 -33 -20 -69q0 -53 37.5 -90.5t90.5 -37.5t90.5 37.5t37.5 90.5zM1024 512q0 -212 -150 -362t-362 -150t-362 150t-150 362
+q0 145 81 275q6 9 62.5 90.5t101 151t99.5 178t83 201.5q9 30 34 47t51 17t51.5 -17t33.5 -47q28 -93 83 -201.5t99.5 -178t101 -151t62.5 -90.5q81 -127 81 -275z" />
+</g></g>
+<g transform="translate(900, 700)">
+<g transform="scale(2.7,2.7)">
+<polyline class="bu-fill" fill="none" stroke="black" 
+    points="20,250 70,250 120,400 170,100 220,250 270,250" stroke-width="30px"/>
+<circle class="bu-fill"  cx="310" cy="250" r="50"/>
+<g stroke="none" fill="black" >
+<path d="
+M 310 135
+A 115 115 0 0 1 310 365
+L 310 335
+A 85 85 0 0 0 310 165
+L 310 135
+Z"/> 
+</g></g></g>
+</svg>
+"""
+
+cfgdefault = {
+    "type": "sensor",
+     "subtype": "blesensor",
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "btdev": 0}
+
+
+def configure():
+    parser = argparse.ArgumentParser(
+        description="Track sensor over BLE.")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/blesensor.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/blesensor.cfg\")")
+
+    parser.add_argument("-b", "--btdev", type=int, default=cfgdefault["btdev"],
+                        help="The Bluetooth device to use (default \"%s\")." % cfgdefault["btdev"])
+
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    blesensorlog = logging.getLogger('')
+    blesensorcfg = {"debug": opts.debug}
+    try:
+    # if True:
+        if opts.configonly:
+            try:
+                cfgdata = json.load(opts.config)
+                opts.config.close()
+            except:
+                cfgdata = {}
+        else:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+
+        # Definition
+        if opts.type != cfgdefault["type"]:
+            blesensorcfg["type"] = opts.type
+        elif "type" in cfgdata:
+            blesensorcfg["type"] = cfgdata["type"]
+        else:
+            blesensorcfg["type"] = opts.type
+        if opts.debug:
+            blesensorlog.debug("The type is %s." % blesensorcfg["type"])
+
+        if opts.subtype != cfgdefault["subtype"]:
+            if "-" in opts.subtype:
+                raise Exception("Subtype may not contain a dash (\"-\")")
+            blesensorcfg["subtype"] = opts.subtype
+        elif "subtype" in cfgdata:
+            blesensorcfg["subtype"] = cfgdata["subtype"]
+        else:
+            blesensorcfg["subtype"] = opts.subtype
+        if opts.debug:
+            blesensorlog.debug("The subtype is %s." % blesensorcfg["subtype"])
+
+        # Controller
+        if opts.host != cfgdefault["host"]:
+            blesensorcfg["host"] = opts.host
+        elif "host" in cfgdata:
+            blesensorcfg["host"] = cfgdata["host"]
+        else:
+            blesensorcfg["host"] = cfgdefault["host"]
+        if opts.debug:
+            blesensorlog.debug("The host is %s" % blesensorcfg["host"])
+
+        if opts.port != cfgdefault["port"]:
+            blesensorcfg["port"] = opts.port
+        elif "port" in cfgdata:
+            blesensorcfg["port"] = cfgdata["port"]
+        else:
+            blesensorcfg["port"] = cfgdefault["port"]
+        if opts.debug:
+            blesensorlog.debug("The port is %s" % (blesensorcfg["port"]))
+
+        # Bluetooth
+        if opts.btdev != cfgdefault["btdev"]:
+            blesensorcfg["btdev"] = opts.btdev
+        elif "btdev" in cfgdata:
+            blesensorcfg["btdev"] = cfgdata["btdev"]
+        else:
+            blesensorcfg["btdev"] = cfgdefault["btdev"]
+        if opts.debug:
+            blesensorlog.debug(
+                "The Bluetooth device is %s" %
+                (blesensorcfg["btdev"]))
+
+        # Authentication and encryption
+        if opts.credential != cfgdefault["credential"]:
+            blesensorcfg["credential"] = opts.credential
+        elif "credential" in cfgdata:
+            blesensorcfg["credential"] = cfgdata["credential"]
+        else:
+            blesensorcfg["credential"] = cfgdefault["credential"]
+        if opts.debug:
+            blesensorlog.debug(
+                "The credential is %s" %
+                blesensorcfg["credential"])
+
+        if opts.ssl != cfgdefault["ssl"]:
+            blesensorcfg["ssl"] = opts.ssl
+        elif "ssl" in cfgdata:
+            blesensorcfg["ssl"] = cfgdata["ssl"]
+        else:
+            blesensorcfg["ssl"] = cfgdefault["ssl"]
+        if blesensorcfg["ssl"] and not (os.path.isfile(blesensorcfg["ssl"] + "/" + CERTFILE)):
+            blesensorlog.critical("Encryption: Could not find {} .".format(
+                blesensorcfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if blesensorcfg["ssl"]:
+                blesensorlog.debug(
+                    "The ssl certificates can be found in %s" %
+                    blesensorcfg["ssl"])
+            else:
+                blesensorlog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            blesensorcfg["buddykey"] = cfgdata["buddykey"]
+
+        # Save hings
+        if opts.configonly:
+
+            if "buddykey" not in blesensorcfg:
+                if opts.debug:
+                    blesensorlog.debug("Generating random key")
+                blesensorcfg["buddykey"] = bl.keygen()
+            try:
+                del(blesensorcfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(blesensorcfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        blesensorlog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (blesensorlog, blesensorcfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+            partial(BLESensorBridge,
+                    loop,
+                    connFuture,
+                    config,
+                    log),
+            config["host"],
+            config["port"],
+            ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"BLESensorBuddy": aboutstr},
+         "display": {"blesensor": iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+
+        bridgectl.probe_sensor.set_result('done')
+        conn.close()
+        loop.close()
