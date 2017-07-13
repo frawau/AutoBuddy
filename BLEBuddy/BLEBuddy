@@ -30,11 +30,8 @@ import json
 import os
 import ssl
 import logging
-import subprocess
-import ipaddress
 import datetime as dt
 import asyncio as aio
-import colorsys
 import aioblescan as aiobs
 import buddylib as bl
 from functools import partial
@@ -94,6 +91,13 @@ blesensor_config = """
                 <default>60</default>
             </control>
             <control type="spinner" name="accelerometer" label="Movement Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+            <control type="spinner" name="particulate" label="Particule Counter">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
@@ -432,15 +436,17 @@ class BLESensorBridge(bl.BuddyBridge):
                             self.newsensor(result,plug)
                         if self.map_plug[result["mac address"]] is None:
                             self.map_plug[result["mac address"]]=plug.name
-                        
+                        thisresult={}
                         for x in plug.measurements:
                             if x in result:
-                                self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "measurement",
-                                                "target": self.type + "." + mac_to_name(result["mac address"]) ,
-                                                "name": x,
-                                                "value":result[x]}})
+                                thisresult[x]=result[x]
+                        if thisresult:
+                            self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "measurement",
+                                            "target": self.type + "." + mac_to_name(result["mac address"]) ,
+                                            "timestamp": str(dt.datetime.now().replace(microsecond=0)),
+                                            "value":thisresult}})
                 #except Exception as e:
                     #if self.log:
                         #self.log.debug(
@@ -498,6 +504,11 @@ class BLESensorBridge(bl.BuddyBridge):
         
     def update_calibrate(self,name,val):
         blesensor_config_default["calibrate"][name]=val
+        self.sending({"subject": self.target,
+                       "content_type": "event",
+                       "content": {"event": "gui alert",
+                                   "target": self.target,
+                                   "value": "Done calibrating {}".format(name)}})
         self.sending({"subject": "control" + "." + self.subtype,
                         "content_type": "request",
                         "content": {"request": "save configuration",
@@ -506,7 +517,7 @@ class BLESensorBridge(bl.BuddyBridge):
                                     "value": bl.encrypt(blesensor_config_default, self.config["buddykey"])}})
 
 
-aboutstr = """<p>BLESensorBuddy is an application tracking BLE sensors advertising their values. A this time, only <a href="https://tag.ruuvi.com/">
+aboutstr = """<p>BLESensorBuddy is an application tracking BLE sensors advertising their values. At this time, only <a href="https://tag.ruuvi.com/">
 Ruuvi Tag</a> is supported.</p>
 <p>The icon was designed by lifting icons from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a> and
 adding to it parts.

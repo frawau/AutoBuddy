@@ -411,19 +411,17 @@ function bu_parse_xml(txt) {
                     if (val[0]!=ctype) {
                         ctype=val[0];
                         cstype=undefined;
+                        thisexpand+="<itemgroup value=\""+ctype+"\" />";
                         if (subtoo) {
                             thisexpand+="<item value=\""+ctype+"\" />";
-                        } else {
-                            thisexpand+="<itemgroup value=\""+ctype+"\" />";
-                        }
+                        } 
                     }
                     if (val[1]!=cstype) {
                         cstype=val[1];
+                        thisexpand+="<itemgroup value=\"  "+cstype+"\" />";
                         if (subtoo) {
                             thisexpand+="<item value=\""+ctype+"."+cstype+"\" label=\"  "+cstype+"\" />";
-                        } else {
-                            thisexpand+="<itemgroup value=\"  "+cstype+"\" />";
-                        }
+                        } 
                     }
                     thisexpand+="<item value=\""+ctype+"."+val[3]+"\" label=\"    "+val[2]+"\" />";
                 })
@@ -605,6 +603,58 @@ function module_config_bis(e) {
     } else {
         buddy.cmd_panel.setValue(buddy.configs[etype][estype][1])
     }
+}
+
+function display_graphs() {
+    var msg = "<div id=\"bu-disp-graph-choice\">";
+    var ordered = {};
+    Object.keys(buddy.graphs).sort().forEach(function(key) {
+        ordered[key] = buddy.graphs[key];
+    });
+    buddy.graphs=ordered;
+    $.each(buddy.graphs, function ( dtype, sub ) {
+        ordered = {};
+        Object.keys(buddy.graphs[dtype]).sort().forEach(function(key) {
+            ordered[key] = buddy.graphs[dtype][key];
+        });
+        buddy.graphs[dtype]=ordered;
+    });
+    $.each(buddy.graphs, function ( dtype, sub ) {
+        
+        $.each(sub, function ( dstype, glist ) {
+            $.each(glist.sort(),function ( idx, lbl ) {
+                msg+="<button type = \"button\" class = \"btn btn-default bu-disp-graph-button\"  id=\"bu-disp-graph-"+dtype+"."+dstype+"."+lbl+"\">"+dstype+" "+lbl+"</button>";
+            });
+        });
+    });
+    msg+="</div>";
+    bootbox.dialog({
+        title: "Select a graph.",
+        value: "conf",
+        message:msg,
+        buttons: {
+        }
+    });
+    $(".bu-disp-graph-button").on("click", display_graphs_bis);
+}
+    
+function display_graphs_bis(e) {
+    bootbox.hideAll();
+    var msg = "<div id=\"bu-graph-display\" style=\"width: 100%; height:100%\"></div>";
+    var elt = e.target.id.split("-").slice(-1)[0];
+    var etype = elt.split(".")[0];
+    var estype = elt.split(".")[1];
+    var lbl = elt.split(".")[2];
+    var token = buddy.send_request("request data", etype+"."+estype, buddy.subject,{"name":lbl});
+
+    bootbox.alert({
+        title: "Graph "+lbl,
+        message:msg,
+        callback: function(){ 
+            buddy.currentgraph = undefined;
+            buddy.displaydata = undefined;
+        }
+    });
 }
 
 function module_export_config() {
@@ -1357,6 +1407,7 @@ var BuddyApp = Class.extend({
         this.tokento={};
         this.functions={};
         this.configs={};
+        this.graphs={};
         this.user_config={"zprefix": "Zone"};
         this.mcommands={};
         this.socket = ws;
@@ -1375,6 +1426,8 @@ var BuddyApp = Class.extend({
         this.debug= false ;
         this.cmd_panel=null;
         this.seenevents=[];
+        this.displaydata=undefined;
+        this.currentgraph=undefined;
         
         this.socket.binaryType = "arraybuffer";
         this.socket.onopen = function() {
@@ -1407,7 +1460,9 @@ var BuddyApp = Class.extend({
                     delete buddy.tokento[msg.content.token] ;
                 }
                 if (jQuery.inArray( msg.content.token, buddy.tokens) >= 0) {
-                    buddy.tokens.splice( $.inArray(msg.content.token, buddy.tokens), 1 );
+                    if ( msg.content.to_be_continued == undefined || ! msg.content.to_be_continued ) {
+                        buddy.tokens.splice( $.inArray(msg.content.token, buddy.tokens), 1 );
+                    }
                     if ( msg.content.response ==  'login' ) {
                         buddy.handle_login(msg);
                     } else if ( msg.content.response ==  'system state' ) {
@@ -1426,6 +1481,8 @@ var BuddyApp = Class.extend({
                         buddy.handle_device_define(msg)
                     } else if ( msg.content.response ==  'save property' ) {
                         buddy.handle_property(msg)
+                    } else if ( msg.content.response ==  'request data' ) {
+                        buddy.handle_data_request(msg)
                     }
                 }
             } else if (msg.content_type == 'event' ) {
@@ -1457,6 +1514,12 @@ var BuddyApp = Class.extend({
                     buddy.hevent_gui_alert(msg);
                 } else if ( msg.content.event ==  'deletion' ) {
                     buddy.hevent_device_deletion(msg);
+                } else if ( msg.content.event ==  'graph available' ) {
+                    buddy.hevent_graph_updt(msg);
+                } else if ( msg.content.event ==  'graph update' ) {
+                    buddy.hevent_graph_live_updt(msg);
+                } else if ( msg.content.event ==  'what graph needed' ) {
+                    buddy.hevent_graph_needed(msg);
                 } else if ( msg.content.event ==  'error report' ) {
                     console.log(msg.content.value);
                 } else {
@@ -2249,6 +2312,44 @@ var BuddyApp = Class.extend({
             })
         }
     },
+    
+    handle_data_request: function(msg) {
+        if ( buddy.displaydata == undefined ) {
+            //firstdata check the headres
+            if (msg.content["value"].length <= 1) {
+                $("#bu-graph-display").append("<p>There seem to be no data to graph.</p>");
+                return;
+            }
+            buddy.displaydata = msg.content["value"];
+            var labels = buddy.displaydata[0] 
+            $.each( labels, function (idx, data) {
+                if ( data in deviceById ) {
+                    labels[idx]=deviceById[data].nickname;
+                }
+            })
+            buddy.displaydata = buddy.displaydata.slice(1)
+            for (var i=0; i < buddy.displaydata.length; i++) {
+                buddy.displaydata[i][0]=new Date(buddy.displaydata[i][0]);
+            }
+            //Create the graph
+            buddy.currentgraph = new Dygraph(document.getElementById("bu-graph-display"), buddy.displaydata,
+                          {
+                            drawPoints: true,
+                            showRoller: true,
+                            labels: labels,
+                            width: 400,
+                            height: 300
+                          });
+            buddy.currentgraph.graphname = msg.content["name"];
+        } else {
+            var newvals = msg.content["value"];
+            for (var i=0; i < newvals.length; i++) {
+                newvals[i][0]=new Date(newvals[i][0]);
+                buddy.displaydata.push(newvals[i]);
+            }
+            buddy.currentgraph.updateOptions( { 'file': buddy.displaydata } );
+        }
+    },
 
     hevent_command_updt: function(msg) {
         if (msg.content["target"]) {
@@ -2264,6 +2365,39 @@ var BuddyApp = Class.extend({
     
     hevent_gui_alert: function(msg) {
         $("<span>").text(msg["content"]["value"]).appendTo('#bu-navbar-info').delay(7000).queue(function() {$(this).remove();});
+    },
+    
+    hevent_graph_updt: function(msg) {
+        if (msg.content["target"]) {
+            var etype = msg.content["target"].split(".")[0];
+            var estype = msg.content["target"].split(".")[1];
+            if ( !(etype in buddy.graphs) ) {
+                buddy.graphs[etype]={};
+            };
+            if ( !(estype in buddy.graphs[etype]) ) {
+                buddy.graphs[etype][estype]=[];
+            }
+            buddy.graphs[etype][estype]=msg.content["value"];
+        }
+    },
+    
+    hevent_graph_live_updt: function(msg) {
+        if (buddy.currentgraph && buddy.currentgraph.graphname == msg.content["name"]) {
+            if (msg.content["target"]) {
+                var newvals = msg.content["value"];
+                for (var i=0; i < newvals.length; i++) {
+                    newvals[i][0]=new Date(newvals[i][0]);
+                    buddy.displaydata.push(newvals[i]);
+                }
+                buddy.currentgraph.updateOptions( { 'file': buddy.displaydata } );
+            }
+        }
+    },
+    
+    hevent_graph_needed: function(msg) {
+        if (buddy.currentgraph &&  buddy.currentgraph.graphname) {
+            buddy.send_event("graph needed","logger",buddy.currentgraph.graphname );
+        }
     }
     
 })

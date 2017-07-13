@@ -185,7 +185,11 @@ class BuddyPartner(aio.Protocol):
         if msg["content_type"] in ["response"]:
             if msg["content"]["token"] not in self.tokens:
                 return
-            del(self.tokens[msg["content"]["token"]])
+            if "to_be_continued" not in msg["content"] or not msg["content"]["to_be_continued"]:
+                del(self.tokens[msg["content"]["token"]])
+            else:
+                #Keep the token going
+                self.tokens[msg["content"]["token"]] = dt.datetime.now()
         if msg["content_type"] in ["command", "request"]:
             for x, y in zip(self.filter, msg["subject"].split(".")):
                 if not y.startswith(x):

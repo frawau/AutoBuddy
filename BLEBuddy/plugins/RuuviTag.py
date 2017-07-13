@@ -36,7 +36,7 @@ SAMPLESIZE=200
 #This class manages RuuviTag sensors
 class RuuviTag(object):
     name="RuuviTag"
-    measurements=["temperature","pressure","humidity","accelerometer"]
+    measurements=["temperature","pressure","humidity","accelerometer","battery"]
     is_running = False
     
     def __init__(self,parent,calibration,throttle):
@@ -46,6 +46,7 @@ class RuuviTag(object):
         self.calibrating = {}
         self.is_running=True
         self.next_run = {}       #mac keyed dictionaries
+        self.avgbat = None;
 
     def __call__(self,parent,calibration,throttle):
         #Needed when a plugin is disabled then enabled.
@@ -129,7 +130,17 @@ class RuuviTag(object):
                         self.calibrating[macaddr][2].append(int.from_bytes(val[10:12],"big",signed=True))
                         if len(self.calibrating[macaddr][0]) >= SAMPLESIZE:
                             self.done_calibrate(macaddr)
-                    result["voltage"]=int.from_bytes(val[12:14],"big")
+                    if self.avgbat is None:
+                        self.avgbat = int.from_bytes(val[12:14],"big")
+                    else:
+                        self.avgbat = (self.avgbat + int.from_bytes(val[12:14],"big"))/2.0
+                    if thisrun >= self.next_run[macaddr]["battery"]:
+                        result["battery"]=self.avgbat
+                        self.avgbat = None #reset
+                        hasinfo = True
+                        if "battery" in self.throttle:
+                            self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
+                    
                     if hasinfo:
                         return result
                     else:
@@ -203,7 +214,11 @@ class RuuviTag(object):
                         self.calibrating[macaddr][2].append(int.from_bytes(val[10:12],"big",signed=True))
                         if len(self.calibrating[macaddr][0]) >= SAMPLESIZE:
                             self.done_calibrate(macaddr)
-                    result["voltage"]=int.from_bytes(val[12:14],"big")
+                    if thisrun >= self.next_run[macaddr]["battery"]:
+                        result["battery"]=int.from_bytes(val[12:14],"big")
+                        hasinfo = True
+                        if "battery" in self.throttle:
+                            self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
                     if hasinfo:
                         return result
         except:

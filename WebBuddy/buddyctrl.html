@@ -17,6 +17,7 @@
         <link rel="stylesheet" type="text/css" href="css/jquery-ui.css">
         <link rel="stylesheet" type="text/css" href="css/webbuddy.css" />
         <link rel="stylesheet" type="text/css" href="css/remotecontrol.css" />
+        <link rel="stylesheet" type="text/css" href="css/dygraph.css" />
         <!--<link rel="stylesheet" type="text/css" href="css/bootstrap-theme.min.css" /> -->
         <script type="text/javascript" src="js/jquery.js"></script>
         <script type="text/javascript" src="js/jquery-ui.min.js"></script>
@@ -35,6 +36,7 @@
         <script type="text/ecmascript" src="js/remotecontrol.js"></script>
         <script type="text/javascript" src='https://maps.google.com/maps/api/js?key=AIzaSyAhOj_X3Ch2KKIDnt_-4cZC47L_uxLSQ-0&sensor=false'></script>
         <script type="text/javascript" src="js/locationpicker.jquery.min.js"></script>
+        <script type="text/javascript" src="js/dygraph.js"></script>
         <script type="text/ecmascript" src="js/buddy.js"></script>
 
 `      <script type="text/javascript">
@@ -145,17 +147,18 @@
                 <li class="dropdown">
                     <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Menu <span class="caret"></span></a>
                     <ul class="dropdown-menu" id="bu-navbar-menu">
+                        <li class="disabled" ><a href="#" onclick="display_graphs()"><i class="fa fa-line-chart fa-fw"></i>&nbsp; Graphs</a></li>
+                        <li role="separator" class="divider adminonly"></li>
+                        <li class="disabled adminonly" ><a href="#" onclick="module_command()"><i class="fa fa-bolt fa-fw"></i>&nbsp; Commands</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li class="disabled" ><a href="#" onclick="module_config()"><i class="fa fa-cog fa-fw"></i>&nbsp; Configure</a></li>
+                        <li role="separator adminonly" class="divider"></li>
+                        <li class="disabled adminonly" ><a href="#" onclick="module_export_config()"><i class="fa fa-upload fa-fw"></i>&nbsp; Export</a></li>
+                        <li class="disabled adminonly" ><a href="#" onclick="module_import_config()"><i class="fa fa-download fa-fw"></i>&nbsp; Import</a></li><li role="separator" class="divider"></li>
                         <li class="disabled" ><a href="#" onclick="logout()"><i class="fa fa-sign-out fa-fw"></i>&nbsp; Logout</a></li>
                         <li class="disabled" ><a href="#" onclick="change_password()"><i class="fa fa-pencil fa-fw"></i>&nbsp; Change Password</a></li>
                         <li role="separator" class="divider"></li>
-                        <li class="disabled" ><a href="#" onclick="module_config()"><i class="fa fa-cog fa-fw"></i>&nbsp; Configure</a></li>
-                        <li role="separator" class="divider"></li>
                         <li class="disabled" ><a href="#" onclick="explore_events()"><i class="fa fa-eye fa-fw"></i>&nbsp; Explore Events</a></li>
-                        <li role="separator" class="divider adminonly"></li>
-                        <li class="disabled adminonly" ><a href="#" onclick="module_command()"><i class="fa fa-bolt fa-fw"></i>&nbsp; Commands</a></li>
-                        <li role="separator adminonly" class="divider"></li>
-                        <li class="disabled adminonly" ><a href="#" onclick="module_export_config()"><i class="fa fa-upload fa-fw"></i>&nbsp; Export</a></li>
-                        <li class="disabled adminonly" ><a href="#" onclick="module_import_config()"><i class="fa fa-download fa-fw"></i>&nbsp; Import</a></li>
                         <li role="separator" class="divider"></li>
                         <li><a href="#" onclick="show_about()" id="bu-about"><i class="fa fa-home fa-fw"></i>&nbsp; About AutoBuddy</a></li>
                     </ul>
@@ -185,6 +188,7 @@ abouttext["WebBuddy"]+="<li><a href=\"http://www.bootstrap-switch.org/\">Bootstr
 abouttext["WebBuddy"]+="<li><a href=\"https://github.com/Logicify/jquery-locationpicker-plugin\">Location Picker</a></li>";
 abouttext["WebBuddy"]+="<li><a href=\"https://fortawesome.github.io/Font-Awesome/\">Font Awesome</a></li>";
 abouttext["WebBuddy"]+="<li><a href=\"https://github.com/frawau/BuddyWheel\">BuddyWheel</a></li>";
+abouttext["WebBuddy"]+="<li><a href=\"http://dygraphs.com/\">Dygraphs</a></li>";
 abouttext["WebBuddy"]+="<li>...</li></ul><p class=\"bu-copyright\">&copy; 2015 Fran&ccedil;ois Wautier</p>";
 abouttext["License"]="<p> Copyright (c) 2017 François Wautier</p>"
 abouttext["License"]+="<p></p>"
