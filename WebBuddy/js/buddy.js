@@ -2336,6 +2336,7 @@ var BuddyApp = Class.extend({
             buddy.currentgraph = new Dygraph(document.getElementById("bu-graph-display"), buddy.displaydata,
                           {
                             drawPoints: true,
+                            connectSeparatedPoints: true,
                             showRoller: true,
                             labels: labels,
                             width: 400,
