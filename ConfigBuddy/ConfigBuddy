@@ -553,7 +553,7 @@ else:
             print("You need to type something!")
     credential=choice
     print ("OK, using \"{}\" for credential.".format(credential))
-    print ("IMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(certdir))
+    print ("IMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(BUDDYLOCATION+"/.tls"))
     
 dolifx=False
 doflic=False
