@@ -553,7 +553,7 @@ else:
             print("You need to type something!")
     credential=choice
     print ("OK, using \"{}\" for credential.".format(credential))
-    print ("IMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(BUDDYLOCATION+"/.tls"))
+    print ("\n\nIMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(BUDDYLOCATION+"/.tls\n\n"))
     
 dolifx=False
 doflic=False
@@ -641,7 +641,7 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doblescan=True
     
-print("\n\nLoggerBuddy let you record events over time. They can then be graphed using the GUI.\bNot that this will use a local SQLite database file.")
+print("\n\nLoggerBuddy let you record events over time. They can then be graphed using the GUI.\nNote that this will use a local SQLite database file.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
@@ -1144,59 +1144,60 @@ os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
 
 
-mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
+if mainstation:
+    mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
 
-bdb = mycfg["database"]["driver"] + "://"
-if "user" in mycfg["database"] and mycfg["database"]["user"]:
-    bdb += mycfg["database"]["user"] + ":" + mycfg["database"]["password"] + "@"
-bdb += mycfg["database"]["host"]
+    bdb = mycfg["database"]["driver"] + "://"
+    if "user" in mycfg["database"] and mycfg["database"]["user"]:
+        bdb += mycfg["database"]["user"] + ":" + mycfg["database"]["password"] + "@"
+    bdb += mycfg["database"]["host"]
 
-if "port" in mycfg["database"] and mycfg["database"]["port"]:
-    bdb += ":"+ str(mycfg["database"]["port"])
-bdb += "/" + mycfg["database"]["db"]
+    if "port" in mycfg["database"] and mycfg["database"]["port"]:
+        bdb += ":"+ str(mycfg["database"]["port"])
+    bdb += "/" + mycfg["database"]["db"]
 
-print ("Almost there!")
-if psqldbok:
-    #print "Connecting with",bdb
-    sess=bl.getSession(bdb)
-    bl.initialize(sess)
-    nzone=bl.Zone()
-    nzone.name="zone-BuddyRoot"
-    nzone.nickname=topzone
-    sess.add(nzone)
-    nprop=bl.BuddyProperty()
-    nprop.entity="guibridge"
-    nprop.name="users"
-    nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
-    sess.add(nprop)
-    nprop=bl.BuddyProperty()
-    nprop.entity="System"
-    nprop.name="configuration"
-    nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
-    sess.add(nprop)
-    nprop=bl.BuddyProperty()
-    nprop.entity="action"
-    nprop.name="rules"
-    nprop.values=bl.encrypt({},actionkey)
-    sess.add(nprop)
-    nprop=bl.BuddyProperty()
-    nprop.entity="action"
-    nprop.name="state variable"
-    nprop.values=bl.encrypt({},actionkey)
-    sess.add(nprop)
-    sess.commit()
+    print ("Almost there!")
+    if psqldbok:
+        #print "Connecting with",bdb
+        sess=bl.getSession(bdb)
+        bl.initialize(sess)
+        nzone=bl.Zone()
+        nzone.name="zone-BuddyRoot"
+        nzone.nickname=topzone
+        sess.add(nzone)
+        nprop=bl.BuddyProperty()
+        nprop.entity="guibridge"
+        nprop.name="users"
+        nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
+        sess.add(nprop)
+        nprop=bl.BuddyProperty()
+        nprop.entity="System"
+        nprop.name="configuration"
+        nprop.values=bl.encrypt({"location":{"longitude":mylocation["lon"],"latitude":mylocation["lat"],"altitude":4}},controlkey)
+        sess.add(nprop)
+        nprop=bl.BuddyProperty()
+        nprop.entity="action"
+        nprop.name="rules"
+        nprop.values=bl.encrypt({},actionkey)
+        sess.add(nprop)
+        nprop=bl.BuddyProperty()
+        nprop.entity="action"
+        nprop.name="state variable"
+        nprop.values=bl.encrypt({},actionkey)
+        sess.add(nprop)
+        sess.commit()
 
 
-#Bloddy grant select!
-newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
-GRANT SELECT ON TABLE zone TO readbuddy;
-"""         
-if psqldbok:
-    if psqluser:
-        sqlproc=subprocess.Popen(["/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
-    else:
-        chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-    d_out=chpass.communicate(input=newconfig)
+    #Bloddy grant select!
+    newconfig="""GRANT SELECT ON TABLE device TO readbuddy;
+    GRANT SELECT ON TABLE zone TO readbuddy;
+    """         
+    if psqldbok:
+        if psqluser:
+            sqlproc=subprocess.Popen(["/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
+        else:
+            chpass=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql","autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+        d_out=chpass.communicate(input=newconfig)
 
 if not iamsuper:
     remindmeattheend+="\nYou must permit access to bluetooth adapter with:\n"
@@ -1210,44 +1211,45 @@ for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
         remindmeattheend+="\tsudo /sbin/setcap cap_net_admin=ep" + fname +"\n"
         remindmeattheend+="\tsudo /sbin/setcap 'cap_net_bind_service=+ep' /usr/bin/python3.5\n"
         remindmeattheend+="\tsudo /sbin/setcap 'cap_net_raw=+ep' /usr/bin/python3.5\n"
-
-if not psqldbok:
-    remindmeattheend+="\n\nAfter creating the database you will also need to run the python script to bootstrap that database:\n\n"
-    remindmeattheend+="import sys\n"
-    remindmeattheend+="sys.path.append(\"%s\")\n"%(BUDDYLOCATION+"/Buddylib")
-    remindmeattheend+="import buddylib as bl\n"
-    remindmeattheend+="sess=bl.getSession(\"%s\")\n"%bdb
-    remindmeattheend+="bl.initialize(sess)\n"
-    remindmeattheend+="nzone=bl.Zone()\n"
-    remindmeattheend+="nzone.name=\"zone-BuddyRoot\"\n"
-    remindmeattheend+="nzone.nickname=topzone\n"
-    remindmeattheend+="sess.add(nzone)\n"
-    remindmeattheend+="nprop=bl.BuddyProperty()\n"
-    remindmeattheend+="nprop.entity=\"guibridge\"\n"
-    remindmeattheend+="nprop.name=\"users\"\n"
-    remindmeattheend+="nprop.values=bl.encrypt({\"admin\":[\"password\",\"admin\"]},\"%s\")\n"%socketkey
-    remindmeattheend+="sess.add(nprop)\n"
-    remindmeattheend+="nprop=bl.BuddyProperty()\n"
-    remindmeattheend+="nprop.entity=\"System\"\n"
-    remindmeattheend+="nprop.name=\"configuration\"\n"
-    remindmeattheend+="nprop.values=bl.encrypt({\"location\":{\"longitude\":%.8f,\"latitude\":%.8f,\"altitude\":4}},\"%s\")\n"%(mylocation["lon"],mylocation["lat"],controlkey)
-    remindmeattheend+="sess.add(nprop)\n"
-    remindmeattheend+="nprop=bl.BuddyProperty()\n"
-    remindmeattheend+="nprop.entity=\"action\"\n"
-    remindmeattheend+="nprop.name=\"rules\"\n"
-    remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
-    remindmeattheend+="sess.add(nprop)\n"
-    remindmeattheend+="nprop=bl.BuddyProperty()\n"
-    remindmeattheend+="nprop.entity=\"action\"\n"
-    remindmeattheend+="nprop.name=\"state variable\"\n"
-    remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
-    remindmeattheend+="sess.add(nprop)\n"
-    remindmeattheend+="sess.commit()\n"
-    remindmeattheend+="\n\n"
-    
-if not psqldbok:
-    remindmeattheend+="\nAfter that, you need to connect to the database again and do:"
-    remindmeattheend+="\n"+newconfig+"\n"
+        
+if mainstation:
+    if not psqldbok:
+        remindmeattheend+="\n\nAfter creating the database you will also need to run the python script to bootstrap that database:\n\n"
+        remindmeattheend+="import sys\n"
+        remindmeattheend+="sys.path.append(\"%s\")\n"%(BUDDYLOCATION+"/Buddylib")
+        remindmeattheend+="import buddylib as bl\n"
+        remindmeattheend+="sess=bl.getSession(\"%s\")\n"%bdb
+        remindmeattheend+="bl.initialize(sess)\n"
+        remindmeattheend+="nzone=bl.Zone()\n"
+        remindmeattheend+="nzone.name=\"zone-BuddyRoot\"\n"
+        remindmeattheend+="nzone.nickname=topzone\n"
+        remindmeattheend+="sess.add(nzone)\n"
+        remindmeattheend+="nprop=bl.BuddyProperty()\n"
+        remindmeattheend+="nprop.entity=\"guibridge\"\n"
+        remindmeattheend+="nprop.name=\"users\"\n"
+        remindmeattheend+="nprop.values=bl.encrypt({\"admin\":[\"password\",\"admin\"]},\"%s\")\n"%socketkey
+        remindmeattheend+="sess.add(nprop)\n"
+        remindmeattheend+="nprop=bl.BuddyProperty()\n"
+        remindmeattheend+="nprop.entity=\"System\"\n"
+        remindmeattheend+="nprop.name=\"configuration\"\n"
+        remindmeattheend+="nprop.values=bl.encrypt({\"location\":{\"longitude\":%.8f,\"latitude\":%.8f,\"altitude\":4}},\"%s\")\n"%(mylocation["lon"],mylocation["lat"],controlkey)
+        remindmeattheend+="sess.add(nprop)\n"
+        remindmeattheend+="nprop=bl.BuddyProperty()\n"
+        remindmeattheend+="nprop.entity=\"action\"\n"
+        remindmeattheend+="nprop.name=\"rules\"\n"
+        remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
+        remindmeattheend+="sess.add(nprop)\n"
+        remindmeattheend+="nprop=bl.BuddyProperty()\n"
+        remindmeattheend+="nprop.entity=\"action\"\n"
+        remindmeattheend+="nprop.name=\"state variable\"\n"
+        remindmeattheend+="nprop.values=bl.encrypt({},\"%s\")\n"%actionkey
+        remindmeattheend+="sess.add(nprop)\n"
+        remindmeattheend+="sess.commit()\n"
+        remindmeattheend+="\n\n"
+        
+    if not psqldbok:
+        remindmeattheend+="\nAfter that, you need to connect to the database again and do:"
+        remindmeattheend+="\n"+newconfig+"\n"
 #Update in BuddyTools
 for fn in os.listdir(BUDDYLOCATION+"/BuddyTools"):
     with open(BUDDYLOCATION+"/BuddyTools/"+fn, 'r') as file :
