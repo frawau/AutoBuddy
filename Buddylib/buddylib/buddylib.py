@@ -467,14 +467,14 @@ class BuddyBridge(aio.Protocol):
         By default just do nothing
         """
         if self.log:
-            self.log.debug("event {}".format(msg["content"]["value"]))                
+            self.log.debug("event {}".format(msg["content"]))                
     
     def process_event(self,msg):
         """
         By default just do nothing
         """
         if self.log:
-            self.log.debug("event {}".format(msg["content"]["value"]))
+            self.log.debug("event {}".format(msg["content"]))
     
     def sending(self,msg):
         if msg["content_type"]=="request":
