@@ -77,13 +77,13 @@ else:
 os.system('clear')
 print("\n\nWelcome to AutoBuddy configuration tool.")
 if iamsuper:
-    print ("It looks like you are running with root priviledges. Good!")
+    print ("It looks like you are running with root privileges. Good!")
     print ("Be forwarned though, we will be setting your time zone, install some needed")
     print ("packages and will access PostgreSQL by masquerading as user 'postgres'.")
     print ("If you do not want this, or if you think it won't work, get out now and run")
     print ("this config tool as an unpriviledged users.")
 else:
-    print ("It looks like you are running without root priviledges. This means that")
+    print ("It looks like you are running without root privileges. This means that")
     print ("there will be a number of tasks we will not be able to perform. What we")
     print ("will do is tell you what you  need to do when this config tool is done")
     print ("for AutoBuddy to work smoothly. We will also ask you for the user name and")
@@ -459,7 +459,7 @@ if mainstation:
             actionsender="root"
         else:
             actionsender=choice
-        print ("\n OK, we will use\"{}\" as sender. \n\n".format(actionsender))
+        print ("\n OK, we will use \"{}\" as sender. \n\n".format(actionsender))
         print ("\n Some SMTP servers require authentication, if that is the case, we need a user and password. \n\n")
         choice=input("SMTP authentication user (no authentication) => ").strip()
         if choice:

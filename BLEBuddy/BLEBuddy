@@ -331,6 +331,7 @@ class BLESensorBridge(bl.BuddyBridge):
                                             sensor.name,
                                             "value": "online",
                                             "icon status": {"bu-not-present": {"opacity": 0}}}})
+                self.register(sensor)
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
