@@ -136,13 +136,13 @@ class LoggerBridge(bl.BuddyBridge):
                     myrecords=self.dbc.fetchmany()
                     wasset = False
                     if myrecords:
-                        arec=[myrecords[0][0]]+[""]*len(loe)
+                        arec=[myrecords[0][0]]+[None]*len(loe)
                         for rec in myrecords:
                             if rec[0] != arec[0]:
                                 if wasset:
                                     arec[0] = str(arec[0])
                                     myresult.append(arec)
-                                arec=[rec[0]]+[""]*len(loe)
+                                arec=[rec[0]]+[None]*len(loe)
                                 wasset=False
                             rval=json.loads(rec[3])
                             if rval.__class__ in (int,float):
@@ -323,7 +323,7 @@ class LoggerBridge(bl.BuddyBridge):
                     self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(logdef["label"],))
                     loe=[x[0] for x in self.dbc.fetchall()]
                     wasset = False
-                    arec=[tmstmp]+[""]*len(loe)
+                    arec=[tmstmp]+[None]*len(loe)
                     rval=json.loads(thevalue)
                     if rval.__class__ in (int,float):
                         arec[loe.index(msgentity)+1]=rval

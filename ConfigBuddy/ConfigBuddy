@@ -763,46 +763,46 @@ if mainstation:
     os.chown(fn,currentowner.st_uid,currentowner.st_gid)
     os.chmod(fn,0o750)
     bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n ControlBuddy -d "+fn
+
+    print ("Still working!")
+
+    mycfg={}
+    mycfg["tls"]=certdir
+    mycfg["ssl"]=certdir
+    mycfg["buddykey"] = keygen()
+    mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
+    mycfg["host"] = "*"
+    mycfg["port"] = 8090
+    mycfg["type"] = "guibridge"
+    mycfg["broker"] = brokerlocation
+    mycfg["credential"] = credential
+    socketkey = mycfg["buddykey"]
+
+    fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
+    with open(fn,"w") as cfile:
+        json.dump(mycfg,cfile)
+    os.chmod(fn,0o600)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
+    mycmd="""#!/bin/bash
+    export PYTHONPATH="""
+    mycmd+=BUDDYLOCATION+"/Buddylib"
+    mycmd+="""
+    while [ 1 ]; do
+    sleep 25
+    """
+    mycmd+=BUDDYLOCATION+"/SocketBuddy/SocketBuddy -c "+fn
+    mycmd+="\ndone\n"
+    fn=BUDDYLOCATION+"/.run/99-socket"
+    with open(fn,"w") as cfile:
+        cfile.write(mycmd)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(fn,0o750)
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SocketBuddy "+fn
+
+    print ("Still working!")
 else: #Auxillary station
-    bustartcmd="#!/bin/bash\n"
-
-print ("Still working!")
-
-mycfg={}
-mycfg["tls"]=certdir
-mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
-mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
-mycfg["host"] = "*"
-mycfg["port"] = 8090
-mycfg["type"] = "guibridge"
-mycfg["broker"] = brokerlocation
-mycfg["credential"] = credential
-socketkey = mycfg["buddykey"]
-
-fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
-with open(fn,"w") as cfile:
-    json.dump(mycfg,cfile)
-os.chmod(fn,0o600)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(BUDDYLOCATION+"/SocketBuddy/SocketBuddy",0o775)
-mycmd="""#!/bin/bash
-export PYTHONPATH="""
-mycmd+=BUDDYLOCATION+"/Buddylib"
-mycmd+="""
-while [ 1 ]; do
-sleep 25
-"""
-mycmd+=BUDDYLOCATION+"/SocketBuddy/SocketBuddy -c "+fn
-mycmd+="\ndone\n"
-fn=BUDDYLOCATION+"/.run/99-socket"
-with open(fn,"w") as cfile:
-    cfile.write(mycmd)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(fn,0o750)
-bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SocketBuddy "+fn
-
-print ("Still working!")
+    bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n Buddy -d sleep 30"
 
 mycfg={}
 mycfg["host"]= brokerlocation
@@ -1069,7 +1069,7 @@ mycfg["host"]= brokerlocation
 mycfg["type"] = "sensor"
 mycfg["subtype"] = "blesensor"
 if doblescan:
-    mycfg["btdev"] = lobtdevs[0][-1]
+    mycfg["btdev"] = int(lobtdevs[0][-1])
     lobtdevs=lobtdevs[1:]
 else:
     mycfg["btdev"] = 0
@@ -1284,7 +1284,9 @@ WantedBy=multi-user.target
         with open("/etc/systemd/system/autobuddy.service","w") as cfile:
             cfile.write(systemdfile)
         chpass=subprocess.Popen(["systemctl", "enable", "autobuddy"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-        print ("\n\n\n\n We are done.\n\n After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
+        print ("\n\n\n\n We are done.\n")
+        if mainstation:
+            print("After reboot, point your browser to https://autobuddy.local:8090/.\n\n Login with username \"admin\" and password \"password\".")
     else:
         remindmeattheend+="\n\nIn order for AutoBuddy to start automatically after a reboot, must create a file:\n"
         remindmeattheend+="\t/etc/systemd/system/autobuddy.service\ncontaining the following:\n\n"
