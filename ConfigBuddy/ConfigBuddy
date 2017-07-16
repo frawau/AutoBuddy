@@ -21,7 +21,7 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-import subprocess,os,json,sys,glob,pwd
+import subprocess,os,json,sys,glob,pwd,re,socket
 
 BUDDYLOCATION="/".join(os.path.realpath(__file__).split("/")[:-2])
 currentowner=os.stat(BUDDYLOCATION)
@@ -59,6 +59,7 @@ def keygen():
     return "".join(lolet[startidx:startidx+32])
 
 
+brokerlocation = "localhost"
 #This is basically a linear walk-through the needed settings...
 mylocation={"timezone":"Europe/Paris","lat":48.8584,"lon":2.2945,"countryCode":"FR","regionName":"Paris","city":"Paris"}
 try:
@@ -227,7 +228,7 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 command should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip")
-        print("\tsudo pip3 install aiolifx aioarping aiobtname pyalsaaudio aiohttp\n")
+        print("\tsudo pip3 install aiolifx aioarping aiobtname aioblescan pyalsaaudio aiohttp\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip"
         remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname pyalsaaudio zeroconf aiohttp\n\n"
@@ -236,7 +237,7 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         choice = input(" Press '<enter>' to proceed")
         try:
             subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring"])
-            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "pyalsaaudio", "zeroconf", "aiohttp"])
+            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "aioblescan", "pyalsaaudio", "zeroconf", "aiohttp"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -285,119 +286,274 @@ if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     
     print ("\n\n\n\n Password was set.\n\n")
 
-
-if not iamsuper:
-    choice = input(" Press '<enter>' to continue")
-    psqldbok=False
-    psqluser=None
-    print ("\nWe now need to setup PostgreSQL, create a database and 2 users.")
-    print ("If you want I can perform these operation but I need a username and password with adequate permissions.")
-    print ("\nWould you like to setup the database by providing a user name and password?")
-    gotit=False
-    while not gotit:
-        choice = input("\n Your choice? [yes/no] : ")
-        if choice.strip().lower() in ["n", "no", "no way","hell no"]:
+mainstation = True
+print("\nBefore we really start, I have an important question.")
+gotit=False
+while not gotit:
+    print ("\n\nIs this the main AutoBuddy installation? There can only be\none ControlBuddy instance. Is this it?")
+    for x in ["Yes","No"]:
+        print("\t %s"%x)
+    print()
+    choice = input(" Your choice: ")
+    try:
+        if choice.strip().lower() in ['y',"yes","yay","sure","yep","affirmative"]:
             gotit=True
-            print("Ok, we'll tell you what needs to be done.")      
-        elif choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+        elif choice.strip().lower() in ['n','no','nope','nay','negative','wrong']:
             gotit=True
-            psqldbok=True
-            psqluser=input("\n Please input the username : ")
-            psqlpasswd=input("\n Please input the password : ")
-            print("Ok, we'll use user %s with password %s"%(psqluser,psqlpasswd))
-            my_env = os.environ.copy()
-            my_env["PGUSER"] = psqluser   
-            my_env["PGPASSWORD"] = psqlpasswd     
+            mainstation = False
         else:
-            print ("Just answer Yes or No. How difficult is that?")    
-else:
-    psqldbok=True
-    psqluser=None
-    
-       
+            raise Exception
+    except:
+        os.system('clear')
+        print ("\n\nInput not recognized. Please pay attention.")
+            
+            
+if mainstation:
+    if not iamsuper:
+        choice = input(" Press '<enter>' to continue")
+        psqldbok=False
+        psqluser=None
+        print ("\nWe now need to setup PostgreSQL, create a database and 2 users.")
+        print ("If you want I can perform these operation but I need a username and password with adequate permissions.")
+        print ("\nWould you like to setup the database by providing a user name and password?")
+        gotit=False
+        while not gotit:
+            choice = input("\n Your choice? [yes/no] : ")
+            if choice.strip().lower() in ["n", "no", "no way","hell no"]:
+                gotit=True
+                print("Ok, we'll tell you what needs to be done.")      
+            elif choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+                gotit=True
+                psqldbok=True
+                psqluser=input("\n Please input the username : ")
+                psqlpasswd=input("\n Please input the password : ")
+                print("Ok, we'll use user %s with password %s"%(psqluser,psqlpasswd))
+                my_env = os.environ.copy()
+                my_env["PGUSER"] = psqluser   
+                my_env["PGPASSWORD"] = psqlpasswd     
+            else:
+                print ("Just answer Yes or No. How difficult is that?")    
+    else:
+        psqldbok=True
+        psqluser=None
+        
+        
 
-createdb="CREATE DATABASE autobuddy ENCODING 'UTF8';"
-pgreadonlyuser="""
-CREATE USER readbuddy WITH ENCRYPTED PASSWORD '%s';
-GRANT CONNECT ON DATABASE autobuddy TO readbuddy;
-GRANT USAGE ON SCHEMA public TO readbuddy;
-GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readbuddy;
-GRANT SELECT ON ALL TABLES IN SCHEMA public to readbuddy;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readbuddy;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readbuddy;
-"""
-pgmainuser="""
-CREATE USER autobuddy WITH ENCRYPTED PASSWORD '%s';
-GRANT ALL PRIVILEGES ON DATABASE autobuddy TO autobuddy;
-"""
-xx=input("\n Press <enter> to continue...")
-os.system('clear')
-weredone=False
-newpasswd=""
-while not weredone:
-    print ("\n\n\n We will now define a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n")
-    print (" If you leave the password empty, I will generate the password automatically.\n\n")
-    passwd = getpass(" Password: ")
-    if passwd:
-        confirm = getpass(" Confirm Password: ")
-        if passwd == confirm :
+    createdb="CREATE DATABASE autobuddy ENCODING 'UTF8';"
+    pgreadonlyuser="""
+    CREATE USER readbuddy WITH ENCRYPTED PASSWORD '%s';
+    GRANT CONNECT ON DATABASE autobuddy TO readbuddy;
+    GRANT USAGE ON SCHEMA public TO readbuddy;
+    GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readbuddy;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public to readbuddy;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readbuddy;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readbuddy;
+    """
+    pgmainuser="""
+    CREATE USER autobuddy WITH ENCRYPTED PASSWORD '%s';
+    GRANT ALL PRIVILEGES ON DATABASE autobuddy TO autobuddy;
+    """
+    xx=input("\n Press <enter> to continue...")
+    os.system('clear')
+    weredone=False
+    newpasswd=""
+    while not weredone:
+        print ("\n\n\n We will now define a password for the \"autobuddy\"  user in PostgreSQL.\n This user has all access to the \"autobuddy\" database.\n\n")
+        print (" If you leave the password empty, I will generate the password automatically.\n\n")
+        passwd = getpass(" Password: ")
+        if passwd:
+            confirm = getpass(" Confirm Password: ")
+            if passwd == confirm :
+                weredone = True
+                dbpasswd=passwd
+            else:
+                os.system('clear')
+                print ("\n\n The passwords did not match.")
+        else:
+            dbpasswd=passgen()
             weredone = True
-            dbpasswd=passwd
+        
+        
+    weredone=False
+    newpasswd=""
+    while not weredone:
+        print ("\n\n\n We will now define a password for the \"readbuddy\"  user in PostgreSQL.\n This user has read-only access to the \"autobuddy\" database.\n\n")
+        print (" If you leave the password empty, I will generate the password automatically.\n\n")
+        passwd = getpass(" Password: ")
+        if passwd:
+            confirm = getpass(" Confirm Password: ")
+            if passwd == confirm :
+                weredone = True
+                ropasswd=passwd
+            else:
+                os.system('clear')
+                print ("\n\n The passwords did not match.")
         else:
-            os.system('clear')
-            print ("\n\n The passwords did not match.")
-    else:
-        dbpasswd=passgen()
-        weredone = True
-    
-    
-weredone=False
-newpasswd=""
-while not weredone:
-    print ("\n\n\n We will now define a password for the \"readbuddy\"  user in PostgreSQL.\n This user has read-only access to the \"autobuddy\" database.\n\n")
-    print (" If you leave the password empty, I will generate the password automatically.\n\n")
-    passwd = getpass(" Password: ")
-    if passwd:
-        confirm = getpass(" Confirm Password: ")
-        if passwd == confirm :
+            ropasswd=passgen()
             weredone = True
-            ropasswd=passwd
+            
+    if psqldbok:
+        newconfig=createdb+pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
+        if debug:
+            print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
         else:
-            os.system('clear')
-            print ("\n\n The passwords did not match.")
+            if psqluser:
+                sqlproc=subprocess.Popen(["/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
+            else:
+                sqlproc=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
+            d_out=sqlproc.communicate(input=newconfig)
+            
+        os.system('clear')
+        print("\n\n\n\n Database was created, so were users and passwords were set.\n\n")
+        choice = input(" Press '<enter>' to continue")
     else:
-        ropasswd=passgen()
-        weredone = True
-          
-if psqldbok:
-    newconfig=createdb+pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
-    if debug:
-        print ("New passwords are {} and {}.".format(dbpasswd,ropasswd))
-    else:
-        if psqluser:
-            sqlproc=subprocess.Popen(["/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,env=my_env)
-        else:
-            sqlproc=subprocess.Popen(["sudo", "-u", "postgres", "/usr/bin/psql"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True)
-        d_out=sqlproc.communicate(input=newconfig)
+        remindmeattheend+="You need to create database and users with:\n"
+        remindmeattheend+=createdb+"\n"
+        remindmeattheend+=pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
         
     os.system('clear')
-    print("\n\n\n\n Database was created, so were users and passwords were set.\n\n")
-    choice = input(" Press '<enter>' to continue")
-else:
-    remindmeattheend+="You need to create database and users with:\n"
-    remindmeattheend+=createdb+"\n"
-    remindmeattheend+=pgmainuser%dbpasswd + pgreadonlyuser%ropasswd
+    print ("\n\n\n\n I need to know the name of the top zone.\n\n")
+    choice = input(" Top Zone Name [Home]: ")
+    if not choice:
+        topzone="Home"
+    else:
+        topzone=choice
     
-os.system('clear')
-print ("\n\n\n\n I need to know the name of the top zone.\n\n")
-choice = input(" Top Zone Name [Home]: ")
-if not choice:
-    topzone="Home"
-else:
-    topzone=choice
- 
-os.system('clear')
+    os.system('clear')
+    print ("\n\n\n\nSince we are on the main station, we will also be running the rules engine.")
+    print ("One of the possible action is to push notification via email, pushbullet, slack or pushover.")
+    print ("In order for this to work, we need some information. Email has some sensible default, others can be disable with an empty answer.")
+    
+    print ("\n I need to know the SMTP (Email) server, a host name or an IP address. \n\n")
+    choice=None
+    regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+    actionsmtp=None
+    actionsender=None
+    actionsmtpuser=None
+    actionsmtppasswd=None
+    while not choice:
+        choice=input("SMTP server (\"localhost\") => ").strip()
+        if choice=="":
+            actionsender="root"
+            actionsmtp="localhost"
+        else:
+            result = regex.match(choice)
+            if not result:
+                try:
+                    address = socket.gethostbyname(choice)
+                except:
+                    print("{} is not a known hostname".format(choice))
+                    choice=None
+            else:
+                try:
+                    socket.inet_aton(choice)
+                    print("Got an IP address")
+                except:
+                    print("{} is not a valid IP address".format(choice))
+                    choice=None
+    if actionsender is None:
+        actionsmtp = choice
+        print ("\n Email need a sender, in many cases this must be a real user. \n\n")
+        choice=input("Sender (\"root\") => ").strip()
+        if choice=="":
+            actionsender="root"
+        else:
+            actionsender=choice
+        print ("\n OK, we will use\"{}\" as sender. \n\n".format(actionsender))
+        print ("\n Some SMTP servers require authentication, if that is the case, we need a user and password. \n\n")
+        choice=input("SMTP authentication user (no authentication) => ").strip()
+        if choice:
+            actionsmtpuser=choice
+            choice=None
+            while choice is None:
+                choice=input("SMTP authentication password => ").strip()
+                if choice == "":
+                    choice=None
+                    print(" Please enter a password.")
+            actionsmtppasswd = choice
+            print("\n OK, we will authenticate as {] with password {}".format(actionsmtpuser,actionsmtppasswd))
+        else:
+            print("\n OK, we will not use authentication")
+    else:
+        print ("\nOK, we will use \"localhost\" and \"root\" as sender. \n\n")
+        
+    print ("\n In order to use Pushbullet, I need a so called \"Access Token\".\n You can generate on in your account setting \n\n")
+    choice=input("Pushbullet Access Token (disable) => ").strip()
+    if choice:
+        actionpushbullet=choice
+        print("\nOK, Pushbullet will be enabled.\n\n")
+    else:
+        actionpushbullet=None
+        print("\nOK, Pushbullet will be disabled.\n\n")
+        
+    print ("\n In order to use Slack, I need a so called \"Webhook URL\".\n You need to create an \"Incoming Webhook\" to get one. \n\n")
+    choice=None
+    while choice is None:
+        choice=input("Slack Webhook URL (disable) => ").strip()
+        if choice:
+            if "https://hooks.slack.com/services/" in choice:
+                actionslack=choice.replace("https://hooks.slack.com/services/","")
+                print("\nOK, Slack will be enabled.\n\n")
+            else:
+                print("That does not look like a Slack Webhook. It should start with \"https://hooks.slack.com/services/\"")
+                choice=None
+        else:
+            actionslack=None
+            print("\nOK, Slack will be disabled.\n\n")
+            break
+    print ("\n In order to use Pushover, I need both a \"User Key\" and an \"API Token\"\n\n")
+    
+    choice=input("Pushover User Key (disable) => ").strip()
+    if choice:
+        actionpushoveruser=choice
+        choice=None
+        while choice is None:
+            choice=input("Pushover API token => ").strip()
+            if choice == "":
+                choice=None
+                print(" Please enter a token.")
+        actionpushover = choice
+        print("\nOK, Pushover will be enabled.\n\n")
+    else:
+        actionpushover=None
+        actionpushoveruser=None
+        print("\nOK, Pushover will be disabled.\n\n")
 
+        
+else:
+    print ("\n\nSince this is a peripheral station, we need to know where the main station is\nand we need to know the credential to use.")
+    print ("\nWhat is the host bane or IP address of the device running ControlBuddy?")
+    choice=None
+    regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+    while not choice:
+        choice=input("ControlBuddy host => ").strip()
+        result = regex.match(choice)
+        if not result:
+            try:
+                address = socket.gethostbyname(choice)
+            except:
+                print("{} is not a known hostname".format(choice))
+                choice=None
+        else:
+            try:
+                socket.inet_aton(choice)
+                print("Got an IP address")
+            except:
+                print("{} is not a valid IP address".format(choice))
+                choice=None
+    brokerlocation=choice
+    os.system('clear')
+    print ("\nOK, we contact ControlBuddy at {}.".format(brokerlocation))
+    print ("\nNow we need to know the credential to use. The credential was generated when you installed")
+    print ("ControlBuddy. You can also retrieve it from any of the config files on the main station (e.g. in AutoBuddy/.buddyconfig/config.cfg)")
+    choice=""
+    while not choice:
+        choice=input("Credential => ").strip()
+        if not choice:
+            print("You need to type something!")
+    credential=choice
+    print("OK, using \"{}\" for credential.".format(credential))
+    
 dolifx=False
 doflic=False
 dovoice=False
@@ -406,6 +562,8 @@ dopresencelan=False
 dopresencebt=False
 dokodi=False
 doscanner=False
+doblescan=False
+dologger=False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -475,6 +633,18 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dokodi=True
     doscanner=True
+    
+print("\n\nBLEBuddy allows you to scan for BLE advertised information.\nYou will need to select which plugin to use in the GUI.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doblescan=True
+    
+print("\n\nLoggerBuddy let you record events over time. They can then be graphed using the GUI.\bNot that this will use a local SQLite database file.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dologger=True
 
 print("\nYou have decided:")
 if dolifx:
@@ -514,72 +684,76 @@ print ("\n\n\n\n Thank you, I will now proceed and finalize the configuration.\n
 choice = input(" Press '<enter>' to continue")
    
 certdir=BUDDYLOCATION+"/.tls"
-try:
-    os.mkdir(certdir,mode=0o700)
-except FileExistsError:
-    pass
 
-os.chown(certdir,currentowner.st_uid,currentowner.st_gid)
+if mainstation:
+    try:
+        os.mkdir(certdir,mode=0o700)
+    except FileExistsError:
+        pass
 
-try:
-    os.mkdir(BUDDYLOCATION+"/.buddyconfig",mode=0o700)
-except FileExistsError:
-    pass
+    os.chown(certdir,currentowner.st_uid,currentowner.st_gid)
 
-os.chown(BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
+    try:
+        os.mkdir(BUDDYLOCATION+"/.buddyconfig",mode=0o700)
+    except FileExistsError:
+        pass
 
-try:
-    os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
-except FileExistsError:
-    pass
+    os.chown(BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
 
-os.chown(BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
+    try:
+        os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
+    except FileExistsError:
+        pass
+
+    os.chown(BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
 
 
-subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
+    subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
 
-subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey", "rsa:2048", "-keyout", BUDDYLOCATION+"/.tls/autobuddy.key", "-out",
-                BUDDYLOCATION+"/.tls/autobuddy.crt", "-subj", subj])
-print("Self-signed certificate was created")
+    subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey", "rsa:2048", "-keyout", BUDDYLOCATION+"/.tls/autobuddy.key", "-out",
+                    BUDDYLOCATION+"/.tls/autobuddy.crt", "-subj", subj])
+    print("Self-signed certificate was created")
 
-os.chown(BUDDYLOCATION+"/.tls/autobuddy.key",currentowner.st_uid,currentowner.st_gid)
-os.chmod(BUDDYLOCATION+"/.tls/autobuddy.key",0o600)
-os.chown(BUDDYLOCATION+"/.tls/autobuddy.crt",currentowner.st_uid,currentowner.st_gid)
-os.chmod(BUDDYLOCATION+"/.tls/autobuddy.crt",0o600)
+    os.chown(BUDDYLOCATION+"/.tls/autobuddy.key",currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/.tls/autobuddy.key",0o600)
+    os.chown(BUDDYLOCATION+"/.tls/autobuddy.crt",currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/.tls/autobuddy.crt",0o600)
 
-credential=passgen()
-print ("Credential will be {}.".format(credential))
-mycfg={}
-mycfg["zone"]=topzone
-mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
-mycfg["dbronly"] = {"user": "readbuddy","password":ropasswd}
-mycfg["type"] = "control"
-mycfg["credential"] = credential
-mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
+    credential=passgen()
+    print ("Credential will be {}.".format(credential))
+    mycfg={}
+    mycfg["zone"]=topzone
+    mycfg["database"] = {"db": "autobuddy", "host": "localhost", "driver": "postgres", "user": "autobuddy","password":dbpasswd}
+    mycfg["dbronly"] = {"user": "readbuddy","password":ropasswd}
+    mycfg["type"] = "control"
+    mycfg["credential"] = credential
+    mycfg["ssl"]=certdir
+    mycfg["buddykey"] = keygen()
 
-controlkey=mycfg["buddykey"]
+    controlkey=mycfg["buddykey"]
 
-fn=BUDDYLOCATION+"/.buddyconfig/config.cfg"
-with open(fn,"w") as cfile:
-    json.dump(mycfg,cfile)
-os.chmod(fn,0o600)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(BUDDYLOCATION+"/ControlBuddy/ControlBuddy",0o775)
-mycmd="""#!/bin/bash
-export PYTHONPATH="""
-mycmd+=BUDDYLOCATION+"/Buddylib"
-mycmd+="""
-while [ 1 ]; do
-"""
-mycmd+=BUDDYLOCATION+"/ControlBuddy/ControlBuddy -c "+fn
-mycmd+="\nsleep 10\ndone\n"
-fn=BUDDYLOCATION+"/.run/01-control"
-with open(fn,"w") as cfile:
-    cfile.write(mycmd)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(fn,0o750)
-bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n ControlBuddy -d "+fn
+    fn=BUDDYLOCATION+"/.buddyconfig/config.cfg"
+    with open(fn,"w") as cfile:
+        json.dump(mycfg,cfile)
+    os.chmod(fn,0o600)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/ControlBuddy/ControlBuddy",0o775)
+    mycmd="""#!/bin/bash
+    export PYTHONPATH="""
+    mycmd+=BUDDYLOCATION+"/Buddylib"
+    mycmd+="""
+    while [ 1 ]; do
+    """
+    mycmd+=BUDDYLOCATION+"/ControlBuddy/ControlBuddy -c "+fn
+    mycmd+="\nsleep 10\ndone\n"
+    fn=BUDDYLOCATION+"/.run/01-control"
+    with open(fn,"w") as cfile:
+        cfile.write(mycmd)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(fn,0o750)
+    bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n ControlBuddy -d "+fn
+else: #Auxillary station
+    bustartcmd="#!/bin/bash\n"
 
 print ("Still working!")
 
@@ -591,7 +765,7 @@ mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
 mycfg["host"] = "*"
 mycfg["port"] = 8090
 mycfg["type"] = "guibridge"
-mycfg["broker"] = "localhost"
+mycfg["broker"] = brokerlocation
 mycfg["credential"] = credential
 socketkey = mycfg["buddykey"]
 
@@ -620,7 +794,7 @@ bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SocketBuddy "+fn
 print ("Still working!")
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "light"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
@@ -655,7 +829,7 @@ print ("Patience!")
 
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "switch"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
@@ -692,7 +866,7 @@ else:
 print ("Just a little longer!")
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "mediaplayer"
 mycfg["subtype"] = "Kodi"
 mycfg["credential"] = credential
@@ -728,7 +902,7 @@ else:
 
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "scanner"
 mycfg["subtype"] = "ipservices"
 mycfg["credential"] = credential
@@ -762,37 +936,46 @@ else:
 
 print ("Just a teeny weeny little longer!")
 
-mycfg={}
-mycfg["host"]= "localhost"
-mycfg["type"] = "action"
-mycfg["credential"] = credential
-mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
-actionkey=mycfg["buddykey"]
-fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
-with open(fn,"w") as cfile:
-    json.dump(mycfg,cfile)
-os.chmod(fn,0o600)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
-mycmd="""#!/bin/bash
-export PYTHONPATH="""
-mycmd+=BUDDYLOCATION+"/Buddylib"
-mycmd+="""
-while [ 1 ]; do
-sleep 20
-"""
-mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
-mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/50-action"
-with open(fn,"w") as cfile:
-    cfile.write(mycmd)
-os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-os.chmod(fn,0o750)
-bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ActionBuddy "+fn
+if mainstation:
+    mycfg={}
+    mycfg["host"]= brokerlocation
+    mycfg["type"] = "action"
+    mycfg["credential"] = credential
+    mycfg["ssl"]=certdir
+    mycfg["buddykey"] = keygen()
+    mycfg["smtp"] = actionsmtp 
+    mycfg["sender"] = actionsender
+    mycfg["user"] = actionsmtpuser or ""
+    mycfg["password"] = actionsmtppasswd or ""
+    mycfg["pushbullet"] = actionpushbullet or ""
+    mycfg["slackhook"] = actionslack or ""
+    mycfg["pushover"] = actionpushover or ""
+    mycfg["pushuser"] = actionpushoveruser or ""
+    actionkey=mycfg["buddykey"]
+    fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
+    with open(fn,"w") as cfile:
+        json.dump(mycfg,cfile)
+    os.chmod(fn,0o600)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
+    mycmd="""#!/bin/bash
+    export PYTHONPATH="""
+    mycmd+=BUDDYLOCATION+"/Buddylib"
+    mycmd+="""
+    while [ 1 ]; do
+    sleep 20
+    """
+    mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
+    mycmd+="\n    sleep 2\ndone\n"
+    fn=BUDDYLOCATION+"/.run/50-action"
+    with open(fn,"w") as cfile:
+        cfile.write(mycmd)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(fn,0o750)
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ActionBuddy "+fn
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "presence"
 mycfg["subtype"] = "mac"
 if dopresence and dopresencelan:
@@ -834,7 +1017,7 @@ else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n PresenceBuddy "+fn
 
 mycfg={}
-mycfg["host"]= "localhost"
+mycfg["host"]= brokerlocation
 mycfg["type"] = "voice"
 mycfg["subtype"] = "main"
 
@@ -845,7 +1028,6 @@ mycfg["mic"] = voicedev
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
-actionkey=mycfg["buddykey"]
 fn=BUDDYLOCATION+"/.buddyconfig/voice.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
@@ -871,8 +1053,77 @@ if dovoice:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n VoiceBuddy "+fn
 
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "sensor"
+mycfg["subtype"] = "blesensor"
+if doblescan:
+    mycfg["btdev"] = lobtdevs[0][-1]
+    lobtdevs=lobtdevs[1:]
+else:
+    mycfg["btdev"] = 0
+                
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/blescan.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/BLEBuddy/BLEBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 30
+"""
+mycmd+=BUDDYLOCATION+"/BLEBuddy/BLEBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/50-blescan"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doblescan:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n BLEBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n BLEBuddy "+fn
 
 
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "logger"
+mycfg["subtype"] = "sqlite"
+mycfg["dbfile"] = BUDDYLOCATION+"/LoggerBuddy/logger.sqlite"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/logger.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/LoggerBuddy/LoggerBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 30
+"""
+mycmd+=BUDDYLOCATION+"/LoggerBuddy/LoggerBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-logger"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doblescan:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n LoggerBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n LoggerBuddy "+fn
 
 
 fn=BUDDYLOCATION+"/.start-autobuddy"

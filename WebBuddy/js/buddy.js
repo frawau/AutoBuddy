@@ -8,7 +8,8 @@
  * Date: 2015-08-16
  *       2016-12-05   Updated to reflect the changes in message structure. 
  *       2017-01      Updated to use Buddyguilib and added "icon status" support
- *       2017-02      Lots of changes. Dupport for configuration added. Cleaned naming
+ *       2017-02      Lots of changes. Support for configuration added. Cleaned naming
+ *       2017-07      Support for graphs added.
  ^                    
 */
 

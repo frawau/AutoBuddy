@@ -29,12 +29,19 @@ import traceback
 import json
 import os
 import ssl
+import re
 import functools
 import logging
 import datetime as dt
 import asyncio as aio
 import ephem
 import dateutil.easter as due
+import smtplib
+import aiohttp
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+import time
 
 import buddylib as bl
 
@@ -678,6 +685,39 @@ action_rules = """
                     <item value="command tracker" label="Send Command to tracker">
                         <control type="text" name="variable" label=" " expand="config::action::state variable::name::type.bu-cvalue::tracker" />
                         <control type="text" name="command" label=" " expand="command" exopt="simplelist" />
+                    </item>
+                    <item value="notify" label="Notify">
+                        <controlgroup type="choice"  name="method" label=" ">
+                            <item value="email" label="Email" >
+                                <control type="text" name="to" label="To" />
+                                <control type="text" name="subject" label="Subject" />
+                                <control type="text" name="message" label="Message" />
+                            </item>
+                            <!-- pushbullet start -->
+                            <item value="pushbullet" label="Pushbullet" >
+                                <control type="text" name="subject" label="Subject" />
+                                <control type="text" name="message" label="Message" />
+                            </item>
+                            <!-- pushbullet end -->
+                            <!-- pushover start -->
+                            <item value="pushover" label="Pushover" >
+                                <control type="text" name="subject" label="Subject" />
+                                <control type="text" name="message" label="Message" />
+                            </item>
+                            <!-- pushover end -->
+                            <!-- slackhook start -->
+                            <item value="slack" label="Slack" >
+                                <control type="text" name="message" label="Message" />
+                            </item>
+                            <!-- slackhook end -->
+                        </controlgroup>
+                        <control type="spinner" name="delay" label="Minimum interval">
+                            <start>0</start>
+                            <end>86400</end>
+                            <increment>1</increment>
+                            <default>600</default>
+                            <postfix>secs</postfix>
+                        </control>
                     </item>
                 </controlgroup>
             </controlgroup>
@@ -1688,35 +1728,44 @@ class EventTrigger():
         myvar = event
         try:
             for key in self.subval:
-                myvar = myvar[key]
+                if key in myvar:
+                    myvar = myvar[key]
+                else:
+                    return False
 
         except Exception as e:
             if bridgectl.log:
-                bridgectl.log.critical(
+                bridgectl.log.debug(
                     "Failed to process trigger event for {}".format(self.name),
                     exc_info=(type(e),
                               e,
                               e.__traceback__))
             return False
         try:
+            if isinstance(myvar,int):
+                transform = lambda x: int(x)
+            elif isinstance(myvar,float):
+                transform = lambda x: float(x)
+            else:
+                transform = lambda x: x
             if self.compare == "any":
                 return True
             if self.compare == "eq":
-                return myvar == self.compval
+                return myvar == transform(self.compval)
             if self.compare == "ne":
-                return myvar != self.compval
+                return myvar != transform(self.compval)
             if self.compare == "in":
-                return myvar in self.compval.split(",")
+                return myvar in [transform(z) for z in self.compval.split(",")]
             if self.compare == "not in":
-                return myvar not in self.compval.split(",")
+                return myvar not in [transform(z) for z in self.compval.split(",")]
             if self.compare == "gt":
-                return myvar > self.compval
+                return myvar > transform(self.compval)
             if self.compare == "ge":
-                return myvar >= self.compval
+                return myvar >= transform(self.compval)
             if self.compare == "lt":
-                return myvar < self.compval
+                return myvar < transform(self.compval)
             if self.compare == "le":
-                return myvar <= self.compval
+                return myvar <= transform(self.compval)
             return False
         except:
             return False
@@ -1757,7 +1806,7 @@ class DiffCond():
         elif aval["transform"]["bu-cvalue"] == "int":
             self.transform = lambda x: int(x or 0)
         elif aval["transform"]["bu-cvalue"] == "round int":
-            self.transform = lambda x: int(roubd(float(x or 0)))
+            self.transform = lambda x: int(round(float(x or 0)))
         else:
             self.transform = lambda x: int(x or 0)
         self.compare = val["compare"]["bu-cvalue"]
@@ -1833,6 +1882,7 @@ class Rule():
         self.sending = bridgectl.sending
         self.type = bridgectl.type
         self.target = bridgectl.target
+        self.timestamp = dt.datetime.now()-dt.timedelta(days=365)
 
     def __repr__(self):
         return "Rule " + self.name
@@ -1986,6 +2036,16 @@ class Rule():
                                           "target": None,
                                           "value": tcmdval}})
                 self.action.append(mycmd)
+            elif acmd['bu-cvalue'] == "notify":
+                mycmd = [acmd['bu-cvalue']]
+                mycmd.append(acmd["method"]['bu-cvalue'])
+                mycmd.append({})
+                for nval in ["to","subject","message"]:
+                    if nval in acmd["method"]:
+                        mycmd[-1][nval]=acmd["method"][nval]
+                mycmd[-1]["delay"]=acmd["delay"]
+                self.action.append(mycmd)
+                
         if bridgectl.log:
             bridgectl.log.debug(
                 "Action defined {} defined {}".format(
@@ -2043,8 +2103,11 @@ class Rule():
                     f["content"]["token"] = bl.genid()
                     f["content"]["target"] = ent.split("-")[0]
                     self.sending(f)
-
-            # except Exception as e:
+            elif c == "notify":
+                if dt.datetime.now() > (self.timestamp+dt.timedelta(seconds=f["delay"])):
+                    self.timestamp = dt.datetime.now()
+                    bridgectl.loop.create_task(self.doNotify(v,f))
+                # except Exception as e:
                 # if bridgectl.log:
                     # emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
                     # self.sending({"subject":self.target ,
@@ -2052,6 +2115,71 @@ class Rule():
                                 #"content":{"event":"error report",
                                             #"target":self.type+".rules",
                                             #"value":emsg}})
+
+    async def doNotify(self,v,f):
+        try:
+            if v == "email":
+                msg = MIMEMultipart()
+                msg['From'] = bridgectl.config["sender"]
+                recipients = f["to"].split(",")
+                msg['To'] = f["to"]
+                msg['Subject'] = f["subject"]
+                msg["Date"] =dt.datetime.now().strftime("%a, %d %b %Y %H:%M:%S")+" "+time.strftime('%z')
+                msg.attach(MIMEText(f["message"]))
+
+                server = smtplib.SMTP(bridgectl.config["smtp"])
+                if bridgectl.log.debug:
+                    server.set_debuglevel(1)
+                try:
+                    server.starttls()
+                except:
+                    pass
+                if bridgectl.config["user"]:
+                    server.login(bridgectl.config["user"],bridgectl.config["password"])
+                server.sendmail(bridgectl.config["sender"], recipients, msg.as_string())
+                server.quit()
+            elif v == "pushbullet":
+                params = {'type': 'note', 'title': f["subject"], 'body': f["message"]}
+                async with aiohttp.ClientSession() as session:
+                    async with session.post('https://api.pushbullet.com/v2/pushes', data=json.dumps(params),
+                                            headers={'Access-Token': bridgectl.config["pushbullet"] ,
+                                                        'Content-Type': 'application/json'}) as response:
+                        if response.status != 200:
+                            raise Exception("Pushbullet responded with status {}".format(response.status))
+            elif v == "pushover":
+                params = {
+                    'token': bridgectl.config["pushover"],
+                    'user': bridgectl.config["pushuser"],
+                    #'title': f["subject"],pushbu
+                    'message': f["message"]
+                    }
+                async with aiohttp.ClientSession() as session:
+                    async with session.post('https://api.pushover.net/1/messages.json', data=params) as response:
+                        if response.status != 200:
+                            raise Exception("Pushover responded with status {}".format(response.status))
+            elif v == "slack":
+                params = {'text': f["message"]}
+                async with aiohttp.ClientSession() as session:
+                    async with session.post('https://hooks.slack.com/services/'+bridgectl.config["slackhook"], data=json.dumps(params),
+                                            headers={'Content-Type': 'application/json'}) as response:
+                        if response.status != 200:
+                            raise Exception("Slack responded with status {}".format(response.status))
+            else:
+                raise Exception("Unknown notification method: {}".format(v))
+        
+        except Exception as e:
+            if bridgectl.log:
+                bridgectl.log.critical(
+                    "Could not send notification: {}".format(f["message"]),
+                    exc_info=(type(e),
+                            e,
+                            e.__traceback__))
+            self.sending({"subject": self.target,
+                            "content_type": "event",
+                                "content": {"event": "error report",
+                                            "target": bridgectl.type +
+                                            "rule",
+                                            "value": "Error: Could not send {} notification: {}".format(v,e) }})
 
     def update(self, val):
         if val == self.vardef:
@@ -2073,10 +2201,19 @@ cfgdefault = {
      "host": "localhost",
      "port": 8745,
      "credential": "",
-     "ssl": ""}
+     "ssl": "",
+     "smtp": "localhost",
+     "sender": "root",
+     "user": "",
+     "password": "",
+     "pushbullet":"",
+     "pushover":"",
+     "pushuser":"",
+     "slackhook":""}
 
 
 def configure():
+    global action_rules
     parser = argparse.ArgumentParser(description="Create state variables and rules.")
     # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-t", "--type", default=cfgdefault["type"],
@@ -2099,6 +2236,22 @@ def configure():
                         help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
                         help="Exit after the the configuration has been saved")
+    parser.add_argument("-m", "--smtp", default=cfgdefault["smtp"],
+                        help="SMTP server to use when sending email (default \"%s\")" % cfgdefault["smtp"])
+    parser.add_argument("-M", "--sender", default=cfgdefault["sender"],
+                        help="Sender for email (default \"%s\")" % cfgdefault["sender"])
+    parser.add_argument("-u", "--user", default=cfgdefault["user"],
+                        help="User if SMTP server needs login")
+    parser.add_argument("-P", "--password", default=cfgdefault["password"],
+                        help="Password if SMTP server needs login")
+    parser.add_argument("-T", "--pushbullet", default=cfgdefault["pushbullet"],
+                        help="Pushbullet token")
+    parser.add_argument("-O", "--pushover", default=cfgdefault["pushover"],
+                        help="Pushover token")
+    parser.add_argument("-U", "--pushuser", default=cfgdefault["pushuser"],
+                        help="Pushover user key")
+    parser.add_argument("-H", "--slackhook", default=cfgdefault["slackhook"],
+                        help="Slack hook, URI part after \"https://hooks.slack.com/services/\"")
 
     try:
         opts = parser.parse_args()
@@ -2135,65 +2288,22 @@ def configure():
                 cfgdata = {}
             else:
                 raise e
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                actioncfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                actioncfg[attr] = cfgdata[attr]
+            else:
+                actioncfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                actionlog.debug("The %s is %s." % (attr,actioncfg[attr]))
 
-        if opts.type != cfgdefault["type"]:
-            actioncfg["type"] = opts.type
-        elif "type" in cfgdata:
-            actioncfg["type"] = cfgdata["type"]
-        else:
-            actioncfg["type"] = opts.type
-        if opts.debug:
-            actionlog.debug("The type is %s." % actioncfg["type"])
-
-        if opts.subtype != cfgdefault["subtype"]:
-            actioncfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            actioncfg["subtype"] = cfgdata["subtype"]
-        else:
-            actioncfg["subtype"] = opts.subtype
-        if opts.debug:
-            actionlog.debug("The subtype is %s." % actioncfg["subtype"])
-
-        if opts.credential != cfgdefault["credential"]:
-            actioncfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            actioncfg["credential"] = cfgdata["credential"]
-        else:
-            actioncfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            actionlog.debug("The credential is %s" % actioncfg["credential"])
-
-        if opts.port != cfgdefault["port"]:
-            actioncfg["port"] = opts.port
-        elif "port" in cfgdata:
-            actioncfg["port"] = cfgdata["port"]
-        else:
-            actioncfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            actionlog.debug("The port is %s" % (actioncfg["port"]))
-
-        if opts.host != cfgdefault["host"]:
-            actioncfg["host"] = opts.host
-        elif "host" in cfgdata:
-            actioncfg["host"] = cfgdata["host"]
-        else:
-            actioncfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            actionlog.debug("The host is %s" % actioncfg["host"])
-
-        if "buddykey" in cfgdata:
-            actioncfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.ssl != cfgdefault["ssl"]:
-            actioncfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            actioncfg["ssl"] = cfgdata["ssl"]
-        else:
-            actioncfg["ssl"] = cfgdefault["ssl"]
+            
         if actioncfg["ssl"] and not (os.path.isfile(actioncfg["ssl"] + "/" + CERTFILE)):
             actionlog.critical("Encryption: Could not find {} .".format(
                 actioncfg["ssl"] + "/" + CERTFILE))
             sys.exit()
+            
         if opts.debug:
             if actioncfg["ssl"]:
                 actionlog.debug(
@@ -2201,6 +2311,9 @@ def configure():
                     actioncfg["ssl"])
             else:
                 actionlog.debug("The connection is not encrypted")
+                
+        if "buddykey" in cfgdata:
+            actioncfg["buddykey"] = cfgdata["buddykey"]
 
         if opts.configonly:
 
@@ -2216,7 +2329,14 @@ def configure():
                 json.dump(actioncfg, cfile)
             os.chmod(opts.configonly, 384)  # 0600
             sys.exit()
-
+            
+        #Remove Pushbullet and/or Pushover if not configured.
+        if actioncfg["pushbullet"] == "":
+            action_rules = re.sub("<!-- pushbullet start -->.*?<!-- pushbullet end -->","", action_rules, flags=re.DOTALL)
+        if actioncfg["pushover"] == "":
+            action_rules = re.sub("<!-- pushover start -->.*?<!-- pushover end -->","", action_rules, flags=re.DOTALL)
+        if actioncfg["slackhook"] == "":
+            action_rules = re.sub("<!-- slackhook start -->.*?<!-- slackhook end -->","", action_rules, flags=re.DOTALL)
     except Exception as e:
         actionlog.error("Error: %r" % e)
         sys.exit(-2)
@@ -2430,7 +2550,7 @@ class Action(bl.BuddyBridge):
                                         "." +
                                         nv.name] = nv
                                 except Exception as e:
-                                    self.log.warning(
+                                    self.log.critical(
                                         "The data cannot be parsed into a state variable:{}".format(
                                             storedprop),
                                         exc_info=(type(e),
@@ -2465,7 +2585,7 @@ class Action(bl.BuddyBridge):
                                         nr.name] = nr
 
                                 except Exception as e:
-                                    self.log.warning(
+                                    self.log.critical(
                                         "The data cannot be parsed into a rule:{}".format(
                                             storedprop),
                                         exc_info=(type(e),

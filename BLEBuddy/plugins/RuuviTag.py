@@ -159,6 +159,10 @@ class RuuviTag(object):
                 #We got a live one
                 macaddr=packet.retrieve("peer")[0].val
                 result["mac address"]=macaddr
+                if macaddr not in self.next_run:
+                    self.next_run[macaddr]={}
+                    for x in self.measurements:
+                        self.next_run[macaddr][x]=thisrun
                 url=url["url"].split("//ruu.vi/#")[-1] 
                 if len(url)>8:
                     url=url[:-1]
