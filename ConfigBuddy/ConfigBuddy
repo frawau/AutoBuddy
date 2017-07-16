@@ -552,7 +552,8 @@ else:
         if not choice:
             print("You need to type something!")
     credential=choice
-    print("OK, using \"{}\" for credential.".format(credential))
+    print ("OK, using \"{}\" for credential.".format(credential))
+    print ("IMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(certdir))
     
 dolifx=False
 doflic=False
@@ -672,10 +673,20 @@ if dovoice:
 else:
     print("\tnot to run VoiceBuddy")
     
-if dovoice:
+if dokodi:
     print("\tto run KodiBuddy")
 else:
     print("\tnot to run KodiBuddy")
+    
+if doblescan:
+    print("\tto run BLEBuddy")
+else:
+    print("\tnot to run BLEBuddy")
+    
+if dologger:
+    print("\tto run LoggerBuddy")
+else:
+    print("\tnot to run LoggerBuddy")
     
 
 if doflic and dopresencebt:
@@ -685,29 +696,29 @@ choice = input(" Press '<enter>' to continue")
    
 certdir=BUDDYLOCATION+"/.tls"
 
+try:
+    os.mkdir(certdir,mode=0o700)
+except FileExistsError:
+    pass
+
+os.chown(certdir,currentowner.st_uid,currentowner.st_gid)
+
+try:
+    os.mkdir(BUDDYLOCATION+"/.buddyconfig",mode=0o700)
+except FileExistsError:
+    pass
+
+os.chown(BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
+
+try:
+    os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
+except FileExistsError:
+    pass
+
+os.chown(BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
+
+
 if mainstation:
-    try:
-        os.mkdir(certdir,mode=0o700)
-    except FileExistsError:
-        pass
-
-    os.chown(certdir,currentowner.st_uid,currentowner.st_gid)
-
-    try:
-        os.mkdir(BUDDYLOCATION+"/.buddyconfig",mode=0o700)
-    except FileExistsError:
-        pass
-
-    os.chown(BUDDYLOCATION+"/.buddyconfig",currentowner.st_uid,currentowner.st_gid)
-
-    try:
-        os.mkdir(BUDDYLOCATION+"/.run",mode=0o700)
-    except FileExistsError:
-        pass
-
-    os.chown(BUDDYLOCATION+"/.run",currentowner.st_uid,currentowner.st_gid)
-
-
     subj="/C=%s/ST=%s/L=%s/O=AutoBuddy Security/OU=Home Security/CN=autobuddy.local"%(mylocation["countryCode"],mylocation["regionName"],mylocation["city"])
 
     subprocess.run(["openssl", "req", "-x509", "-nodes", "-days", "7300", "-newkey", "rsa:2048", "-keyout", BUDDYLOCATION+"/.tls/autobuddy.key", "-out",
