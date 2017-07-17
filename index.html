@@ -93,6 +93,7 @@
                         <li>Toggle a light at the push of a flic</li>
                         <li>Restore the state of your light after a power outage</li>
                         <li>Turns light On/Off depending on the time of day and the presence/absence of people</li>
+                        <li>Send a Pushbullet message when a door is moved.</li>
                         <li>Have your wife prepare you breakfast when you wake up..... Oh wait! That is not working yet.</li>
                     <li>...</li>
                 </ul>
@@ -100,6 +101,15 @@
             <p>
             Note that all rules, conditions and commands are evaluated in lexicographic order, to make sure they are evaluated in the required order
             you should prefix all the names used with 010, 020, 030, and so on.
+            </p>
+            <p>
+            Currently, ActionBuddy can send notifications using:
+                <ul>
+                    <li>Email</li>
+                    <li><a href="https://slack.com/">Slack</a></li>
+                    <li><a href="https://www.pushbullet.com/">Pushbullet</a></li>
+                    <li><a href="https://pushover.net/">Slack</a></li>
+                </ul>
             </p>
           <h2>VoiceBuddy</h2>
           <p>VoiceBuddy is AutoBuddy's voice recognition module. It uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Mellon University's PockectSphinx</a>.
@@ -151,6 +161,13 @@
           <p>KodiBuddy talks to kodi devices using the <a href="http://kodi.wiki/?title=JSON-RPC_API">JSON-RPC</a> protocol over WebSocket.</p>
           <h2>ScannerBuddy</h2>
           <p>ScannerBuddy scans the network looking for Avahi/Bonjour services. It reports newly discoverd service, as well as known service where the IP address has changed. It can be asked for "known services" and can be asked to perform a scan for a specific service (<span style="font-style: italic;">e.g.</span> _xbmc-jsonrpc._tcp.local.)</p>
+          <h2>BLEBuddy</h2>
+          <p>BLEBuddy monitors the bluetooth LE airwaves for advertised packets. It then uses plugins to decode the information and send it onto the AutoBuddy bus.</p>
+          <p>At this time (July 2017) there is a <a href="https://tag.ruuvi.com/">Ruuvi Tag</a> plugin. It can decode the temperature, atmospheric pressure, huminidity, and accelerometer values. It will also decode battery information if present. The accelerometer can be calibrated. If you want to use Ruuvi Tag to detect movement, you should use an updated firmware, for instance <a href="https://drive.google.com/open?id=0B-JicGkaZAeXLU9ydHdURGxfRlU"> this one</a>, the sources are available in the ruuvi_tag repository.</p>
+          <h2>LoggerBuddy</h2>
+          <p>LoggerBuddy allows you to persist values associated with events. The data can then be graphed by WebBuddy. For instance Ruuvi Tag temperature measurements.</p>
+          <img src="images/temp-graph.png" />
+          <p>To be graphed, data must be numerical or have at most 2 or 3 distinct values (for instance "on" and "off"). As long as they are displayed, graphs are updated in real time.</p>
           <h2>BuddyTools</h2>
           <p>BuddyTools is a set of tools that can be used to trigger event from other application. Currently there is:
           <dl>
