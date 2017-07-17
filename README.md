@@ -24,7 +24,17 @@ Boot the RPi and connect to it using ssh;
     
 The password is "autobuddy" (without the quotes)
 
-Execute
+Correct a slight problem (some files owned by root in .git)
+
+    sudo find AutoBuddy -exec chown autobuddy:autobuddy {} \;
+    
+Update AutoBuddy
+    cd Autobuddy
+    git pull
+    cd ..
+    
+
+Configure
 
     sudo AutoBuddy/ConfigBuddy/ConfigBuddy
     
@@ -168,10 +178,17 @@ Here is how you do a few things:
         Label a device: double-click the device
         Label a zone: double-click the zone
         
+    In Rules trigger, condition and action as well as logger, when you need to
+    specify the part of the value you are interrested in, specify with "::", e.g.
+            value::accelerometer::vector
+            value::power
+    Most of the time you'll start with "value"
+        
 The Menu also contains quite a few things. 
 
     Commands (for instance to associate a flic button with FlicBuddy)
     Configurations (Who's presence to look for, what rules for automation,...)
+    Graphs (To graph logged data)
         
 
 # Known Problems
