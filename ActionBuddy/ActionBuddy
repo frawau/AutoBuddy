@@ -2128,8 +2128,6 @@ class Rule():
                 msg.attach(MIMEText(f["message"]))
 
                 server = smtplib.SMTP(bridgectl.config["smtp"])
-                if bridgectl.log.debug:
-                    server.set_debuglevel(1)
                 try:
                     server.starttls()
                 except:
