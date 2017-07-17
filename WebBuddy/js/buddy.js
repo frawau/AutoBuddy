@@ -2333,15 +2333,36 @@ var BuddyApp = Class.extend({
                 buddy.displaydata[i][0]=new Date(buddy.displaydata[i][0]);
             }
             //Create the graph
-            buddy.currentgraph = new Dygraph(document.getElementById("bu-graph-display"), buddy.displaydata,
-                          {
-                            drawPoints: true,
-                            connectSeparatedPoints: true,
-                            showRoller: true,
-                            labels: labels,
-                            width: 400,
-                            height: 300
-                          });
+            if (msg.content["stepgraph"] != undefined && msg.content["stepgraph"] == true ) {
+                buddy.currentgraph = new Dygraph(document.getElementById("bu-graph-display"), buddy.displaydata,
+                            {
+                                drawPoints: true,
+                                connectSeparatedPoints: true,
+                                showRoller: false,
+                                labels: labels,
+                                width: 400,
+                                height: 300,
+                                stepPlot: true
+                            });
+                if ( msg.content["labels"] != undefined && msg.content["labels"].length > 1 ) {
+                    buddy.currentgraph.updateOptions( { axes: { y: {
+                            axisLabelFormatter: function(y) {
+                                return msg.content["labels"][y%3];
+                            }
+                        }
+                    }})
+                }
+            } else {
+                buddy.currentgraph = new Dygraph(document.getElementById("bu-graph-display"), buddy.displaydata,
+                            {
+                                drawPoints: true,
+                                connectSeparatedPoints: true,
+                                showRoller: false,
+                                labels: labels,
+                                width: 400,
+                                height: 300
+                            });
+            }
             buddy.currentgraph.graphname = msg.content["name"];
         } else {
             var newvals = msg.content["value"];

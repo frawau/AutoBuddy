@@ -98,6 +98,8 @@ class LoggerBridge(bl.BuddyBridge):
             if msg["subject"] == self.target:
                 vmap={}
                 vmapdflt = 0
+                stepgraph=False
+                labels=[]
                 #Value should contain "name", the name of the log and "last" the last oid received
                 self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(msg["content"]["value"]["name"],))
                 loe=[x[0] for x in self.dbc.fetchall()]
@@ -105,29 +107,41 @@ class LoggerBridge(bl.BuddyBridge):
                     #Cache might not be up-to-date but this will be a problem only at the start
                     vmap=self.doupdate[msg["content"]["value"]["name"]][0]
                     vmapdflt=self.doupdate[msg["content"]["value"]["name"]][1]
+                    labels=self.doupdate[msg["content"]["value"]["name"]][2]
+                    count=len(vmap)
+                    if count <= 3: #Map state values to 1,-1 and 0
+                        count=3
+                        stepgraph=True
                 else:
                     self.dbc.execute("SELECT COUNT(DISTINCT value) FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
                     count=self.dbc.fetchall()[0][0]
-                    if count <= 3: #Map state values to 1,-1 and 0
+                    if count <= 3 and count > 1: #Map state values to 1,-1 and 0
+                        count=3
+                        stepgraph=True
                         self.dbc.execute("SELECT DISTINCT value FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
                         lov=[json.loads(x[0]) for x in self.dbc.fetchall()]
-                        if ("on" in lov or "online" in lov) and ("off" in lov or "offline" in lov):
+                        if "on" in lov:
                             vmap["on"]=1
-                            vmap["online"]=1
                             vmap["off"]=-1
-                            vmap["offline"]=1
+                            labels=["off","","on"]
+                        elif "online" in lov:
+                            vmap["online"]=1
+                            vmap["offline"]=-1
+                            labels=["offline","","online"]
                         else:
-                            if None in lov:
-                                mval=1
-                                for x in lov:
-                                    vmap[x]=mval
-                                    mval = -1
+                            lov.sort()
+                            vmap[lov[0]]=-1
+                            labels.append(str(lov[0]))
+                            if len(lov)==2:
+                                labels.append("")
+                                labels.append(str(lov[1]))
+                                vmap[lov[1]]=1
                             else:
-                                mval=[1,-1,0]
-                                for x in lov:
-                                    vmap[x]=mval[0]
-                                    mval = mval[1:]
-                    
+                                labels.append(str(lov[1]))
+                                labels.append(str(lov[2]))
+                                vmap[lov[1]]=0
+                                vmap[lov[2]]=1
+
                 myresult=[["timestamp"]+loe]
                 isend=False
                 self.dbc.execute("SELECT * FROM logged WHERE log = ? ORDER BY timestamp,ROWID",(msg["content"]["value"]["name"],))
@@ -150,9 +164,9 @@ class LoggerBridge(bl.BuddyBridge):
                                 wasset=True
                             elif vmap:
                                 if rval in vmap:
-                                    arec[loe.index(rec[2])+1]=vmap[rval]
+                                    arec[loe.index(rec[2])+1]=vmap[rval]+1+(count*loe.index(rec[2]))
                                 else:
-                                    arec[loe.index(rec[2])+1]=vmapdflt
+                                    arec[loe.index(rec[2])+1]=vmapdflt+1+(count*loe.index(rec[2]))
                                 wasset=True
 
                     if arec and wasset:
@@ -167,10 +181,12 @@ class LoggerBridge(bl.BuddyBridge):
                                           "token": msg["content"]["token"],
                                           "to_be_continued": not isend,
                                           "target": msg["content"]["target"],
+                                          "stepgraph":stepgraph,
+                                          "labels":labels,
                                           "name": msg["content"]["value"]["name"],
                                           "value":myresult}})
                     myresult=[]
-                self.doupdate[msg["content"]["value"]["name"]]=(vmap,vmapdflt)
+                self.doupdate[msg["content"]["value"]["name"]]=(vmap,vmapdflt,labels)
                 self.graphneeded.add(msg["content"]["value"]["name"])
                 
 
@@ -319,7 +335,7 @@ class LoggerBridge(bl.BuddyBridge):
                 self.dbc.execute("INSERT INTO logged VALUES (?,?,?,?)",(tmstmp,logdef["label"],msgentity,thevalue))
                 self.conn.commit()
                 if logdef["label"] in self.doupdate:
-                    vmap,vmapdflt = self.doupdate[logdef["label"]]
+                    vmap,vmapdflt,xx = self.doupdate[logdef["label"]]
                     self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(logdef["label"],))
                     loe=[x[0] for x in self.dbc.fetchall()]
                     wasset = False
@@ -330,9 +346,10 @@ class LoggerBridge(bl.BuddyBridge):
                         wasset=True
                     elif vmap:
                         if rval in vmap:
-                            arec[loe.index(msgentity)+1]=vmap[rval]
-                        else:
-                            arec[loe.index(msgentity)+1]=vmapdflt
+                            if rval in vmap:
+                                arec[loe.index(msgentity)+1]=vmap[rval]+1+(3*loe.index(msgentity))
+                            else:
+                                arec[loe.index(msgentity)+1]=vmapdflt+1+(3*loe.index(msgentity))
                         wasset=True
 
                     if wasset:
