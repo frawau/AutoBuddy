@@ -132,6 +132,9 @@ class GuiWSBridge(bl.BuddyBridge):
                         del(cleanmsg["configs"])
                     if "module commands" in cleanmsg:
                         del(cleanmsg["module commands"])
+            if msg["content_type"] == "restricted event":
+                cleanmsg=None
+                msg["content_type"] = "event" #The GUI doesn't need to know
 
             for client in self.devices:
                 try:
@@ -139,7 +142,8 @@ class GuiWSBridge(bl.BuddyBridge):
                         if client.name in self.adminsocket:
                             client.send_json(msg)
                         else:
-                            client.send_json(cleanmsg)
+                            if cleanmsg:
+                                client.send_json(cleanmsg)
                 except:
                     pass
    
@@ -228,6 +232,16 @@ class GuiWSBridge(bl.BuddyBridge):
                             for y,v in theval.items():
                                 cattr[y]=v
                             setattr(self,x,cattr)
+        elif msg["content_type"] == "restricted event":
+            #Restricted events only to admins
+            msg["content_type"] = "event" #The GUI doesn't need to know
+            for client in self.devices:
+                try:
+                    if client.name in self.allowedsocket:
+                        if client.name in self.adminsocket:
+                            client.send_json(msg)
+                except:
+                    pass
                         
     def register(self,gui):
         gui.log=self.log

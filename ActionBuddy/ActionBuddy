@@ -48,6 +48,7 @@ import buddylib as bl
 SUBTYPE = "Action"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
+RESTRICTEDESUBJECT="gui-wsbridge"
 
 aboutstr = """<p>ActionBuddy is an application processing rules defined by the user.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
@@ -693,23 +694,21 @@ action_rules = """
                                 <control type="text" name="subject" label="Subject" />
                                 <control type="text" name="message" label="Message" />
                             </item>
-                            <!-- pushbullet start -->
                             <item value="pushbullet" label="Pushbullet" >
+                                <control type="text" name="token" label="Access Token" />
                                 <control type="text" name="subject" label="Subject" />
                                 <control type="text" name="message" label="Message" />
                             </item>
-                            <!-- pushbullet end -->
-                            <!-- pushover start -->
                             <item value="pushover" label="Pushover" >
+                                <control type="text" name="user" label="User Key" />
+                                <control type="text" name="token" label="API Token" />
                                 <control type="text" name="subject" label="Subject" />
                                 <control type="text" name="message" label="Message" />
                             </item>
-                            <!-- pushover end -->
-                            <!-- slackhook start -->
                             <item value="slack" label="Slack" >
+                                <control type="text" name="webhook" label="Webhook" />
                                 <control type="text" name="message" label="Message" />
                             </item>
-                            <!-- slackhook end -->
                         </controlgroup>
                         <control type="spinner" name="delay" label="Minimum interval">
                             <start>0</start>
@@ -2040,7 +2039,7 @@ class Rule():
                 mycmd = [acmd['bu-cvalue']]
                 mycmd.append(acmd["method"]['bu-cvalue'])
                 mycmd.append({})
-                for nval in ["to","subject","message"]:
+                for nval in ["to","subject","message","token","user","webhook"]:
                     if nval in acmd["method"]:
                         mycmd[-1][nval]=acmd["method"][nval]
                 mycmd[-1]["delay"]=acmd["delay"]
@@ -2140,14 +2139,14 @@ class Rule():
                 params = {'type': 'note', 'title': f["subject"], 'body': f["message"]}
                 async with aiohttp.ClientSession() as session:
                     async with session.post('https://api.pushbullet.com/v2/pushes', data=json.dumps(params),
-                                            headers={'Access-Token': bridgectl.config["pushbullet"] ,
+                                            headers={'Access-Token': f["token"] ,
                                                         'Content-Type': 'application/json'}) as response:
                         if response.status != 200:
                             raise Exception("Pushbullet responded with status {}".format(response.status))
             elif v == "pushover":
                 params = {
-                    'token': bridgectl.config["pushover"],
-                    'user': bridgectl.config["pushuser"],
+                    'token': f["token"],
+                    'user': f["user"],
                     #'title': f["subject"],pushbu
                     'message': f["message"]
                     }
@@ -2158,7 +2157,7 @@ class Rule():
             elif v == "slack":
                 params = {'text': f["message"]}
                 async with aiohttp.ClientSession() as session:
-                    async with session.post('https://hooks.slack.com/services/'+bridgectl.config["slackhook"], data=json.dumps(params),
+                    async with session.post(f["webhook"], data=json.dumps(params),
                                             headers={'Content-Type': 'application/json'}) as response:
                         if response.status != 200:
                             raise Exception("Slack responded with status {}".format(response.status))
@@ -2203,11 +2202,7 @@ cfgdefault = {
      "smtp": "localhost",
      "sender": "root",
      "user": "",
-     "password": "",
-     "pushbullet":"",
-     "pushover":"",
-     "pushuser":"",
-     "slackhook":""}
+     "password": ""}
 
 
 def configure():
@@ -2242,14 +2237,6 @@ def configure():
                         help="User if SMTP server needs login")
     parser.add_argument("-P", "--password", default=cfgdefault["password"],
                         help="Password if SMTP server needs login")
-    parser.add_argument("-T", "--pushbullet", default=cfgdefault["pushbullet"],
-                        help="Pushbullet token")
-    parser.add_argument("-O", "--pushover", default=cfgdefault["pushover"],
-                        help="Pushover token")
-    parser.add_argument("-U", "--pushuser", default=cfgdefault["pushuser"],
-                        help="Pushover user key")
-    parser.add_argument("-H", "--slackhook", default=cfgdefault["slackhook"],
-                        help="Slack hook, URI part after \"https://hooks.slack.com/services/\"")
 
     try:
         opts = parser.parse_args()
@@ -2328,13 +2315,6 @@ def configure():
             os.chmod(opts.configonly, 384)  # 0600
             sys.exit()
             
-        #Remove Pushbullet and/or Pushover if not configured.
-        if actioncfg["pushbullet"] == "":
-            action_rules = re.sub("<!-- pushbullet start -->.*?<!-- pushbullet end -->","", action_rules, flags=re.DOTALL)
-        if actioncfg["pushover"] == "":
-            action_rules = re.sub("<!-- pushover start -->.*?<!-- pushover end -->","", action_rules, flags=re.DOTALL)
-        if actioncfg["slackhook"] == "":
-            action_rules = re.sub("<!-- slackhook start -->.*?<!-- slackhook end -->","", action_rules, flags=re.DOTALL)
     except Exception as e:
         actionlog.error("Error: %r" % e)
         sys.exit(-2)
@@ -2618,8 +2598,8 @@ class Action(bl.BuddyBridge):
                                               "subtype": "state variable",
                                               #"token": self.type+".state variable",
                                               "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
-                    self.sending({"subject": self.target,
-                                  "content_type": "event",
+                    self.sending({"subject": RESTRICTEDESUBJECT,
+                                  "content_type": "restricted event",
                                   "content": {"event": "config updated",
                                               "target": self.type +
                                               ".state variable",
@@ -2632,8 +2612,8 @@ class Action(bl.BuddyBridge):
                                               "subtype": "rules",
                                               #"token": self.type+".rules",
                                               "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
-                    self.sending({"subject": self.target,
-                                  "content_type": "event",
+                    self.sending({"subject": RESTRICTEDESUBJECT,
+                                  "content_type": "restricted event",
                                   "content": {"event": "config updated",
                                               "target": self.type + ".rules",
                                               "value": {"rules": [x.vardef for x in self.rules.values()]}}})

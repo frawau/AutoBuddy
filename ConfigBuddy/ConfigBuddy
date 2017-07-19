@@ -421,8 +421,8 @@ if mainstation:
     
     os.system('clear')
     print ("\n\n\n\nSince we are on the main station, we will also be running the rules engine.")
-    print ("One of the possible action is to push notification via email, pushbullet, slack or pushover.")
-    print ("In order for this to work, we need some information. Email has some sensible default, others can be disable with an empty answer.")
+    print ("One of the possible action is to push notification via email.")
+    print ("In order for this to work, we need some information.")
     
     print ("\n I need to know the SMTP (Email) server, a host name or an IP address. \n\n")
     choice=None
@@ -477,47 +477,6 @@ if mainstation:
     else:
         print ("\nOK, we will use \"localhost\" and \"root\" as sender. \n\n")
         
-    print ("\n In order to use Pushbullet, I need a so called \"Access Token\".\n You can generate on in your account setting \n\n")
-    choice=input("Pushbullet Access Token (disable) => ").strip()
-    if choice:
-        actionpushbullet=choice
-        print("\nOK, Pushbullet will be enabled.\n\n")
-    else:
-        actionpushbullet=None
-        print("\nOK, Pushbullet will be disabled.\n\n")
-        
-    print ("\n In order to use Slack, I need a so called \"Webhook URL\".\n You need to create an \"Incoming Webhook\" to get one. \n\n")
-    choice=None
-    while choice is None:
-        choice=input("Slack Webhook URL (disable) => ").strip()
-        if choice:
-            if "https://hooks.slack.com/services/" in choice:
-                actionslack=choice.replace("https://hooks.slack.com/services/","")
-                print("\nOK, Slack will be enabled.\n\n")
-            else:
-                print("That does not look like a Slack Webhook. It should start with \"https://hooks.slack.com/services/\"")
-                choice=None
-        else:
-            actionslack=None
-            print("\nOK, Slack will be disabled.\n\n")
-            break
-    print ("\n In order to use Pushover, I need both a \"User Key\" and an \"API Token\"\n\n")
-    
-    choice=input("Pushover User Key (disable) => ").strip()
-    if choice:
-        actionpushoveruser=choice
-        choice=None
-        while choice is None:
-            choice=input("Pushover API token => ").strip()
-            if choice == "":
-                choice=None
-                print(" Please enter a token.")
-        actionpushover = choice
-        print("\nOK, Pushover will be enabled.\n\n")
-    else:
-        actionpushover=None
-        actionpushoveruser=None
-        print("\nOK, Pushover will be disabled.\n\n")
 
         
 else:
@@ -958,10 +917,6 @@ if mainstation:
     mycfg["sender"] = actionsender
     mycfg["user"] = actionsmtpuser or ""
     mycfg["password"] = actionsmtppasswd or ""
-    mycfg["pushbullet"] = actionpushbullet or ""
-    mycfg["slackhook"] = actionslack or ""
-    mycfg["pushover"] = actionpushover or ""
-    mycfg["pushuser"] = actionpushoveruser or ""
     actionkey=mycfg["buddykey"]
     fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
     with open(fn,"w") as cfile:
