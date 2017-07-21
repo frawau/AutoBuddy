@@ -48,7 +48,6 @@ import buddylib as bl
 SUBTYPE = "Action"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
-RESTRICTEDESUBJECT="gui-wsbridge"
 
 aboutstr = """<p>ActionBuddy is an application processing rules defined by the user.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
@@ -2202,7 +2201,8 @@ cfgdefault = {
      "smtp": "localhost",
      "sender": "root",
      "user": "",
-     "password": ""}
+     "password": "",
+     "restricted": "guibridge"}
 
 
 def configure():
@@ -2237,6 +2237,8 @@ def configure():
                         help="User if SMTP server needs login")
     parser.add_argument("-P", "--password", default=cfgdefault["password"],
                         help="Password if SMTP server needs login")
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
 
     try:
         opts = parser.parse_args()
@@ -2544,8 +2546,8 @@ class Action(bl.BuddyBridge):
                                                 "subtype": "state variable",
                                                 #"token": self.type+".state variable",
                                                 "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
-                            self.sending({"subject": self.target,
-                                          "content_type": "event",
+                            self.sending({"subject": self.config["restricted"],
+                                          "content_type": "restricted event",
                                           "content": {"event": "config updated",
                                                       "target": self.type +
                                                       ".state variable",
@@ -2578,8 +2580,8 @@ class Action(bl.BuddyBridge):
                                                 "subtype": "rules",
                                                 #"token": self.type+".rules",
                                                 "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
-                            self.sending({"subject": self.target,
-                                          "content_type": "event",
+                            self.sending({"subject": self.config["restricted"],
+                                          "content_type": "restricted event",
                                           "content": {"event": "config updated",
                                                       "target": self.type +
                                                       ".rules",
@@ -2598,7 +2600,7 @@ class Action(bl.BuddyBridge):
                                               "subtype": "state variable",
                                               #"token": self.type+".state variable",
                                               "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
-                    self.sending({"subject": RESTRICTEDESUBJECT,
+                    self.sending({"subject": self.config["restricted"],
                                   "content_type": "restricted event",
                                   "content": {"event": "config updated",
                                               "target": self.type +
@@ -2612,7 +2614,7 @@ class Action(bl.BuddyBridge):
                                               "subtype": "rules",
                                               #"token": self.type+".rules",
                                               "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
-                    self.sending({"subject": RESTRICTEDESUBJECT,
+                    self.sending({"subject": self.config["restricted"],
                                   "content_type": "restricted event",
                                   "content": {"event": "config updated",
                                               "target": self.type + ".rules",

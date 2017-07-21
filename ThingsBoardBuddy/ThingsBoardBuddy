@@ -30,16 +30,16 @@ import json
 import os
 import ssl
 import logging
+import aiocoap
 import datetime as dt
 import asyncio as aio
 import buddylib as bl
 from functools import partial
-import sqlite3
 
-SUBTYPE = "sqlite"  
+SUBTYPE = "thingsboard"  
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
-CLEANUP_TIMEOUT = 600 #aka 10 minutes
+MAXQUEUE = 4086
 
 logger_function = """
 """
@@ -55,8 +55,12 @@ logger_config = """
             <control name="label" label="Label" type="text" length="16" />
             <control name="entity" expand="device"  exopt="any withtype" label="Device" type="text" length="32" />
             <control name="event" label="Event" type="text" length="32" />
-            <control name="evalue" label="Value" type="text" length="64" default="value"/>
-            <control name="map" label="Value Map" type="text" length="256" default="value"/>
+            <control name="evalue" label="Value" type="text" length="256" default="value"/>
+            <control name="token" label="Access Token" type="text" length="256" default="value"/>
+            <controlgroup name="type" label="Type" type="choice">
+                <item value="telemetry" label="Telemetry" />
+                <item value="attributes" label="Attribute" />
+            </controlgroup>
         </controlgroup>
     </configuration>
 </buddyui>
@@ -74,11 +78,8 @@ class LoggerBridge(bl.BuddyBridge):
     def __init__(self, loop, future, config, log):
         super(LoggerBridge, self).__init__(loop, future, config, log)
         self.logger_config = logger_config_default
-        self.conn = None
-        self.dbc = None
-        self.doupdate = {}
-        self.graphneeded = set()
-        self.cleanup = None
+        self.coap = None
+        self.last_call=None
         
 
     def process_command(self, msg):
@@ -90,105 +91,8 @@ class LoggerBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          #"token": self.target,
                                           "value": bl.encrypt(logger_config_default, self.config["buddykey"])}})
                               
-    def process_request(self,msg):
-        if msg["content"]["request"] == "request data":
-            if msg["subject"] == self.target:
-                vmap={}
-                vmapdflt = 0
-                stepgraph=False
-                labels=[]
-                #Value should contain "name", the name of the log and "last" the last oid received
-                self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(msg["content"]["value"]["name"],))
-                loe=[x[0] for x in self.dbc.fetchall()]
-                if msg["content"]["value"]["name"] in self.doupdate:
-                    #Cache might not be up-to-date but this will be a problem only at the start
-                    vmap=self.doupdate[msg["content"]["value"]["name"]][0]
-                    vmapdflt=self.doupdate[msg["content"]["value"]["name"]][1]
-                    labels=self.doupdate[msg["content"]["value"]["name"]][2]
-                    count=len(vmap)
-                    if count <= 3: #Map state values to 1,-1 and 0
-                        count=3
-                        stepgraph=True
-                else:
-                    self.dbc.execute("SELECT COUNT(DISTINCT value) FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
-                    count=self.dbc.fetchall()[0][0]
-                    if count <= 3 and count > 1: #Map state values to 1,-1 and 0
-                        count=3
-                        stepgraph=True
-                        self.dbc.execute("SELECT DISTINCT value FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
-                        lov=[json.loads(x[0]) for x in self.dbc.fetchall()]
-                        if "on" in lov:
-                            vmap["on"]=1
-                            vmap["off"]=-1
-                            labels=["off","","on"]
-                        elif "online" in lov:
-                            vmap["online"]=1
-                            vmap["offline"]=-1
-                            labels=["offline","","online"]
-                        else:
-                            lov.sort()
-                            vmap[lov[0]]=-1
-                            labels.append(str(lov[0]))
-                            if len(lov)==2:
-                                labels.append("")
-                                labels.append(str(lov[1]))
-                                vmap[lov[1]]=1
-                            else:
-                                labels.append(str(lov[1]))
-                                labels.append(str(lov[2]))
-                                vmap[lov[1]]=0
-                                vmap[lov[2]]=1
-
-                myresult=[["timestamp"]+loe]
-                isend=False
-                self.dbc.execute("SELECT * FROM logged WHERE log = ? ORDER BY timestamp,ROWID",(msg["content"]["value"]["name"],))
-                while not isend:
-                    arec=None
-                    myrecords=self.dbc.fetchmany()
-                    wasset = False
-                    if myrecords:
-                        arec=[myrecords[0][0]]+[None]*len(loe)
-                        for rec in myrecords:
-                            if rec[0] != arec[0]:
-                                if wasset:
-                                    arec[0] = str(arec[0])
-                                    myresult.append(arec)
-                                arec=[rec[0]]+[None]*len(loe)
-                                wasset=False
-                            rval=json.loads(rec[3])
-                            if rval.__class__ in (int,float):
-                                arec[loe.index(rec[2])+1]=rval
-                                wasset=True
-                            elif vmap:
-                                if rval in vmap:
-                                    arec[loe.index(rec[2])+1]=vmap[rval]+1+(count*loe.index(rec[2]))
-                                else:
-                                    arec[loe.index(rec[2])+1]=vmapdflt+1+(count*loe.index(rec[2]))
-                                wasset=True
-
-                    if arec and wasset:
-                        arec[0] = str(arec[0])
-                        myresult.append(arec)
-                    if len(myrecords)<self.dbc.arraysize:
-                        isend=True
-                    
-                    self.sending({"subject": msg["content"]["target"],
-                              "content_type": "response",
-                              "content": {"response": "request data",
-                                          "token": msg["content"]["token"],
-                                          "to_be_continued": not isend,
-                                          "target": msg["content"]["target"],
-                                          "stepgraph":stepgraph,
-                                          "labels":labels,
-                                          "name": msg["content"]["value"]["name"],
-                                          "value":myresult}})
-                    myresult=[]
-                self.doupdate[msg["content"]["value"]["name"]]=(vmap,vmapdflt,labels)
-                self.graphneeded.add(msg["content"]["value"]["name"])
-                
 
     def process_response(self, msg):
         
@@ -229,18 +133,12 @@ class LoggerBridge(bl.BuddyBridge):
                               "content": {"request": "functions",
                                           "target": self.type,
                                           "subtype": self.subtype,
-                                          #"token": self.target,
                                           "value": {"configs": [logger_config, self.logger_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.logger_config}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
-                              "content": {"event": "graph available",
-                                          "target": self.target,
-                                          "value": [x["label"] for x in self.logger_config["eventlog"]]}})
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -260,10 +158,9 @@ class LoggerBridge(bl.BuddyBridge):
                               "content": {"request": "functions",
                                           "target": self.type,
                                           "subtype": self.subtype,
-                                          #"token": self.target,
                                           "value": {"configs": [logger_config, self.logger_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.logger_config}})
@@ -282,22 +179,11 @@ class LoggerBridge(bl.BuddyBridge):
 
 
     def process_event(self, msg):
-        # We check if we need to record something, and if so, what
-        if msg["content"]["event"] == "gui refresh":
-            self.sending({"subject": self.target,
-                            "content_type": "event",
-                            "content": {"event": "graph available",
-                                        "target": self.target,
-                                        "value": [x["label"] for x in self.logger_config["eventlog"]]}})
-            return
-        
-        if msg["content"]["event"] == "graph needed":
-            self.graphneeded.add(msg["content"]["value"])
-            return
         
         if "target" not in msg["content"]:
             return
         msgentity = msg["content"]["target"].split(".")[-1]
+        ts = round(dt.datetime.now().timestamp()*1000)
         for logdef in self.logger_config["eventlog"]:
             if msg["content"]["event"] == logdef["event"]:
                 if logdef["entity"]["bu-cvalue"] != "" and not msgentity == logdef["entity"]["bu-cvalue"] and not msg["content"]["target"].startswith(logdef["entity"]["bu-cvalue"]):
@@ -315,6 +201,7 @@ class LoggerBridge(bl.BuddyBridge):
                 if not wasset:
                     continue
                 lov=logdef["evalue"].split("|")[1:]
+                logval={}
                 if lov:
                     wasset = False
                     realvalue={}
@@ -324,51 +211,25 @@ class LoggerBridge(bl.BuddyBridge):
                             wasset = True
                     if not wasset:
                         continue #nothing to log
-                    thevalue = json.dumps(realvalue)
                 else:
-                    thevalue = json.dumps(thevalue)
-                    
-                if "timestamp" in msg["content"]:
-                    tmstmp=msg["content"]["timestamp"]
-                else:
-                    tmstmp=dt.datetime.now().replace(microsecond=0)
-                self.dbc.execute("INSERT INTO logged VALUES (?,?,?,?)",(tmstmp,logdef["label"],msgentity,thevalue))
-                self.conn.commit()
-                if logdef["label"] in self.doupdate:
-                    vmap,vmapdflt,xx = self.doupdate[logdef["label"]]
-                    self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(logdef["label"],))
-                    loe=[x[0] for x in self.dbc.fetchall()]
-                    wasset = False
-                    arec=[tmstmp]+[None]*len(loe)
-                    rval=json.loads(thevalue)
-                    if rval.__class__ in (int,float):
-                        arec[loe.index(msgentity)+1]=rval
-                        wasset=True
-                    elif vmap:
-                        if rval in vmap:
-                            if rval in vmap:
-                                arec[loe.index(msgentity)+1]=vmap[rval]+1+(3*loe.index(msgentity))
-                            else:
-                                arec[loe.index(msgentity)+1]=vmapdflt+1+(3*loe.index(msgentity))
-                        wasset=True
+                    thekey=logdef["evalue"].split("|")[0].split("::")[-1]
+                    realvalue={thekey:thevalue}
+                if logdef["type"]["bu-cvalue"]=="telemetry":
+                    logval["values"] = realvalue
+                        
+                    if "timestamp" in msg["content"]:
+                        logval["ts"] = round(dt.datetime.strptime(msg["content"]["timestamp"],"%Y-%m-%d %H:%M:%S").timestamp()*1000)
 
-                    if wasset:
-                        arec[0] = str(arec[0])
-                        self.sending({"subject": self.target,
-                                    "content_type": "event",
-                                    "content": {"event": "graph update",
-                                                "target": "gui",
-                                                "name": logdef["label"],
-                                                "value": [arec]}})
-                
+                    else:
+                        logval["ts"] = ts
+                else:
+                    logval=realvalue
+                self.last_call = aio.ensure_future(self.submit_data(logdef["token"],logval,logdef["type"]["bu-cvalue"]))
                 self.log.debug(
-                    "Logged {} {} {} {}".format(tmstmp,logdef["label"],msgentity,thevalue))
+                    "Logged {} {}".format(msgentity,logval))
                 
         
     def build(self):
-        self.conn = sqlite3.connect(self.config["dbfile"], detect_types=sqlite3.PARSE_DECLTYPES)
-        self.dbc = self.conn.cursor()
-        self.dbc.arraysize=512
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",
                       "content": {"request": "functions",
@@ -378,23 +239,20 @@ class LoggerBridge(bl.BuddyBridge):
                                   "value": {"functions":logger_function, "configs": [logger_config, self.logger_config]}}})
         
 
-        self.cleanup = aio.ensure_future(self.cleancache())
 
-    async def cleancache(self):
-        await aio.sleep(CLEANUP_TIMEOUT)
-        lograph = [x for x in self.doupdate.keys()] #Need a copy, not a generator
-        for x in lograph:
-            if x not in self.graphneeded:
-                del(self.doupdate[x])
-        self.graphneeded= set()
-        self.sending({"subject": self.target,
-                    "content_type": "event",
-                    "content": {"event": "what graph needed",
-                                "target": "gui"}})
-        self.cleanup = aio.ensure_future(self.cleancache())
+    async def submit_data(self,token,data,dtype):
+        if not self.coap:
+            self.coap = await aiocoap.Context.create_client_context()
+            await aio.sleep(2)
+        request = aiocoap.Message(code=aiocoap.POST, payload=json.dumps(data).encode())
+        request.opt.uri_host = self.config["url"]
+        request.opt.uri_path = ("api","v1",token, dtype)
+        response = await self.coap.request(request).response
+        self.log.debug("Reponse for {} {} is: {} {}".format(dtype, data, response.code, response.payload))
+        #context.shutdown()
 
-aboutstr = """<p>LoggerBuddy is an application logging values associated with arbitrary event. It uses SQLite3 as database backend. Values to log
-can be defined by separating with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector". 
+aboutstr = """<p>ThingsBoardBuddy is an application logging values associated with arbitrary event. It uses <a href"https://thingsboard.io/">ThingsBoard</a> as backend. Values to log need a token and
+can be defined by separating with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector". Values can be log as either "attributes" or "telemetry" values. 
 </p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
@@ -402,12 +260,13 @@ can be defined by separating with "::", for multiple subvalues use "|". For inst
 
 cfgdefault = {
     "type": "logger",
-     "subtype": "sqlite",
+     "subtype": "thingsboard",
      "host": "localhost",
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "dbfile": "/etc/autobuddy/logger.sqlite"}
+     "url":"demo.thingsboard.io",
+     "restricted":"guibridge"}
 
 
 def configure():
@@ -434,13 +293,14 @@ def configure():
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
 
-    parser.add_argument("-D", "--dbfile", default=cfgdefault["dbfile"],
-                        help="Config file to use (default \"%s\")" % cfgdefault["dbfile"])
-    
     parser.add_argument("-C", "--configonly", default="",
                         help="Exit after the the configuration has been saved")
     parser.add_argument("-d", "--debug", action="count", default=0,
                         help="Log debug information (default False)")
+    parser.add_argument("-u", "--url", default=cfgdefault["url"],
+                        help="The host address of the ThingsBoardserver (default \"%s\")." % cfgdefault["url"])
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
 
     try:
         opts = parser.parse_args()
@@ -479,91 +339,22 @@ def configure():
             cfgdata = json.load(opts.config)
             opts.config.close()
 
-        # Definition
-        if opts.type != cfgdefault["type"]:
-            loggercfg["type"] = opts.type
-        elif "type" in cfgdata:
-            loggercfg["type"] = cfgdata["type"]
-        else:
-            loggercfg["type"] = opts.type
-        if opts.debug:
-            loggerlog.debug("The type is %s." % loggercfg["type"])
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                loggercfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                loggercfg[attr] = cfgdata[attr]
+            else:
+                loggercfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                loggerlog.debug("The %s is %s." % (attr,loggercfg[attr]))
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            loggercfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            loggercfg["subtype"] = cfgdata["subtype"]
-        else:
-            loggercfg["subtype"] = opts.subtype
-        if opts.debug:
-            loggerlog.debug("The subtype is %s." % loggercfg["subtype"])
-
-        # Controller
-        if opts.host != cfgdefault["host"]:
-            loggercfg["host"] = opts.host
-        elif "host" in cfgdata:
-            loggercfg["host"] = cfgdata["host"]
-        else:
-            loggercfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            loggerlog.debug("The host is %s" % loggercfg["host"])
-
-        if opts.port != cfgdefault["port"]:
-            loggercfg["port"] = opts.port
-        elif "port" in cfgdata:
-            loggercfg["port"] = cfgdata["port"]
-        else:
-            loggercfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            loggerlog.debug("The port is %s" % (loggercfg["port"]))
-
-        # Database
-        if opts.dbfile != cfgdefault["dbfile"]:
-            loggercfg["dbfile"] = opts.dbfile
-        elif "dbfile" in cfgdata:
-            loggercfg["dbfile"] = cfgdata["dbfile"]
-        else:
-            loggercfg["dbfile"] = cfgdefault["dbfile"]
-        if opts.debug:
-            loggerlog.debug(
-                "The Database file is %s" %
-                (loggercfg["dbfile"]))
-        if not (os.path.isfile(loggercfg["dbfile"])):
-            try:
-                sqlconn= sqlite3.connect(loggercfg["dbfile"], detect_types=sqlite3.PARSE_DECLTYPES)
-                sqlconn.execute('''CREATE TABLE logged
-                                (timestamp [timestamp], log text, entity text, value blob)''')
-                sqlconn.commit()
-                sqlconn.close()
-            except:
-                loggerlog.critical("Logger: Could not create database {} .".format(
-                    loggercfg["dbfile"]))
-                sys.exit()
-                
-        # Authentication and encryption
-        if opts.credential != cfgdefault["credential"]:
-            loggercfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            loggercfg["credential"] = cfgdata["credential"]
-        else:
-            loggercfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            loggerlog.debug(
-                "The credential is %s" %
-                loggercfg["credential"])
-
-        if opts.ssl != cfgdefault["ssl"]:
-            loggercfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            loggercfg["ssl"] = cfgdata["ssl"]
-        else:
-            loggercfg["ssl"] = cfgdefault["ssl"]
+            
         if loggercfg["ssl"] and not (os.path.isfile(loggercfg["ssl"] + "/" + CERTFILE)):
             loggerlog.critical("Encryption: Could not find {} .".format(
                 loggercfg["ssl"] + "/" + CERTFILE))
             sys.exit()
+            
         if opts.debug:
             if loggercfg["ssl"]:
                 loggerlog.debug(
@@ -571,7 +362,8 @@ def configure():
                     loggercfg["ssl"])
             else:
                 loggerlog.debug("The connection is not encrypted")
-
+                
+        
         if "buddykey" in cfgdata:
             loggercfg["buddykey"] = cfgdata["buddykey"]
 
@@ -626,13 +418,12 @@ if __name__ == "__main__":
 
     loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"LoggerBuddy": aboutstr}})
+        {"about": {"ThingsBoardBuddy": aboutstr}})
     
     try:
         loop.run_until_complete(connFuture)
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-        bridgectl.cleanup.cancel()
         conn.close()
         loop.close()

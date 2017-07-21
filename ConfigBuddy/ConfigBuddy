@@ -35,7 +35,7 @@ from urllib.request import urlopen
 
 debug=False
 lobtdevs=["hci0","hci1","hci2","hci3"]
-
+GUIBRIDGETYPE="guibridge"
 def passgen():
     from random import shuffle,randrange
     lolet=list("0123456789aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ-_*.?")
@@ -524,6 +524,7 @@ dokodi=False
 doscanner=False
 doblescan=False
 dologger=False
+dothingsboard=False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -605,6 +606,12 @@ print("\n\nLoggerBuddy let you record events over time. They can then be graphed
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dologger=True
+    
+print("\n\nThingsBuddy let you log events over time and states. They can then be graphed at ThingsBoard.io.\nNote that this requires Internet access.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dothingsboard=True
 
 print("\nYou have decided:")
 if dolifx:
@@ -646,6 +653,11 @@ if dologger:
     print("\tto run LoggerBuddy")
 else:
     print("\tnot to run LoggerBuddy")
+       
+if dothingsboard:
+    print("\tto run ThingsBoardBuddy")
+else:
+    print("\tnot to run ThingBoardBuddy")
     
 
 if doflic and dopresencebt:
@@ -732,7 +744,7 @@ if mainstation:
     mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
     mycfg["host"] = "*"
     mycfg["port"] = 8090
-    mycfg["type"] = "guibridge"
+    mycfg["type"] = GUIBRIDGETYPE
     mycfg["broker"] = brokerlocation
     mycfg["credential"] = credential
     socketkey = mycfg["buddykey"]
@@ -917,6 +929,7 @@ if mainstation:
     mycfg["sender"] = actionsender
     mycfg["user"] = actionsmtpuser or ""
     mycfg["password"] = actionsmtppasswd or ""
+    mycfg["restricted"] = GUIBRIDGETYPE
     actionkey=mycfg["buddykey"]
     fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
     with open(fn,"w") as cfile:
@@ -1086,12 +1099,44 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
-if doblescan:
+if dologger:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n LoggerBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n LoggerBuddy "+fn
 
-
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "logger"
+mycfg["subtype"] = "thingsboard"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+mycfg["restricted"] = GUIBRIDGETYPE
+fn=BUDDYLOCATION+"/.buddyconfig/thingsboard.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ThingsBoardBuddy/ThingsBoardBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 30
+"""
+mycmd+=BUDDYLOCATION+"/ThingsBoardBuddy/ThingsBoardBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-thingsboard"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dothingsboard:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ThingsBoardBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ThingsBoardBuddy "+fn
+    
 fn=BUDDYLOCATION+"/.start-autobuddy"
 with open(fn,"w") as cfile:
     cfile.write(bustartcmd)
@@ -1121,7 +1166,7 @@ if mainstation:
         nzone.nickname=topzone
         sess.add(nzone)
         nprop=bl.BuddyProperty()
-        nprop.entity="guibridge"
+        nprop.entity=GUIBRIDGETYPE
         nprop.name="users"
         nprop.values=bl.encrypt({"admin":["password","admin"]},socketkey)
         sess.add(nprop)
@@ -1180,7 +1225,7 @@ if mainstation:
         remindmeattheend+="nzone.nickname=topzone\n"
         remindmeattheend+="sess.add(nzone)\n"
         remindmeattheend+="nprop=bl.BuddyProperty()\n"
-        remindmeattheend+="nprop.entity=\"guibridge\"\n"
+        remindmeattheend+="nprop.entity=\""+GUIBRIDGETYPE+"\"\n"
         remindmeattheend+="nprop.name=\"users\"\n"
         remindmeattheend+="nprop.values=bl.encrypt({\"admin\":[\"password\",\"admin\"]},\"%s\")\n"%socketkey
         remindmeattheend+="sess.add(nprop)\n"
