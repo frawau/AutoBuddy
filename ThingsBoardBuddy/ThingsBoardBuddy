@@ -260,7 +260,7 @@ class LoggerBridge(bl.BuddyBridge):
         request.opt.uri_host = self.config["url"]
         request.opt.uri_path = ("api","v1",token, dtype)
         response = await self.coap.request(request).response
-        if respnse.code > 4.0:
+        if not response.code.is_successful():
             self.log.debug("Error {} {} {}".format(response.code,response.payload,data)) #TODEL
             self.request_count += ERRORDELTA
         self.log.debug("Reponse for {} {} is: {} {}".format(dtype, data, response.code, response.payload))
