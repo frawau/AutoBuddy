@@ -228,16 +228,16 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 command should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip")
-        print("\tsudo pip3 install aiolifx aioarping aiobtname aioblescan pyalsaaudio aiohttp\n")
+        print("\tsudo pip3 install aiolifx aioarping aiobtname aioblescan pyalsaaudio aiohttp aiocoap\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname pyalsaaudio zeroconf aiohttp\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname pyalsaaudio zeroconf aiohttp aiocoap\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
             subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring"])
-            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "aioblescan", "pyalsaaudio", "zeroconf", "aiohttp"])
+            subprocess.run(["pip3","install","aiobtname","aioarping","aiolifx", "aioblescan", "pyalsaaudio", "zeroconf", "aiohttp","aiocoap"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")

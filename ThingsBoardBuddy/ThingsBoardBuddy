@@ -39,8 +39,8 @@ from functools import partial
 SUBTYPE = "thingsboard"  
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
-MAXQUEUE = 4086
-
+MAXREQUEST = 1000
+ERRORDELTA = 200
 logger_function = """
 """
 
@@ -55,8 +55,10 @@ logger_config = """
             <control name="label" label="Label" type="text" length="16" />
             <control name="entity" expand="device"  exopt="any withtype" label="Device" type="text" length="32" />
             <control name="event" label="Event" type="text" length="32" />
-            <control name="evalue" label="Value" type="text" length="256" default="value"/>
-            <control name="token" label="Access Token" type="text" length="256" default="value"/>
+            <control name="evalue" label="Value" type="text" length="256" />
+                <default>value</default>
+            </control>
+            <control name="token" label="Access Token" type="text" length="256" />
             <controlgroup name="type" label="Type" type="choice">
                 <item value="telemetry" label="Telemetry" />
                 <item value="attributes" label="Attribute" />
@@ -80,6 +82,8 @@ class LoggerBridge(bl.BuddyBridge):
         self.logger_config = logger_config_default
         self.coap = None
         self.last_call=None
+        self.request_count=0
+        self.skipit=False
         
 
     def process_command(self, msg):
@@ -241,19 +245,37 @@ class LoggerBridge(bl.BuddyBridge):
 
 
     async def submit_data(self,token,data,dtype):
-        if not self.coap:
+        if self.skipit:
+            self.log.debug("Skipping {}".format(data)) #TODEL
+            return
+        if self.coap is None:
+            self.log.debug("Starting {}".format(data)) #TODEL
+            self.skipit = True
             self.coap = await aiocoap.Context.create_client_context()
             await aio.sleep(2)
+            self.skipit = False
+            self.request_count = 0
+        self.request_count += 1
         request = aiocoap.Message(code=aiocoap.POST, payload=json.dumps(data).encode())
         request.opt.uri_host = self.config["url"]
         request.opt.uri_path = ("api","v1",token, dtype)
         response = await self.coap.request(request).response
+        if respnse.code > 4.0:
+            self.log.debug("Error {} {} {}".format(response.code,response.payload,data)) #TODEL
+            self.request_count += ERRORDELTA
         self.log.debug("Reponse for {} {} is: {} {}".format(dtype, data, response.code, response.payload))
-        #context.shutdown()
+        if self.request_count> MAXREQUEST:
+            try:
+                self.coap.shutdown()
+            except:
+                pass
+            self.coap = None
+                    
 
 aboutstr = """<p>ThingsBoardBuddy is an application logging values associated with arbitrary event. It uses <a href"https://thingsboard.io/">ThingsBoard</a> as backend. Values to log need a token and
-can be defined by separating with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector". Values can be log as either "attributes" or "telemetry" values. 
+can be defined by separating the keys with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector". Values can be log as either "attributes" or "telemetry" values. 
 </p>
+<p>ThingsBoardBuddy uses the <a href="https://thingsboard.io/docs/reference/coap-api/">CoAP API</a></p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
 
