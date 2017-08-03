@@ -55,7 +55,7 @@ logger_config = """
             <control name="label" label="Label" type="text" length="16" />
             <control name="entity" expand="device"  exopt="any withtype" label="Device" type="text" length="32" />
             <control name="event" label="Event" type="text" length="32" />
-            <control name="evalue" label="Value" type="text" length="256" />
+            <control name="evalue" label="Value" type="text" length="256" >
                 <default>value</default>
             </control>
             <control name="token" label="Access Token" type="text" length="256" />
