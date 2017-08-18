@@ -1428,6 +1428,7 @@ var BuddyApp = Class.extend({
         this.cmd_panel=null;
         this.seenevents=[];
         this.displaydata=undefined;
+        this.displaydatacount=0;
         this.currentgraph=undefined;
         
         this.socket.binaryType = "arraybuffer";
@@ -2370,7 +2371,12 @@ var BuddyApp = Class.extend({
                 newvals[i][0]=new Date(newvals[i][0]);
                 buddy.displaydata.push(newvals[i]);
             }
-            buddy.currentgraph.updateOptions( { 'file': buddy.displaydata } );
+            if (buddy.displaydatacount == 10 || msg.content["to_be_continued"] == false ) {
+                buddy.currentgraph.updateOptions( { 'file': buddy.displaydata } );
+                buddy.displaydatacount = 0;
+            } else {
+                buddy.displaydatacount += 1;
+            }
         }
     },
 
