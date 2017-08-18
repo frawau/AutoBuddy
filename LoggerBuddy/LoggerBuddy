@@ -368,7 +368,7 @@ class LoggerBridge(bl.BuddyBridge):
     def build(self):
         self.conn = sqlite3.connect(self.config["dbfile"], detect_types=sqlite3.PARSE_DECLTYPES)
         self.dbc = self.conn.cursor()
-        self.dbc.arraysize=512
+        self.dbc.arraysize=self.config["nbrec"]
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",
                       "content": {"request": "functions",
@@ -407,6 +407,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "nbrec": 128,
      "dbfile": "/etc/autobuddy/logger.sqlite"}
 
 
@@ -436,6 +437,8 @@ def configure():
 
     parser.add_argument("-D", "--dbfile", default=cfgdefault["dbfile"],
                         help="Config file to use (default \"%s\")" % cfgdefault["dbfile"])
+    parser.add_argument("-n", "--nbrec", type=int, default=cfgdefault["nbrec"],
+                        help="Max number of record to send in one go (default \"%s\")." % cfgdefault["nbrec"])
     
     parser.add_argument("-C", "--configonly", default="",
                         help="Exit after the the configuration has been saved")

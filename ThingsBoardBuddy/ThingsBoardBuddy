@@ -255,7 +255,7 @@ class LoggerBridge(bl.BuddyBridge):
             await aio.sleep(2)
             self.skipit = False
             self.request_count = 0
-        self.request_count += 1
+        #self.request_count += 1
         request = aiocoap.Message(code=aiocoap.POST, payload=json.dumps(data).encode())
         request.opt.uri_host = self.config["url"]
         request.opt.uri_path = ("api","v1",token, dtype)
@@ -264,6 +264,8 @@ class LoggerBridge(bl.BuddyBridge):
             if not response.code.is_successful():
                 self.log.debug("Error {} {} {}".format(response.code,response.payload,data)) #TODEL
                 self.request_count += ERRORDELTA
+            else:
+                self.request_count = MAXREQUEST
             self.log.debug("Reponse for {} {} is: {} {}".format(dtype, data, response.code, response.payload))
         except Exception as e:
             self.log.critical("Error: %r" % e)
