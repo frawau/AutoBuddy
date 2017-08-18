@@ -482,91 +482,22 @@ def configure():
             cfgdata = json.load(opts.config)
             opts.config.close()
 
-        # Definition
-        if opts.type != cfgdefault["type"]:
-            loggercfg["type"] = opts.type
-        elif "type" in cfgdata:
-            loggercfg["type"] = cfgdata["type"]
-        else:
-            loggercfg["type"] = opts.type
-        if opts.debug:
-            loggerlog.debug("The type is %s." % loggercfg["type"])
-
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            loggercfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            loggercfg["subtype"] = cfgdata["subtype"]
-        else:
-            loggercfg["subtype"] = opts.subtype
-        if opts.debug:
-            loggerlog.debug("The subtype is %s." % loggercfg["subtype"])
-
-        # Controller
-        if opts.host != cfgdefault["host"]:
-            loggercfg["host"] = opts.host
-        elif "host" in cfgdata:
-            loggercfg["host"] = cfgdata["host"]
-        else:
-            loggercfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            loggerlog.debug("The host is %s" % loggercfg["host"])
-
-        if opts.port != cfgdefault["port"]:
-            loggercfg["port"] = opts.port
-        elif "port" in cfgdata:
-            loggercfg["port"] = cfgdata["port"]
-        else:
-            loggercfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            loggerlog.debug("The port is %s" % (loggercfg["port"]))
-
-        # Database
-        if opts.dbfile != cfgdefault["dbfile"]:
-            loggercfg["dbfile"] = opts.dbfile
-        elif "dbfile" in cfgdata:
-            loggercfg["dbfile"] = cfgdata["dbfile"]
-        else:
-            loggercfg["dbfile"] = cfgdefault["dbfile"]
-        if opts.debug:
-            loggerlog.debug(
-                "The Database file is %s" %
-                (loggercfg["dbfile"]))
-        if not (os.path.isfile(loggercfg["dbfile"])):
-            try:
-                sqlconn= sqlite3.connect(loggercfg["dbfile"], detect_types=sqlite3.PARSE_DECLTYPES)
-                sqlconn.execute('''CREATE TABLE logged
-                                (timestamp [timestamp], log text, entity text, value blob)''')
-                sqlconn.commit()
-                sqlconn.close()
-            except:
-                loggerlog.critical("Logger: Could not create database {} .".format(
-                    loggercfg["dbfile"]))
-                sys.exit()
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                loggercfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                loggercfg[attr] = cfgdata[attr]
+            else:
+                loggercfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                loggerlog.debug("The %s is %s." % (attr,loggercfg[attr]))
                 
-        # Authentication and encryption
-        if opts.credential != cfgdefault["credential"]:
-            loggercfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            loggercfg["credential"] = cfgdata["credential"]
-        else:
-            loggercfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            loggerlog.debug(
-                "The credential is %s" %
-                loggercfg["credential"])
 
-        if opts.ssl != cfgdefault["ssl"]:
-            loggercfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            loggercfg["ssl"] = cfgdata["ssl"]
-        else:
-            loggercfg["ssl"] = cfgdefault["ssl"]
         if loggercfg["ssl"] and not (os.path.isfile(loggercfg["ssl"] + "/" + CERTFILE)):
             loggerlog.critical("Encryption: Could not find {} .".format(
                 loggercfg["ssl"] + "/" + CERTFILE))
             sys.exit()
+            
         if opts.debug:
             if loggercfg["ssl"]:
                 loggerlog.debug(
@@ -574,6 +505,7 @@ def configure():
                     loggercfg["ssl"])
             else:
                 loggerlog.debug("The connection is not encrypted")
+
 
         if "buddykey" in cfgdata:
             loggercfg["buddykey"] = cfgdata["buddykey"]
