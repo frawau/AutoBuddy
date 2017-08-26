@@ -250,7 +250,6 @@ class LoggerBridge(bl.BuddyBridge):
             return
         if self.coap is None:
             self.log.debug("Starting {}".format(data)) #TODEL
-            self.skipit = True
             self.coap = await aiocoap.Context.create_client_context()
             await aio.sleep(2)
             self.skipit = False
@@ -272,6 +271,7 @@ class LoggerBridge(bl.BuddyBridge):
             self.request_count += ERRORDELTA
             
         if self.request_count> MAXREQUEST:
+            self.skipit = True
             try:
                 self.coap.shutdown()
             except:
