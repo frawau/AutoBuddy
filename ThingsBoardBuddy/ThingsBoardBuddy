@@ -246,10 +246,10 @@ class LoggerBridge(bl.BuddyBridge):
 
     async def submit_data(self,token,data,dtype):
         if self.skipit:
-            self.log.debug("Skipping {}".format(data)) #TODEL
+            self.log.critical("Skipping {}".format(data)) #TODEL
             return
         if self.coap is None:
-            self.log.debug("Starting {}".format(data)) #TODEL
+            self.log.critical("Starting {}".format(data)) #TODEL
             self.coap = await aiocoap.Context.create_client_context()
             await aio.sleep(2)
             self.skipit = False
@@ -261,7 +261,7 @@ class LoggerBridge(bl.BuddyBridge):
         try:
             response = await self.coap.request(request).response
             if not response.code.is_successful():
-                self.log.debug("Error {} {} {}".format(response.code,response.payload,data)) #TODEL
+                self.log.critical("Error {} {} {}".format(response.code,response.payload,data)) #TODEL
                 self.request_count += ERRORDELTA
             else:
                 self.request_count = MAXREQUEST
