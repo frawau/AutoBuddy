@@ -249,8 +249,8 @@ class LoggerBridge(bl.BuddyBridge):
             self.log.debug("Skipping {}".format(data)) #TODEL
             return
         if self.coap is None:
-            self.skipit = True
             self.coap = True
+            self.skipit = True
             self.log.debug("Starting {}".format(data)) #TODEL
             self.coap = await aiocoap.Context.create_client_context()
             #await aio.sleep(2)
@@ -275,9 +275,9 @@ class LoggerBridge(bl.BuddyBridge):
         if self.request_count> MAXREQUEST:
             try:
                 self.coap.shutdown()
+                self.coap = None
             except:
                 pass
-            self.coap = None
                     
 
 aboutstr = """<p>ThingsBoardBuddy is an application logging values associated with arbitrary event. It uses <a href"https://thingsboard.io/">ThingsBoard</a> as backend. Values to log need a token and
