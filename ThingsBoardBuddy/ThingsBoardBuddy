@@ -249,10 +249,11 @@ class LoggerBridge(bl.BuddyBridge):
             self.log.debug("Skipping {}".format(data)) #TODEL
             return
         if self.coap is None:
-            self.log.debug("Starting {}".format(data)) #TODEL
             self.skipit = True
+            self.coap = True
+            self.log.debug("Starting {}".format(data)) #TODEL
             self.coap = await aiocoap.Context.create_client_context()
-            await aio.sleep(2)
+            #await aio.sleep(2)
             self.skipit = False
             self.request_count = 0
         #self.request_count += 1
