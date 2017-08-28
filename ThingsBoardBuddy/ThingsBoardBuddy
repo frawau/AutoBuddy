@@ -274,8 +274,9 @@ class LoggerBridge(bl.BuddyBridge):
             
         if self.request_count> MAXREQUEST:
             try:
-                self.coap.shutdown()
+                tmp = self.coap
                 self.coap = None
+                await tmp.shutdown()
             except:
                 pass
                     
