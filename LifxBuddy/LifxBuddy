@@ -544,7 +544,7 @@ def lifx_process(self, msg):
                                (float(msg[
                                       "content"]["value"]["colour"]["value"]) * 65535.0) / 100.0), 3500],
                      "transient": trans, "period": dur,
-                                         "cycles": repeat, "duty_cycle":
+                                         "cycles": repeat, "skew_ratio":
                                              intround(
                                                  (32767 * int(msg[
                                                      "content"]["value"]["balance"])) / 50.0),
