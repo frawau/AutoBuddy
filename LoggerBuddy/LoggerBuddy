@@ -36,7 +36,7 @@ import buddylib as bl
 from functools import partial
 import sqlite3
 
-SUBTYPE = "sqlite"  
+SUBTYPE = "sqlite"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
 CLEANUP_TIMEOUT = 600 #aka 10 minutes
@@ -79,7 +79,7 @@ class LoggerBridge(bl.BuddyBridge):
         self.doupdate = {}
         self.graphneeded = set()
         self.cleanup = None
-        
+
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
@@ -92,7 +92,7 @@ class LoggerBridge(bl.BuddyBridge):
                                           "target": self.type,
                                           #"token": self.target,
                                           "value": bl.encrypt(logger_config_default, self.config["buddykey"])}})
-                              
+
     def process_request(self,msg):
         if msg["content"]["request"] == "request data":
             if msg["subject"] == self.target:
@@ -174,7 +174,7 @@ class LoggerBridge(bl.BuddyBridge):
                         myresult.append(arec)
                     if len(myrecords)<self.dbc.arraysize:
                         isend=True
-                    
+
                     self.sending({"subject": msg["content"]["target"],
                               "content_type": "response",
                               "content": {"response": "request data",
@@ -188,10 +188,10 @@ class LoggerBridge(bl.BuddyBridge):
                     myresult=[]
                 self.doupdate[msg["content"]["value"]["name"]]=(vmap,vmapdflt,labels)
                 self.graphneeded.add(msg["content"]["value"]["name"])
-                
+
 
     def process_response(self, msg):
-        
+
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             # Getting the config
             newconfig = {}
@@ -267,7 +267,7 @@ class LoggerBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.logger_config}})
-    
+
         else:
             if self.log:
                 self.log.warning(
@@ -290,11 +290,11 @@ class LoggerBridge(bl.BuddyBridge):
                                         "target": self.target,
                                         "value": [x["label"] for x in self.logger_config["eventlog"]]}})
             return
-        
+
         if msg["content"]["event"] == "graph needed":
             self.graphneeded.add(msg["content"]["value"])
             return
-        
+
         if "target" not in msg["content"]:
             return
         msgentity = msg["content"]["target"].split(".")[-1]
@@ -327,7 +327,7 @@ class LoggerBridge(bl.BuddyBridge):
                     thevalue = json.dumps(realvalue)
                 else:
                     thevalue = json.dumps(thevalue)
-                    
+
                 if "timestamp" in msg["content"]:
                     tmstmp=msg["content"]["timestamp"]
                 else:
@@ -360,14 +360,21 @@ class LoggerBridge(bl.BuddyBridge):
                                                 "target": "gui",
                                                 "name": logdef["label"],
                                                 "value": [arec]}})
-                
+
                 self.log.debug(
                     "Logged {} {} {} {}".format(tmstmp,logdef["label"],msgentity,thevalue))
-                
-        
+
+
     def build(self):
         self.conn = sqlite3.connect(self.config["dbfile"], detect_types=sqlite3.PARSE_DECLTYPES)
         self.dbc = self.conn.cursor()
+        try:
+            self.dbc.execute("SELECT * FROM logged LIMIT 1")
+            x=self.dbc.fetchall()
+            del(x)
+        except:
+            self.dbc.execute("CREATE TABLE logged (timestamp [timestamp], log text, entity text, value blob)")
+            self.conn.commit()
         self.dbc.arraysize=self.config["nbrec"]
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",
@@ -376,7 +383,7 @@ class LoggerBridge(bl.BuddyBridge):
                                   "subtype": self.subtype,
                                   #"token": self.target,
                                   "value": {"functions":logger_function, "configs": [logger_config, self.logger_config]}}})
-        
+
 
         self.cleanup = aio.ensure_future(self.cleancache())
 
@@ -394,7 +401,7 @@ class LoggerBridge(bl.BuddyBridge):
         self.cleanup = aio.ensure_future(self.cleancache())
 
 aboutstr = """<p>LoggerBuddy is an application logging values associated with arbitrary event. It uses SQLite3 as database backend. Values to log
-can be defined by separating with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector". 
+can be defined by separating with "::", for multiple subvalues use "|". For instance, to log the "vector" value of an accelerometer, you could use "value::accelerometer::vector", to log the "vector" and "z" values, use "value::accelerometer|z|vector".
 </p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
@@ -439,7 +446,7 @@ def configure():
                         help="Config file to use (default \"%s\")" % cfgdefault["dbfile"])
     parser.add_argument("-n", "--nbrec", type=int, default=cfgdefault["nbrec"],
                         help="Max number of record to send in one go (default \"%s\")." % cfgdefault["nbrec"])
-    
+
     parser.add_argument("-C", "--configonly", default="",
                         help="Exit after the the configuration has been saved")
     parser.add_argument("-d", "--debug", action="count", default=0,
@@ -491,13 +498,13 @@ def configure():
                 loggercfg[attr] = opts.__getattribute__(attr)
             if opts.debug:
                 loggerlog.debug("The %s is %s." % (attr,loggercfg[attr]))
-                
+
 
         if loggercfg["ssl"] and not (os.path.isfile(loggercfg["ssl"] + "/" + CERTFILE)):
             loggerlog.critical("Encryption: Could not find {} .".format(
                 loggercfg["ssl"] + "/" + CERTFILE))
             sys.exit()
-            
+
         if opts.debug:
             if loggercfg["ssl"]:
                 loggerlog.debug(
@@ -562,7 +569,7 @@ if __name__ == "__main__":
     loop.call_soon(
         bridgectl.configrequest,
         {"about": {"LoggerBuddy": aboutstr}})
-    
+
     try:
         loop.run_until_complete(connFuture)
     except KeyboardInterrupt:
