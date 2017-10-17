@@ -6,7 +6,7 @@ AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.i
 
 RPi3 and RPi2 are supported.
 
-It is not recommended to use Wifi with RPi3.
+It is not recommended to use Wifi with RPi3. In any case, you'll need a wired network connection for this installation.
 
 Download the image from
 
