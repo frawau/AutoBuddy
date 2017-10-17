@@ -421,14 +421,7 @@ class PresenceBridge(bl.BuddyBridge):
             for x in self.mac_score:
                 self.mac_score[x] -= 1
 
-            # Debug only
-            # self.sending({"subject":"presence.debug",
-                #"content_type": "event",
-                #"content":{"event":"mac score start",
-                    #"target":"presence.mac",
-                    #"value":{"mac scores":self.mac_score}}})
-
-            timetowait = 10
+            timetowait = 5
             # Launch ARP
             for dev, net in self.config["networks"].values():
                 if self.log:
@@ -442,7 +435,7 @@ class PresenceBridge(bl.BuddyBridge):
                 lop.append(conn)
                 arpctrl.request(net)
 
-            # Star BT but gently
+            # Start BT
             if "btdev" in self.config and self.config["btdev"] is not None:
                 if self.log:
                     self.log.debug("Probing BT  for {}".format(self.bt_macs))
@@ -453,13 +446,9 @@ class PresenceBridge(bl.BuddyBridge):
                 btctrl.process = self.process_btmac
                 lop.append(conn)
                 btctrl.request(self.bt_macs)
-                await aio.sleep(2)
-                timetowait -= 2
 
-            if timetowait > 3:
-                await aio.sleep(timetowait)  # Time for the devices to reply
-            else:
-                await aio.sleep(3)  # Time for the devices to reply
+           
+            await aio.sleep(timetowait)  # Time for the devices to reply
 
             for x in lop:
                 x.close()  # No need to keep listening

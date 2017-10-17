@@ -123,6 +123,7 @@ class BuddyPartner(aio.Protocol):
         self.controller = controller
         self.log = log
         self.tokens = {}
+        self.get_events = True
         super().__init__()
 
     def connection_made(self, transport):
@@ -172,10 +173,15 @@ class BuddyPartner(aio.Protocol):
                             except:
                                 pass
                     elif self.state == "Active":
-                        if msg["content_type"] == "request":
-                            self.tokens[
-                                msg["content"]["token"]] = dt.datetime.now()
-                        self.controller.broadcast(msg, [self.addr])
+                        if msg["content_type"] == "mute events":
+                            self.get_events = False
+                        elif msg["content_type"] == "get events":
+                            self.get_events = True
+                        else:
+                            if msg["content_type"] == "request":
+                                self.tokens[
+                                    msg["content"]["token"]] = dt.datetime.now()
+                            self.controller.broadcast(msg, [self.addr])
             if pdata:
                 self.log.info(
                     "Partially received: level{} {}||".format(lvl, pdata))
@@ -194,6 +200,9 @@ class BuddyPartner(aio.Protocol):
             for x, y in zip(self.filter, msg["subject"].split(".")):
                 if not y.startswith(x):
                     return
+        if msg["content_type"] in ["event"]:
+            if not self.get_events:
+                return
         self.transport.write(json.dumps(msg).encode())
         if randint(1, 50) == 31:  # from time to time
             # clean

@@ -1,0 +1,754 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application listen for events and process them according
+# to a set of rules. Commands and/or state changes may ensue.
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import os
+import ssl
+import logging
+import datetime as dt
+import asyncio as aio
+from math import gcd
+import buddylib as bl
+from functools import partial
+import importlib
+
+SUBTYPE = "i2csensor"  #
+__version__ = "0.10"
+CERTFILE = "autobuddy.crt"
+i2csensor_function = """
+<buddyui version="0.1">
+    <command name="i2csensor">
+        <control type="switch" name="calibrate" label="Calibrate" rteffect="1">
+            <value label="On">on</value>
+            <value label="Off">off</value>
+        </control>
+    </command>
+</buddyui>
+"""
+
+i2csensor_config = """
+<buddyui version="0.1">
+    <configuration  name="i2csensor">
+        <controlgroup type="list" name="throttle" label="Timing">
+            <control type="spinner" name="temperature" label="Temp Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="pressure" label="Pressure Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="humidity" label="Humidity Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="battery" label="Battery Sensing interval">
+                <start>0</start>
+                <end>3600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>3600</default>
+            </control>
+            <control type="spinner" name="luminosity" label="Luminosity Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>devices
+            </control>
+            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+            <control type="spinner" name="particulate" label="Particule Counter">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list"  name="runplugin" label="Plugins">
+"""
+i2csensor_config_default = {"throttle":{"temperature": 60,
+                                        "humidity": 60,
+                                        "pressure": 60,
+                                        "accelerometer":1,
+                                        "luminosity":60,
+                                        "particulate":60,
+                                        "battery": 3600},
+                            "runplugin":{}, "calibrate":{}}
+
+def i2csensor_process(self, msg):
+    global i2c_plugins
+    global bridgectl
+    if msg["content_type"] == "command":
+        if msg["content"]["command"] == "calibrate" and msg["content"]["value"] == "on" :
+            for myplug in i2c_plugins:
+                if i2c_plugins[myplug].is_running:
+                    i2c_plugins[myplug].do_calibrate()
+        elif msg["content"]["command"] == "status":
+            # Not gone the way of the dodo
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "status",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "icon status":
+                                             {"bu-not-present": {
+                                                 "opacity": 0}},
+                                             "value": {}}})
+        #elif msg["content"]["command"] == "nickname":
+            #bridgectl.sending({
+                    #"subject": "control" + "." + self.name,
+                    #"content_type": "request",
+                    #"content": {"request": "nickname",
+                                #"target": bridgectl.type +
+                                #"." +
+                                #self.name,
+                                ##"token": bridgectl.target,
+                                #"value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+
+        #elif msg["content"]["command"] == "deletion":
+            #bridgectl.sending(
+                #{"subject": "control" + "." + bridgectl.type,
+                    #"content_type": "request",
+                    #"content": {"request": "deletion",
+                                #"target": bridgectl.type,
+                                #"value": self.name}})
+
+
+
+bl.sensor._process = i2csensor_process
+
+
+
+
+class I2CSensorBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of sensor .
+    It will report any new sensor
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(I2CSensorBridge, self).__init__(loop, future, config, log)
+        self.i2csensor_config = i2csensor_config_default
+        self.i2c_probeclk = None
+        self.probe_sensor = None
+        self.map_plug = {}    #Key is address, value is plugin name
+
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    i2csensor_config_default[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(i2csensor_config_default, self.config["buddykey"])}})
+
+
+    def process_response(self, msg):
+        global i2c_plugins
+
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            newconfig = {}
+            fromconfig = []
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.i2csensor_config[x] = storedconfig[x]
+
+                # Now let's update the plugins
+                for aplug,dorun in self.i2csensor_config["runplugin"].items():
+                    i2c_plugins[aplug].throttle = self.i2csensor_config["throttle"]
+                    if dorun == "on" and not i2c_plugins[aplug].is_running:
+                        if aplug in self.i2csensor_config["calibrate"]:
+                            cal = self.i2csensor_config["calibrate"][aplug]
+                        else:
+                            cal={}
+                            i2c_plugins[aplug].is_running=True
+                    elif dorun == "off":
+                        i2c_plugins[aplug].is_running=False
+
+                for pi in i2c_plugins.values():
+                    for meas in pi.measurements:
+                        if self.i2c_probeclk is None:
+                            self.i2c_probeclk = self.i2csensor_config["throttle"][meas]
+                        else:
+                            self.i2c_probeclk = gcd(self .i2c_probeclk,self.i2csensor_config["throttle"][meas])
+                if self.log:
+                    self.log.debug("Clock is {}".format(self.i2c_probeclk))
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [i2csensor_config, self.i2csensor_config]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": self.i2csensor_config}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            elif self.state == "wait config save":
+                if msg["content"]["status"] == "done":
+                    raise bl.Exit(0, "Configuration was saved")
+                else:
+                    raise bl.Exit(2, "Error: Configuration was not saved")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [i2csensor_config, self.i2csensor_config]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": self.i2csensor_config}})
+
+                for aplug,dorun in self.i2csensor_config["runplugin"].items():
+                    #TO DELETE
+                    self.log.debug("Updating {} from {} to {}".format(i2c_plugins[aplug].name,i2c_plugins[aplug].is_running,dorun))
+                    if dorun == "on" and not i2c_plugins[aplug].is_running:
+                        i2c_plugins[aplug].is_running=True
+                        if aplug in self.i2csensor_config["calibrate"]:
+                            i2c_plugins[aplug].calibration =  self.i2csensor_config["calibrate"][aplug]
+
+                        i2c_plugins[aplug].throttle=self.i2csensor_config["throttle"]
+                    elif dorun == "off" and  i2c_plugins[aplug].is_running:
+                        i2c_plugins[aplug].is_running=False
+                    elif i2c_plugins[aplug].is_running:
+                        if aplug in self.i2csensor_config["calibrate"]:
+                            i2c_plugins[aplug].calibration = self.i2csensor_config["calibrate"][aplug]
+                        i2c_plugins[aplug].throttle = self.i2csensor_config["throttle"]
+
+                for pi in i2c_plugins.values():
+                    for meas in pi.measurements:
+                        if self.i2c_probeclk is None:
+                            self.i2c_probeclk = self.i2csensor_config["throttle"][meas]
+                        else:
+                            self.i2c_probeclk = gcd(self .i2c_probeclk,self.i2csensor_config["throttle"][meas])
+                if self.log:
+                    self.log.debug("Clock is now {}".format(self.i2c_probeclk))
+
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                sensor = sess.query(bl.sensor).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                self.devices.append(sensor)
+                self.sending({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "new device",
+                                        "target": self.type +
+                                        "." +
+                                        sensor.name,
+                                        "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": sensor.name, "nickname": sensor.nickname}}})
+
+                self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "presence",
+                                            "target": self.type +
+                                            "." +
+                                            sensor.name,
+                                            "value": "online",
+                                            "icon status": {"bu-not-present": {"opacity": 0}}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                        for sensor in self.devices:
+                            if sensor.name == msg["subject"].split(".")[-1]:
+                                sensor.nickname = msg["content"]["value"]
+                                self.sending({"subject": self.type,
+                                            "content_type": "event",
+                                            "content": {"event": "nickname",
+                                                        "target": self.type +
+                                                        "." +
+                                                        sensor.name,
+                                                        "value": sensor.nickname}})
+                                break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for sensor in self.devices:
+                        if sensor.name == msg["subject"].split(".")[-1]:
+                            sensor.conn.transport.close()
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      sensor.name,
+                                                      "value": sensor.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+
+    def process_event(self, msg):
+        # We can react to 1 event: "gui info" info requests
+        # TODO
+        if msg["content"]["event"] == "gui refresh":
+            for sensor in self.devices:
+                sensor.present = True
+                self.sending({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": self.type + "." + sensor.name,
+                                        "value": "online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
+    def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions":i2csensor_function, "configs": [i2csensor_config, self.i2csensor_config]}}})
+
+        self.sending({"subject": self.type,
+                        "content_type": "event",
+                        "content": {"event": "presence",
+                                    "target": self.type +
+                                      "-" +
+                                      self.subtype,
+                                    "value": "online",
+                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+        try:
+            sess = bl.getSession(self.config["database"])
+            self.devices = [sess.query(
+                bl.sensor).filter_by(
+                    name=self.type + "-" + self.subtype).one()]
+
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type +
+                                      "-" +
+                                      self.subtype,
+                                      "value": "online",
+                                      "icon status": {"bu-not-present": {"opacity": 0}}}})
+        except:
+            # first run, create
+
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                          # Here we need the type
+                                      #"token": self.target,
+                                      "value": {"name": self.type + "-" + self.subtype, "nickname": self.subtype, "subtype": self.subtype}}})
+        finally:
+            sess.close()
+
+        for pi in i2c_plugins.values():
+            for meas in pi.measurements:
+                if self.i2c_probeclk is None:
+                    self.i2c_probeclk = self.i2csensor_config["throttle"][meas]
+                else:
+                    self.i2c_probeclk = gcd(self.i2c_probeclk,self.i2csensor_config["throttle"][meas])
+        if self.log:
+            self.log.debug("Clock is first: {}".format(self.i2c_probeclk))
+        coro = partial(I2CSensorBridge.probe_i2csensor, self)
+        self.probe_sensor = aio.ensure_future(coro(), loop=self.loop)
+
+
+    async def probe_i2csensor(self):
+        global i2c_plugins
+        delta = 0
+        while True:
+            delta = dt.datetime.now()
+            for plug in i2c_plugins.values():
+                if self.log:
+                    self.log.debug("Getting value from {} ({})".format(plug.name,plug.is_running))
+                if plug.is_running:
+                    #try:
+                    if True:
+                        result = plug.Process(runtime=delta)
+                        if result:
+                            thisresult={}
+                            for x in plug.measurements:
+                                if x in result:
+                                    thisresult[x]=result[x]
+                            if thisresult:
+                                self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "measurement",
+                                                "target": self.target,
+                                                "timestamp": str(dt.datetime.now().replace(microsecond=0)),
+                                                "value":thisresult}})
+                    #except Exception as e:
+                        #if self.log:
+                            #self.log.debug(
+                                #"Could not process packet with {}".format(plug.name,exc_info=(type(e),e,e.__traceback__)))
+            delta = dt.datetime.now() - delta
+            delta = delta.seconds+round((delta.microseconds/1000)/1000.0,2)
+
+            await aio.sleep(self.i2c_probeclk - delta)
+            #TODO what to do with TearDown?
+
+    #def newsensor(self,info,plug):
+        #asensor={}
+        #asensor["name"] = mac_to_name(info["mac address"])
+        #self.map_plug[info["mac address"]]=plug.name
+        #asensor["nickname"] = plug.name +" "+asensor["name"]
+        #self.sending({"subject": "control" + "." + self.type,
+                        #"content_type": "request",
+                        #"content": {"request": "creation",
+                                    #"target": self.type,
+                                    #"value": {"name": asensor["name"], "nickname": asensor["nickname"], "subtype": self.subtype}}})
+
+
+    def register(self, entity):
+        pass
+
+    def unregister(self, entity):
+        pass
+
+    def update_calibrate(self,name,val):
+        i2csensor_config_default["calibrate"][name]=val
+        self.sending({"subject": self.target,
+                       "content_type": "event",
+                       "content": {"event": "gui alert",
+                                   "target": self.target,
+                                   "value": "Done calibrating {}".format(name)}})
+        self.sending({"subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {"request": "save configuration",
+                                    "target": self.type,
+                                    #"token": self.target,
+                                    "value": bl.encrypt(i2csensor_config_default, self.config["buddykey"])}})
+
+
+aboutstr = """<p>I2CSensorBuddy is an application tracking I2C sensors advertising their values.</p>
+<p>The icon was designed by lifting icons from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a> and
+adding to it parts.
+</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 2100 2100" xmlns="http://www.w3.org/2000/svg">
+<g transform="scale(1,-1)">
+<g transform="translate(0, -1650)">
+<path class="bu-fill"
+d="M640 192q0 -80 -56 -136t-136 -56t-136 56t-56 136q0 60 35 110t93 71v395h128v-395q58 -21 93 -71t35 -110zM768 192q0 77 -34 144t-94 112v768q0 80 -56 136t-136 56t-136 -56t-56 -136v-768q-60 -45 -94 -112t-34 -144q0 -133 93.5 -226.5t226.5 -93.5t226.5 93.5
+t93.5 226.5zM896 192q0 -185 -131.5 -316.5t-316.5 -131.5t-316.5 131.5t-131.5 316.5q0 182 128 313v711q0 133 93.5 226.5t226.5 93.5t226.5 -93.5t93.5 -226.5v-711q128 -131 128 -313zM1024 768v-128h-192v128h192zM1024 1024v-128h-192v128h192zM1024 1280v-128h-192
+v128h192z" />
+</g></g>
+<g transform="translate(1400, 900)">
+<g transform="scale(0.5,-0.5)">
+<path class="bu-fill"
+d="M512 384q0 36 -20 69q-1 1 -15.5 22.5t-25.5 38t-25 44t-21 50.5q-4 16 -21 16t-21 -16q-7 -23 -21 -50.5t-25 -44t-25.5 -38t-15.5 -22.5q-20 -33 -20 -69q0 -53 37.5 -90.5t90.5 -37.5t90.5 37.5t37.5 90.5zM1024 512q0 -212 -150 -362t-362 -150t-362 150t-150 362
+q0 145 81 275q6 9 62.5 90.5t101 151t99.5 178t83 201.5q9 30 34 47t51 17t51.5 -17t33.5 -47q28 -93 83 -201.5t99.5 -178t101 -151t62.5 -90.5q81 -127 81 -275z" />
+</g></g>
+<g transform="translate(900, 700)">
+<g transform="scale(2.7,2.7)">
+<polyline class="bu-fill" fill="none" stroke="black"
+    points="20,250 70,250 120,400 170,100 220,250 270,250" stroke-width="30px"/>
+<circle class="bu-fill"  cx="310" cy="250" r="50"/>
+<g stroke="none" fill="black" >
+<path d="
+M 310 135
+A 115 115 0 0 1 310 365
+L 310 335
+A 85 85 0 0 0 310 165
+L 310 135
+Z"/>
+</g></g></g>
+</svg>
+"""
+
+cfgdefault = {
+    "type": "sensor",
+     "subtype": "i2csensor",
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "i2cbus": 0}
+
+
+def configure():
+    parser = argparse.ArgumentParser(
+        description="Track sensor over I2C.")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+
+    parser.add_argument("-i", "--i2cbus", type=int, default=cfgdefault["i2cbus"],
+                        help="The i2c bus used by the server (default \"%s\")." % cfgdefault["i2cbus"])
+
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/i2csensor.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/i2csensor.cfg\")")
+
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    i2csensorlog = logging.getLogger('')
+    i2csensorcfg = {"debug": opts.debug}
+    try:
+    # if True:
+        if opts.configonly:
+            try:
+                cfgdata = json.load(opts.config)
+                opts.config.close()
+            except:
+                cfgdata = {}
+        else:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                i2csensorcfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                i2csensorcfg[attr] = cfgdata[attr]
+            else:
+                i2csensorcfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                i2csensorlog.debug("The %s is %s." % (attr,i2csensorcfg[attr]))
+
+
+        if i2csensorcfg["ssl"] and not (os.path.isfile(i2csensorcfg["ssl"] + "/" + CERTFILE)):
+            i2csensorlog.critical("Encryption: Could not find {} .".format(
+                i2csensorcfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+
+        if opts.debug:
+            if i2csensorcfg["ssl"]:
+                i2csensorlog.debug(
+                    "The ssl certificates can be found in %s" %
+                    i2csensorcfg["ssl"])
+            else:
+                i2csensorlog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            i2csensorcfg["buddykey"] = cfgdata["buddykey"]
+
+        # Save hings
+        if opts.configonly:
+
+            if "buddykey" not in i2csensorcfg:
+                if opts.debug:
+                    i2csensorlog.debug("Generating random key")
+                i2csensorcfg["buddykey"] = bl.keygen()
+            try:
+                del(i2csensorcfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(i2csensorcfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        i2csensorlog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (i2csensorlog, i2csensorcfg)
+
+
+i2c_plugins={}
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+    #Loading plugins
+    dir_path = os.path.join(os.path.dirname(__file__),'plugins')
+    # import parent module / namespace
+    importlib.import_module('plugins')
+    for filename in os.listdir(dir_path):
+        if "i2clib.py" in filename:
+            continue
+        name, ext = os.path.splitext(filename)
+        if ext.endswith(".py"):
+            mod = importlib.import_module("."+name, package="plugins")
+            log.debug("Loading plugin "+mod.PluginObject.name)
+            i2c_plugins[mod.PluginObject.name]=mod.PluginObject(config["i2cbus"])
+            i2csensor_config +="        <control type=\"switch\" name=\"%s\" label=\"%s\" default=\"off\">"%(mod.PluginObject.name,mod.PluginObject.name)
+            i2csensor_config +="""
+                    <value label="Yes">on</value>
+                    <value label="No">off</value>
+                </control>
+                """
+    i2csensor_config +="""
+            </controlgroup>
+        </configuration>
+    </buddyui>
+    """
+
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+            partial(I2CSensorBridge,
+                    loop,
+                    connFuture,
+                    config,
+                    log),
+            config["host"],
+            config["port"],
+            ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"I2CSensorBuddy": aboutstr},
+         "display": {config["subtype"]: iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+
+        bridgectl.probe_sensor.set_result('done')
+        conn.close()
+        loop.close()
