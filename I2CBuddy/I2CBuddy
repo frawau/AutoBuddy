@@ -136,24 +136,24 @@ def i2csensor_process(self, msg):
                                              {"bu-not-present": {
                                                  "opacity": 0}},
                                              "value": {}}})
-        #elif msg["content"]["command"] == "nickname":
-            #bridgectl.sending({
-                    #"subject": "control" + "." + self.name,
-                    #"content_type": "request",
-                    #"content": {"request": "nickname",
-                                #"target": bridgectl.type +
-                                #"." +
-                                #self.name,
-                                ##"token": bridgectl.target,
-                                #"value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+        elif msg["content"]["command"] == "nickname":
+            bridgectl.sending({
+                    "subject": "control" + "." + self.name,
+                    "content_type": "request",
+                    "content": {"request": "nickname",
+                                "target": bridgectl.type +
+                                "." +
+                                self.name,
+                                #"token": bridgectl.target,
+                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
 
-        #elif msg["content"]["command"] == "deletion":
-            #bridgectl.sending(
-                #{"subject": "control" + "." + bridgectl.type,
-                    #"content_type": "request",
-                    #"content": {"request": "deletion",
-                                #"target": bridgectl.type,
-                                #"value": self.name}})
+        elif msg["content"]["command"] == "deletion":
+            bridgectl.sending(
+                {"subject": "control" + "." + bridgectl.type,
+                    "content_type": "request",
+                    "content": {"request": "deletion",
+                                "target": bridgectl.type,
+                                "value": self.name}})
 
 
 

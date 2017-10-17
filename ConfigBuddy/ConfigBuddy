@@ -534,17 +534,18 @@ else:
     print ("OK, using \"{}\" for credential.".format(credential))
     print ("\n\nIMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(BUDDYLOCATION+"/.tls\n\n"))
 
-dolifx=False
-doflic=False
-dovoice=False
-dopresence=False
-dopresencelan=False
-dopresencebt=False
-dokodi=False
-doscanner=False
-doblescan=False
-dologger=False
-dothingsboard=False
+dolifx = False
+doflic = False
+dovoice = False
+dopresence = False
+dopresencelan = False
+dopresencebt = False
+dokodi = False
+doscanner = False
+doblescan = False
+dologger = False
+dothingsboard = False
+doi2c = False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -633,6 +634,43 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dothingsboard=True
 
+print("\n\nI2CBuddy let you generate measurments from some I2C sensors.")
+
+try:
+    lotz=subprocess.check_output(["i2cdetect", "-l"]).decode()
+    i2cbus = int(lotz[:lotz.index("\t")].split("-")[1])
+except:
+    i2cbus = 1
+i2csubtype = "i2csensor"
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doi2c=True
+
+    print (" I need to know what is your I2C bus number. I tried to guess it."
+    print (" Please select the audio device to use for listening.")
+
+    choice = input("Your choice [%d]: "%i2cbus)
+    if choice.strip():
+        while True:
+            try:
+                choice=int(choice)
+                if choice >= 0:
+                    i2cdev = choice
+                    break
+                else:
+                    os.system('clear')
+                    print ("\nInput must be a positive integer!")
+            except:
+                os.system('clear')
+                print ("\nInput must be an integer!")
+
+                print (" I also need to know what name you would like to give to this sensor. It should be unique across all sensors.")
+    choice = input("Sensor name [%s] : "%i2csubtype)
+    if choice.strip():
+        i2csubtype = choice.strip()
+
+
+#Let's summarize
 print("\nYou have decided:")
 if dolifx:
     print("\tto run LifxBuddy")
@@ -678,6 +716,11 @@ if dothingsboard:
     print("\tto run ThingsBoardBuddy")
 else:
     print("\tnot to run ThingBoardBuddy")
+
+if doi2c:
+    print("\tto run I2CBuddy")
+else:
+    print("\tnot to run I2CBuddy")
 
 
 if doflic and dopresencebt:
@@ -1157,6 +1200,41 @@ if dothingsboard:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ThingsBoardBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ThingsBoardBuddy "+fn
+
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "sensor"
+mycfg["subtype"] = i2csubtype
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+mycfg["i2cbus"] = i2cbus
+fn=BUDDYLOCATION+"/.buddyconfig/i2csensor.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/I2CBuddy/I2CBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 25
+"""
+mycmd+=BUDDYLOCATION+"/I2CBuddy/I2CBuddy -c "+fn
+mycmd+="\n    sleep 7\ndone\n"
+fn=BUDDYLOCATION+"/.run/80-i2csensor"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doi2c:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n I2CBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n I2CBuddy "+fn
+
+
 
 fn=BUDDYLOCATION+"/.start-autobuddy"
 with open(fn,"w") as cfile:
