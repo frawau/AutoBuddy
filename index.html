@@ -18,7 +18,7 @@
 
   <body>
     <header>
-      <div class="inner">  
+      <div class="inner">
         <img src="images/AutoBuddy-logo.svg" height="100" width="100" style="float: left;"/>
         <h1>AutoBuddy</h1>
         <h2>A Home Automation system</h2>
@@ -40,22 +40,22 @@
           <p>AutoBuddy's logo was designed by Khan Wautier.</p>
           <h1>Components</h1>
           <h2>Buddylib</h2>
-          <p>Buddylib is a python library that defines the element known to the AutoBuddy ecosystem. It defines zone, various 
-          devices as well as some generic bridge functionalities. Buddylib depends on 
+          <p>Buddylib is a python library that defines the element known to the AutoBuddy ecosystem. It defines zone, various
+          devices as well as some generic bridge functionalities. Buddylib depends on
           <a href="http://www.sqlalchemy.org/">SQLAlchemy</a>.</p>
           <h2>ControlBuddy</h2>
-          <p>ControlBuddy is at the heart of AutoBuddy. It multiplexes all the messages going in and out of the bus. It controls the zones and their associated devices. 
+          <p>ControlBuddy is at the heart of AutoBuddy. It multiplexes all the messages going in and out of the bus. It controls the zones and their associated devices.
           It provides persistence services to other components.</p>
           <h2>LifxBuddy</h2>
-          <p>LifxBuddy is a bridge application that provides control to <a href="http://www.lifx.com">Lifx lightbulbs</a>. It uses 
+          <p>LifxBuddy is a bridge application that provides control to <a href="http://www.lifx.com">Lifx lightbulbs</a>. It uses
           <a href="https://github.com/frawau/aiolifx">aiolifx</a> to communicate with the lightbulbs.</p>
           <h2>FlicBuddy</h2>
-          <p>FlicBuddy is a bridge application that provides access to <a href="https://flic.io/">Flic Smart Button</a>. It uses 
+          <p>FlicBuddy is a bridge application that provides access to <a href="https://flic.io/">Flic Smart Button</a>. It uses
           <span style="font-style: italic;">aioflic</span> and <span style="font-style: italic;">flicd</span>, that can be found within
           <a href="https://github.com/50ButtonsEach/fliclib-linux-hci">fliclib-linux-hci</a> to communicate with the buttons. FlicBuddy requires the exclusive use of a
           Bluetooth adapter. More than one BuddyFlic can run as long as they have different subtypes. </p>
           <h2>PresenceBuddy</h2>
-          <p>PresenceBuddy is a bridge application that provides presence information based on devices' MAC addresses. It uses 
+          <p>PresenceBuddy is a bridge application that provides presence information based on devices' MAC addresses. It uses
           <a href="https://github.com/frawau/aioarping">aioarping</a> to track MAC addresses on your LAN and/or <a href="https://github.com/frawau/aiobtname">aiobtname</a>
           to track Bluetooth MAC addresses. Tracking presence with Bluetooth is very reliable. Tracking presence using ARP request is much less reliable. We
           tested with LG G5, Samsung Galaxy 7, iPhone 4s, iPhone 7 all of them answered haphazardly to the ARP requests sent.</p>
@@ -117,7 +117,7 @@
           <p>There is a configurable trigger utterance. By default it is <span style="font-weight:bold;">listen buddy</span> defined as "listen_buddy", a single
           word rather than 2, to make recognition more reliable.</p>
           <p>In general, to improve reliability, it is a good idea to use multi-syllables words when defining voice commands. Also try to separate similar sounding
-          commands when possible. For instance, instead of "turn the lights on" and "turn the ligths off" use "turn_on the_lights" and "turn the_light off". Another 
+          commands when possible. For instance, instead of "turn the lights on" and "turn the ligths off" use "turn_on the_lights" and "turn the_light off". Another
           example, instead of "lock the door" and "unlock the door", use "do_lock the_door" and "unlock the_door".</p>
           <p>In general, be aware that voice recognition does not work very well in noisy environments.</p>
           <p>VoiceBuddy uses the python module <a href="https://github.com/larsimmisch/pyalsaaudio">alsaaudio</a>.</p>
@@ -141,7 +141,7 @@
           </p>
           <img src="images/webbuddy-action-rule.jpg" />
           <p>WebBuddy uses BuddyGuiLib to render all the command and configuration described in XML by each modules on
-          the bus.</p> 
+          the bus.</p>
           <h2>KodiBuddy</h2>
           <p>KodiBuddy is a bridge allowing AutoBuddy to interact with <a href="https://kodi.tv/">Kodi</a> instances. </p>
           <p>It currently offers the following functions
@@ -170,6 +170,18 @@
           <p>To be graphed, data must be numerical or have at most 2 or 3 distinct values (for instance "on" and "off"). As long as they are displayed, graphs are updated in real time.</p>
           <h2>ThingsBoardBuddy</h2>
           <p>ThingsBoardBuddy allows you to persist values associated with events on <a href="https://thingsboard.io/">ThingsBoard</a>. The data can then be graphed. <a href="https://demo.thingsboard.io/dashboards/27038000-6d0e-11e7-84e9-c7f326cba909?publicId=c5792950-67ab-11e7-84e9-c7f326cba909">Here is an example.</a> with data from RuuviTags and some lights. ThingsBoardBuddy uses <a href="http://coap.technology/">CoAP</a>.</p>
+          <h2>I2CBuddy</h2>
+          <p>I2CBuddy bridges I2C sensors. At this time (Oct 2017), there are 3 available plugins:</p>
+          <ul>
+              <li>BMP180: A sensor that can give you temperature in °C and atmospheric pressure in Pa,</li>
+              <li>BH1750: A sensor that gives you luminosity in lux,</li>
+              <li>HTU21D: A sensor that gives you temperature in °C and relative humidity in percent.</li>
+          </ul>
+          <p>By default no plugin will run. Plugins must be enabled in the device configuration using WebBuddy.</p>
+          <p>I2CBuddy broadcast measurement events. The frequency of each measurement can be set in the configuration.
+          <h2>ConfigBuddy</h2>
+          <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
+
           <h2>BuddyTools</h2>
           <p>BuddyTools is a set of tools that can be used to trigger event from other application. Currently there is:
           <dl>
@@ -183,13 +195,11 @@
           <li>hostname</li>
           </ul>
           </dd>
-          <dt>apcupsd-event</dt><dd>A python script meant to be used as <span style="font-weight: bold;">powerout</span> and 
+          <dt>apcupsd-event</dt><dd>A python script meant to be used as <span style="font-weight: bold;">powerout</span> and
           <span style="font-weight: bold;">mainsback</span> scripts for apcupsd UPS monitoring daemon. It generates <span style="font-weight: bold;">grid power</span>
           events with value <span style="font-weight: bold;">grid power on</span> or <span style="font-weight: bold;">grid power off</span></dd>
           </dl>
-          <h2>ConfigBuddy</h2>
-          <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
-          
+
           <h2>Others</h2>
           <p>As time goes by, many other components should appear here. For instance:
               <dl>
@@ -198,18 +208,20 @@
               <dt>...</dt>
               </dl>
           </p>
-          
+
           <h1>Documentation</h1>
           <p>Description of the messages and their function is somewhat documented on
-          <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>.</p>
+          <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>. It is currently woefully outdated.</p>
           <h1>Status</h1>
+          <h3>October 2017</h3>
+          <p>Added I2CBuddy.</p>
           <h3>June 2017</h3>
           <p>Added KodiBuddy and ScannerBuddy.</p>
           <p>Module can now send specific devices information. The information can be accesses by Ctrl-Click'ing the device icon.</p>
           <p>Added Location and RemoteControl widgets to buddyguilib.</p>
           <p>In buddyguilib, a command can now be specified to appear only when defining actions (attribute <code>rteffect</code> not defined ot == 0), both when
           defining actions and in the device's realtime command panel (<code>rteffect</code> == 1) or only in the  device's realtime command panel (<code>rteffect</code> == -1)</p>
-          <p>In buddyguilib, appearance of commands in the device's command panel can be predicated to a state value with the <code>onlyif</code> attribute. For instance 
+          <p>In buddyguilib, appearance of commands in the device's command panel can be predicated to a state value with the <code>onlyif</code> attribute. For instance
           to ensure that a command appears only if the device in "On" you can set <code>onlyif="power::on"</code> (Kodi) or  <code>onlyif="power::power::on"</code> (Lifx).
           <code>onlyif</code> is effective only when <code>rteffect == 1 or -1</code></p>
           <p>Device icons in WebBuddy can now be animated.</p>
@@ -217,11 +229,11 @@
           <p>System is soon to have its first release.</p>
           <p>I have it installed on a Raspberry Pi 3 with 10 Lifx and 6 flics and I use it everyday. It just works.</p>
           <p>Before release, I want to solve a couple of annoying bugs. I also want to add a location widget
-          for BuddyGuiLib so that it is more convenient for people to set their location (needed for sunrise/sunset time) 
+          for BuddyGuiLib so that it is more convenient for people to set their location (needed for sunrise/sunset time)
           event though ConfigBuddy gets your location allright.</p>
           <h3>October 2015</h3>
           <p>System released on an unsuspecting world. Chaos may ensue.</p>
-          <p>The system is minimal. At this time we can 
+          <p>The system is minimal. At this time we can
             <ul>
             <li>Create zone</li>
             <li>Name zone</li>
@@ -250,6 +262,6 @@
       </div>
     </div>
 
-  
+
   </body>
 </html>
