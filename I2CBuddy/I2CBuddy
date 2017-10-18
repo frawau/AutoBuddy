@@ -429,7 +429,7 @@ class I2CSensorBridge(bl.BuddyBridge):
                                       "target": self.type,
                                           # Here we need the type
                                       #"token": self.target,
-                                      "value": {"name": self.type + "-" + self.subtype, "nickname": self.subtype, "subtype": self.subtype}}})
+                                      "value": {"name": self.subtype + "-" + self.config["localname"], "nickname": self.subtype, "subtype": self.subtype}}})
         finally:
             sess.close()
 
@@ -553,12 +553,13 @@ Z"/>
 
 cfgdefault = {
     "type": "sensor",
-     "subtype": "i2csensor",
+     "subtype": SUBTYPE,
      "host": "localhost",
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "i2cbus": 0}
+     "i2cbus": 0,
+     "localname":""}
 
 
 def configure():
@@ -577,6 +578,9 @@ def configure():
 
     parser.add_argument("-i", "--i2cbus", type=int, default=cfgdefault["i2cbus"],
                         help="The i2c bus used by the server (default \"%s\")." % cfgdefault["i2cbus"])
+
+    parser.add_argument("-l", "--localname", default=cfgdefault["localname"],
+                        help="The name of this sensor (default \"%s\")." % cfgdefault["localname"])
 
     parser.add_argument("-c", "--config", default="/etc/autobuddy/i2csensor.cfg", type=argparse.FileType('r'),
                         help="Config file to use (default \"/etc/autobuddy/i2csensor.cfg\")")
@@ -665,10 +669,15 @@ def configure():
                 if opts.debug:
                     i2csensorlog.debug("Generating random key")
                 i2csensorcfg["buddykey"] = bl.keygen()
+
+            if "localname" not in i2csensorcfg or i2csensorcfg["localname"] == "":
+                i2csensorcfg["localname"] = bl.genid().replace("-","")[:12]
+
             try:
                 del(i2csensorcfg["debug"])
             except:
                 pass
+
             with open(opts.configonly, "w") as cfile:
                 json.dump(i2csensorcfg, cfile)
             os.chmod(opts.configonly, 384)  # 0600

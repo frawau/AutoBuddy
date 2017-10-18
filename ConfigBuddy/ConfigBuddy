@@ -642,12 +642,13 @@ try:
 except:
     i2cbus = 1
 i2csubtype = "i2csensor"
+i2cname = bl.genid().replace("-","")[:12]
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doi2c=True
 
     print (" I need to know what is your I2C bus number. I tried to guess it.")
-    print (" Please select the audio device to use for listening.")
+    print (" Please select the i2c bus number.")
 
     choice = input("Your choice [%d]: "%i2cbus)
     if choice.strip():
@@ -664,8 +665,8 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
                 os.system('clear')
                 print ("\nInput must be an integer!")
 
-                print (" I also need to know what name you would like to give to this sensor. It should be unique across all sensors.")
-    choice = input("Sensor name [%s] : "%i2csubtype)
+                print (" I also need to know what name you would like to give to this sensor.\nIt should be unique across all i2c sensors.")
+                choice = input("Sensor name [%s]: "%i2csubtype)
     if choice.strip():
         i2csubtype = choice.strip()
 
@@ -1209,6 +1210,7 @@ mycfg["credential"] = credential
 mycfg["ssl"]=certdir
 mycfg["buddykey"] = keygen()
 mycfg["i2cbus"] = i2cbus
+mycfg["localname"] = i2cname
 fn=BUDDYLOCATION+"/.buddyconfig/i2csensor.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
