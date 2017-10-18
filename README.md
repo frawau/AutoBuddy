@@ -8,9 +8,7 @@ RPi3 and RPi2 are supported.
 
 It is not recommended to use Wifi with RPi3. In any case, you'll need a wired network connection for this installation.
 
-Download the image from
-
-    [Goolge Drive](https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing)
+Download the image from [Goolge Drive](https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing)
 
 Write the image to an SD card the usual way
 
