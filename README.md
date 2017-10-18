@@ -10,7 +10,7 @@ It is not recommended to use Wifi with RPi3. In any case, you'll need a wired ne
 
 Download the image from
 
-    https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing
+    [Goolge Drive](https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing)
 
 Write the image to an SD card the usual way
 
