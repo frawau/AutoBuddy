@@ -463,12 +463,13 @@ class I2CSensorBridge(bl.BuddyBridge):
                                 if x in result:
                                     thisresult[x]=result[x]
                             if thisresult:
-                                self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "measurement",
-                                                "target": self.target,
-                                                "timestamp": str(dt.datetime.now().replace(microsecond=0)),
-                                                "value":thisresult}})
+                                for sensor in self.devices:
+                                    self.sending({"subject": self.type,
+                                        "content_type": "event",
+                                        "content": {"event": "measurement",
+                                                    "target": self.type+"."+sensor.name,
+                                                    "timestamp": str(dt.datetime.now().replace(microsecond=0)),
+                                                    "value":thisresult}})
                     #except Exception as e:
                         #if self.log:
                             #self.log.debug(
