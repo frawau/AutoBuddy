@@ -646,7 +646,7 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doi2c=True
 
-    print (" I need to know what is your I2C bus number. I tried to guess it."
+    print (" I need to know what is your I2C bus number. I tried to guess it.")
     print (" Please select the audio device to use for listening.")
 
     choice = input("Your choice [%d]: "%i2cbus)
