@@ -405,28 +405,21 @@ class I2CSensorBridge(bl.BuddyBridge):
                                   #"token": self.target,
                                   "value": {"functions":i2csensor_function, "configs": [i2csensor_config, self.i2csensor_config]}}})
 
-        self.sending({"subject": self.type,
-                        "content_type": "event",
-                        "content": {"event": "presence",
-                                    "target": self.type +
-                                      "-" +
-                                      self.subtype,
-                                    "value": "online",
-                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+
         try:
             sess = bl.getSession(self.config["database"])
             self.devices = [sess.query(
                 bl.sensor).filter_by(
                     name=self.type + "-" + self.subtype).one()]
+            for sensor in self.devices:
+                sensor.present = True
+                self.sending({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": self.type + "." + sensor.name,
+                                        "value": "online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
 
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type +
-                                      "-" +
-                                      self.subtype,
-                                      "value": "online",
-                                      "icon status": {"bu-not-present": {"opacity": 0}}}})
         except:
             # first run, create
 
