@@ -126,10 +126,10 @@ def i2csensor_process(self, msg):
                     i2c_plugins[myplug].do_calibrate()
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
-            self.controller.sending({"subject": self.controller.type,
+            bridgectl.sending({"subject": bridgectl.type,
                                  "content_type": "event",
                                  "content": {"event": "status",
-                                             "target": self.controller.type +
+                                             "target": bridgectl.type +
                                              "." +
                                              self.name,
                                              "icon status":
