@@ -458,24 +458,38 @@ class BLESensorBridge(bl.BuddyBridge):
     async def probe_blesensor(self):
         global ble_plugins
         # Give time for things to settle
-        await aio.sleep(2)
+        #await aio.sleep(2)
         # Star BT but gently
         if "btdev" in self.config and self.config["btdev"] is not None:
             btdev=self.config["btdev"]
         else:
             btdev = 0
 
-        sock = aiobs.create_bt_socket(btdev)
-        #create a connection with the raw socket
-        fac=self.loop.create_connection(aiobs.BLEScanRequester,sock=sock)
-        #Start it
-        self.ble_adv = self.loop.create_task(fac)
-        await aio.sleep(2) #Let it start
-        #Attach your processing
-        btctrl = self.ble_adv.result()[1]
-        btctrl.process=self.ble_process
-        #Set the LE Scan mode
-        btctrl.send_scan_request()
+        try:
+            sock = aiobs.create_bt_socket(btdev)
+            #create a connection with the raw socket
+            fac=self.loop.create_connection(aiobs.BLEScanRequester,sock=sock)
+            #Start it
+            self.ble_adv = self.loop.create_task(fac)
+            await aio.sleep(1) #Let it start
+            #Attach your processing
+            btctrl = self.ble_adv.result()[1]
+            btctrl.process=self.ble_process
+            #Set the LE Scan mode
+            btctrl.send_scan_request()
+            if btctrl.transport.is_closing():
+                self.log.error("Error: Socket is closing. Exiting.")
+                sys.exit(-2)
+
+        except Exception as e:
+            self.log.error("Error: %r" % e)
+            self.log.error("Exiting")
+            try:
+                sock.close()
+            except:
+                pass
+            sys.exit(-2)
+
         #Now look for the sensors needing to be probed
         while True:
             # Till the end of time
