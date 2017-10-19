@@ -411,7 +411,7 @@ class I2CSensorBridge(bl.BuddyBridge):
             sess = bl.getSession(self.config["database"])
             self.devices = [sess.query(
                 bl.sensor).filter_by(
-                    name=self.type + "-" + self.subtype).one()]
+                    name=self.subtype+"-"+self.config["localname"]).one()]
             for sensor in self.devices:
                 sensor.present = True
                 self.sending({"subject": self.type,
