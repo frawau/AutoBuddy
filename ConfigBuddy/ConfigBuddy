@@ -628,7 +628,7 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dologger=True
 
-print("\n\nThingsBuddy let you log events over time and states. They can then be graphed at ThingsBoard.io.\nNote that this requires Internet access.")
+print("\n\nThingsBoardBuddy let you log events over time and states. They can then be graphed at ThingsBoard.io.\nNote that this requires Internet access.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
@@ -716,7 +716,7 @@ else:
 if dothingsboard:
     print("\tto run ThingsBoardBuddy")
 else:
-    print("\tnot to run ThingBoardBuddy")
+    print("\tnot to run ThingsBoardBuddy")
 
 if doi2c:
     print("\tto run I2CBuddy")
@@ -778,6 +778,7 @@ if mainstation:
 
     controlkey=mycfg["buddykey"]
 
+    #ControlBuddy
     fn=BUDDYLOCATION+"/.buddyconfig/config.cfg"
     with open(fn,"w") as cfile:
         json.dump(mycfg,cfile)
@@ -813,6 +814,7 @@ if mainstation:
     mycfg["credential"] = credential
     socketkey = mycfg["buddykey"]
 
+    #SocketBuddy
     fn=BUDDYLOCATION+"/.buddyconfig/websocket.cfg"
     with open(fn,"w") as cfile:
         json.dump(mycfg,cfile)
@@ -824,7 +826,7 @@ if mainstation:
     mycmd+=BUDDYLOCATION+"/Buddylib"
     mycmd+="""
     while [ 1 ]; do
-    sleep 25
+    sleep 15
     """
     mycmd+=BUDDYLOCATION+"/SocketBuddy/SocketBuddy -c "+fn
     mycmd+="\ndone\n"
@@ -836,9 +838,44 @@ if mainstation:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SocketBuddy "+fn
 
     print ("Still working!")
+    #ActionBuddy
+    mycfg={}
+    mycfg["host"]= brokerlocation
+    mycfg["type"] = "action"
+    mycfg["credential"] = credential
+    mycfg["ssl"]=certdir
+    mycfg["buddykey"] = keygen()
+    mycfg["smtp"] = actionsmtp
+    mycfg["sender"] = actionsender
+    mycfg["user"] = actionsmtpuser or ""
+    mycfg["password"] = actionsmtppasswd or ""
+    mycfg["restricted"] = GUIBRIDGETYPE
+    actionkey=mycfg["buddykey"]
+    fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
+    with open(fn,"w") as cfile:
+        json.dump(mycfg,cfile)
+    os.chmod(fn,0o600)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
+    mycmd="""#!/bin/bash
+    export PYTHONPATH="""
+    mycmd+=BUDDYLOCATION+"/Buddylib"
+    mycmd+="""
+    while [ 1 ]; do
+    sleep 25
+    """
+    mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
+    mycmd+="\n    sleep 2\ndone\n"
+    fn=BUDDYLOCATION+"/.run/30-action"
+    with open(fn,"w") as cfile:
+        cfile.write(mycmd)
+    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+    os.chmod(fn,0o750)
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ActionBuddy "+fn
 else: #Auxillary station
     bustartcmd="#!/bin/bash\n    tmux new-session -s AutoBuddy -n Buddy -d sleep 30"
 
+#LifxBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "light"
@@ -860,8 +897,8 @@ while [ 1 ]; do
 sleep 20
 """
 mycmd+=BUDDYLOCATION+"/LifxBuddy/LifxBuddy -c "+fn
-mycmd+="\nsleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/30-lifx"
+mycmd+="\nsleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/20-lifx"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -873,7 +910,7 @@ else:
 
 print ("Patience!")
 
-
+#FlicBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "switch"
@@ -898,8 +935,8 @@ while [ 1 ]; do
 sleep 20
 """
 mycmd+=BUDDYLOCATION+"/FlicBuddy/FlicBuddy -c "+fn
-mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/30-flic"
+mycmd+="\n    sleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/20-flic"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -911,6 +948,7 @@ else:
 
 print ("Just a little longer!")
 
+#KodiBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "mediaplayer"
@@ -931,7 +969,7 @@ export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
-sleep 22
+sleep 25
 """
 mycmd+=BUDDYLOCATION+"/KodiBuddy/KodiBuddy -c "+fn
 mycmd+="\nsleep 2\ndone\n"
@@ -947,6 +985,7 @@ else:
 
 
 
+#ScannerBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "scanner"
@@ -966,11 +1005,11 @@ export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
-sleep 25
+sleep 15
 """
 mycmd+=BUDDYLOCATION+"/ScannerBuddy/ScannerBuddy -c "+fn
-mycmd+="\nsleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/60-scanner"
+mycmd+="\nsleep 7\ndone\n"
+fn=BUDDYLOCATION+"/.run/10-scanner"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -982,41 +1021,7 @@ else:
 
 print ("Just a teeny weeny little longer!")
 
-if mainstation:
-    mycfg={}
-    mycfg["host"]= brokerlocation
-    mycfg["type"] = "action"
-    mycfg["credential"] = credential
-    mycfg["ssl"]=certdir
-    mycfg["buddykey"] = keygen()
-    mycfg["smtp"] = actionsmtp
-    mycfg["sender"] = actionsender
-    mycfg["user"] = actionsmtpuser or ""
-    mycfg["password"] = actionsmtppasswd or ""
-    mycfg["restricted"] = GUIBRIDGETYPE
-    actionkey=mycfg["buddykey"]
-    fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
-    with open(fn,"w") as cfile:
-        json.dump(mycfg,cfile)
-    os.chmod(fn,0o600)
-    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-    os.chmod(BUDDYLOCATION+"/ActionBuddy/ActionBuddy",0o775)
-    mycmd="""#!/bin/bash
-    export PYTHONPATH="""
-    mycmd+=BUDDYLOCATION+"/Buddylib"
-    mycmd+="""
-    while [ 1 ]; do
-    sleep 20
-    """
-    mycmd+=BUDDYLOCATION+"/ActionBuddy/ActionBuddy -c "+fn
-    mycmd+="\n    sleep 2\ndone\n"
-    fn=BUDDYLOCATION+"/.run/50-action"
-    with open(fn,"w") as cfile:
-        cfile.write(mycmd)
-    os.chown(fn,currentowner.st_uid,currentowner.st_gid)
-    os.chmod(fn,0o750)
-    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ActionBuddy "+fn
-
+#PresenceBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "presence"
@@ -1049,7 +1054,7 @@ sleep 30
 """
 mycmd+=BUDDYLOCATION+"/PresenceBuddy/PresenceBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/50-presence"
+fn=BUDDYLOCATION+"/.run/40-presence"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -1059,6 +1064,7 @@ if dopresence:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n PresenceBuddy "+fn
 
+#VoiceBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "voice"
@@ -1082,11 +1088,11 @@ export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
 while [ 1 ]; do
-sleep 10
+sleep 15
 """
 mycmd+=BUDDYLOCATION+"/VoiceBuddy/VoiceBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/50-voice"
+fn=BUDDYLOCATION+"/.run/20-voice"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -1096,6 +1102,7 @@ if dovoice:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n VoiceBuddy "+fn
 
+#BLEBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "sensor"
@@ -1119,13 +1126,12 @@ mycmd="""#!/bin/bash
 export PYTHONPATH="""
 mycmd+=BUDDYLOCATION+"/Buddylib"
 mycmd+="""
-sleep 30
 while [ 1 ]; do
 sleep 30
 """
 mycmd+=BUDDYLOCATION+"/BLEBuddy/BLEBuddy -c "+fn
 mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/50-blescan"
+fn=BUDDYLOCATION+"/.run/40-blescan"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -1135,7 +1141,7 @@ if doblescan:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n BLEBuddy "+fn
 
-
+#LoggerBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "logger"
@@ -1158,8 +1164,8 @@ while [ 1 ]; do
 sleep 30
 """
 mycmd+=BUDDYLOCATION+"/LoggerBuddy/LoggerBuddy -c "+fn
-mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/70-logger"
+mycmd+="\n    sleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-logger"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -1169,6 +1175,7 @@ if dologger:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n LoggerBuddy "+fn
 
+#ThingsboardBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "logger"
@@ -1191,8 +1198,8 @@ while [ 1 ]; do
 sleep 30
 """
 mycmd+=BUDDYLOCATION+"/ThingsBoardBuddy/ThingsBoardBuddy -c "+fn
-mycmd+="\n    sleep 2\ndone\n"
-fn=BUDDYLOCATION+"/.run/70-thingsboard"
+mycmd+="\n    sleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-thingsboard"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
@@ -1225,8 +1232,8 @@ while [ 1 ]; do
 sleep 25
 """
 mycmd+=BUDDYLOCATION+"/I2CBuddy/I2CBuddy -c "+fn
-mycmd+="\n    sleep 7\ndone\n"
-fn=BUDDYLOCATION+"/.run/80-i2csensor"
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/30-i2csensor"
 with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
