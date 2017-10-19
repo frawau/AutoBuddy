@@ -107,9 +107,9 @@ blesensor_config = """
         </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
-blesensor_config_default = {"throttle":{"temperature": 60, 
-                                        "humidity": 60, 
-                                        "pressure": 60, 
+blesensor_config_default = {"throttle":{"temperature": 60,
+                                        "humidity": 60,
+                                        "pressure": 60,
                                         "accelerometer":0,
                                         "luminosity":60,
                                         "battery": 3600},
@@ -168,8 +168,8 @@ def blesensor_process(self, msg):
                     "content": {"request": "deletion",
                                 "target": bridgectl.type,
                                 "value": self.name}})
-                
-                
+
+
 
 bl.sensor._process = blesensor_process
 
@@ -197,7 +197,7 @@ class BLESensorBridge(bl.BuddyBridge):
         self.ble_adv = None
         self.probe_sensor = None
         self.map_plug = {}    #Key is address, value is plugin name
-        
+
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
@@ -216,7 +216,7 @@ class BLESensorBridge(bl.BuddyBridge):
 
     def process_response(self, msg):
         global ble_plugins
-        
+
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             # Getting the config
             newconfig = {}
@@ -267,6 +267,7 @@ class BLESensorBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.blesensor_config}})
+                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -293,7 +294,7 @@ class BLESensorBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.blesensor_config}})
-                              
+
                 for aplug,dorun in self.blesensor_config["runplugin"].items():
                     if dorun and not ble_plugins[aplug].is_running:
                         if aplug in self.blesensor_config["calibrate"]:
@@ -307,8 +308,8 @@ class BLESensorBridge(bl.BuddyBridge):
                         if aplug in self.blesensor_config["calibrate"]:
                             ble_plugins[aplug].calibration = self.blesensor_config["calibrate"][aplug]
                         ble_plugins[aplug].throttle = self.blesensor_config["throttle"]
-    
-                
+
+
         elif self.state == "active":
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
                 sess = bl.getSession(self.config["database"])
@@ -418,13 +419,13 @@ class BLESensorBridge(bl.BuddyBridge):
                                       "value": "online",
                                       "icon status": {"bu-not-present": {"opacity": 0}}}})
             self.map_plug[name_to_mac(sensor.name)]=None
-        
+
         coro = partial(BLESensorBridge.probe_blesensor, self)
         self.probe_sensor = aio.ensure_future(coro(), loop=self.loop)
-        
+
     def ble_process(self,packet):
         global ble_plugins
-        
+
         ev=aiobs.HCI_Event()
         xx=ev.decode(packet)
         for plugname,plug in ble_plugins.items():
@@ -452,7 +453,7 @@ class BLESensorBridge(bl.BuddyBridge):
                     #if self.log:
                         #self.log.debug(
                             #"Could not process packet with {}".format(plug.name,exc_info=(type(e),e,e.__traceback__)))
-        
+
 
     async def probe_blesensor(self):
         global ble_plugins
@@ -463,14 +464,14 @@ class BLESensorBridge(bl.BuddyBridge):
             btdev=self.config["btdev"]
         else:
             btdev = 0
-          
+
         sock = aiobs.create_bt_socket(btdev)
         #create a connection with the raw socket
         fac=self.loop.create_connection(aiobs.BLEScanRequester,sock=sock)
         #Start it
         self.ble_adv = self.loop.create_task(fac)
         await aio.sleep(2) #Let it start
-        #Attach your processing 
+        #Attach your processing
         btctrl = self.ble_adv.result()[1]
         btctrl.process=self.ble_process
         #Set the LE Scan mode
@@ -502,7 +503,7 @@ class BLESensorBridge(bl.BuddyBridge):
 
     def unregister(self, entity):
         self.devices = [x for x in self.devices if x.name != entity.name]
-        
+
     def update_calibrate(self,name,val):
         blesensor_config_default["calibrate"][name]=val
         self.sending({"subject": self.target,
@@ -530,20 +531,20 @@ iconstr = """
 <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 2100 2100" xmlns="http://www.w3.org/2000/svg">
 <g transform="scale(1,-1)">
 <g transform="translate(0, -1650)">
-<path class="bu-fill" 
+<path class="bu-fill"
 d="M640 192q0 -80 -56 -136t-136 -56t-136 56t-56 136q0 60 35 110t93 71v395h128v-395q58 -21 93 -71t35 -110zM768 192q0 77 -34 144t-94 112v768q0 80 -56 136t-136 56t-136 -56t-56 -136v-768q-60 -45 -94 -112t-34 -144q0 -133 93.5 -226.5t226.5 -93.5t226.5 93.5
 t93.5 226.5zM896 192q0 -185 -131.5 -316.5t-316.5 -131.5t-316.5 131.5t-131.5 316.5q0 182 128 313v711q0 133 93.5 226.5t226.5 93.5t226.5 -93.5t93.5 -226.5v-711q128 -131 128 -313zM1024 768v-128h-192v128h192zM1024 1024v-128h-192v128h192zM1024 1280v-128h-192
 v128h192z" />
 </g></g>
 <g transform="translate(1400, 900)">
 <g transform="scale(0.5,-0.5)">
-<path class="bu-fill" 
+<path class="bu-fill"
 d="M512 384q0 36 -20 69q-1 1 -15.5 22.5t-25.5 38t-25 44t-21 50.5q-4 16 -21 16t-21 -16q-7 -23 -21 -50.5t-25 -44t-25.5 -38t-15.5 -22.5q-20 -33 -20 -69q0 -53 37.5 -90.5t90.5 -37.5t90.5 37.5t37.5 90.5zM1024 512q0 -212 -150 -362t-362 -150t-362 150t-150 362
 q0 145 81 275q6 9 62.5 90.5t101 151t99.5 178t83 201.5q9 30 34 47t51 17t51.5 -17t33.5 -47q28 -93 83 -201.5t99.5 -178t101 -151t62.5 -90.5q81 -127 81 -275z" />
 </g></g>
 <g transform="translate(900, 700)">
 <g transform="scale(2.7,2.7)">
-<polyline class="bu-fill" fill="none" stroke="black" 
+<polyline class="bu-fill" fill="none" stroke="black"
     points="20,250 70,250 120,400 170,100 220,250 270,250" stroke-width="30px"/>
 <circle class="bu-fill"  cx="310" cy="250" r="50"/>
 <g stroke="none" fill="black" >
@@ -553,7 +554,7 @@ A 115 115 0 0 1 310 365
 L 310 335
 A 85 85 0 0 0 310 165
 L 310 135
-Z"/> 
+Z"/>
 </g></g></g>
 </svg>
 """
