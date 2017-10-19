@@ -665,8 +665,8 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
                 os.system('clear')
                 print ("\nInput must be an integer!")
 
-                print (" I also need to know what name you would like to give to this sensor.\nIt should be unique across all i2c sensors.")
-                choice = input("Sensor name [%s]: "%i2csubtype)
+    print (" I also need to know what name you would like to give to this sensor.\nIt should be unique across all i2c sensors.")
+    choice = input("Sensor name [%s]: "%i2csubtype)
     if choice.strip():
         i2csubtype = choice.strip()
 

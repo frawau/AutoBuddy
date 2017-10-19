@@ -396,6 +396,7 @@ class I2CSensorBridge(bl.BuddyBridge):
                                         "target": self.type + "." + sensor.name,
                                         "value": "online",
                                         "icon status": {"bu-not-present": {"opacity": 0}}}})
+
     def build(self):
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",

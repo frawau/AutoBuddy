@@ -55,6 +55,7 @@ from random import randint
 __version__ = "0.10"
 KEYFILE = "autobuddy.key"
 CERTFILE = "autobuddy.crt"
+ALWAYSSENTEVENT = ["gui refresh"] #Here some MUST SEND event
 
 system_config = """
 <buddyui version="0.1">
@@ -201,7 +202,7 @@ class BuddyPartner(aio.Protocol):
                 if not y.startswith(x):
                     return
         if msg["content_type"] in ["event"]:
-            if not self.get_events:
+            if not self.get_events and msg["content"]["event"] not in ALWAYSSENTEVENT:
                 return
         self.transport.write(json.dumps(msg).encode())
         if randint(1, 50) == 31:  # from time to time
