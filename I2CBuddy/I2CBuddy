@@ -188,6 +188,9 @@ class I2CSensorBridge(bl.BuddyBridge):
                                           "target": self.type,
                                           #"token": self.target,
                                           "value": bl.encrypt(i2csensor_config_default, self.config["buddykey"])}})
+        else:
+            for sensor in self.devices:
+                sensor.process(msg)
 
 
     def process_response(self, msg):
