@@ -39,7 +39,7 @@ import sqlite3
 SUBTYPE = "sqlite"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
-CLEANUP_TIMEOUT = 600 #aka 10 minutes
+CLEANUP_TIMEOUT = 180 #aka 3 minutes
 
 logger_function = """
 """
@@ -57,6 +57,28 @@ logger_config = """
             <control name="event" label="Event" type="text" length="32" />
             <control name="evalue" label="Value" type="text" length="64" default="value"/>
             <control name="map" label="Value Map" type="text" length="256" default="value"/>
+            <controlgroup type="choice"  name="timeframe" label=" ">
+                <item value="lm" label="Last minute" />
+                <item value="lh" label="Last hour" />
+                <item value="ld" label="Last day"/>
+                <item value="lw" label="Last week" />
+                <item value="lM" label="Last month" />
+                <item value="ly" label="Last year" />
+                <item value="cu" label="Custom" >
+                    <control type="spinner" name="quant" label="Last">
+                        <start>1</start>
+                        <increment>1</increment>
+                        <default>2</default>
+                    </control>
+                    <controlgroup type="choice"  name="timeunit" label=" ">
+                        <item value="lm" label="minute" />
+                        <item value="lh" label="hour" />
+                        <item value="ld" label="day" />
+                        <item value="lw" label="week" />
+                        <item value="lM" label="month" />
+                    </controlgroup>
+                </item>
+            </controlgroup>
         </controlgroup>
     </configuration>
 </buddyui>
@@ -100,25 +122,56 @@ class LoggerBridge(bl.BuddyBridge):
                 vmapdflt = 0
                 stepgraph=False
                 labels=[]
+                logname = msg["content"]["value"]["name"]
+                logdef = [x for x in self.logger_config["eventlog"] if x["label"]==logname][0]
+                if "timeframe" not in logdef:
+                    twhere = (dt.datetime.now()-dt.timedelta(days=7)).replace(microsecond=0)
+                else:
+                    tsval=logdef["timeframe"]
+                    if tsval["bu-cvalue"] == "lm":
+                        twhere = (dt.datetime.now()-dt.timedelta(minutes=1)).replace(microsecond=0)
+                    elif tsval["bu-cvalue"] == "lh":
+                        twhere = (dt.datetime.now()-dt.timedelta(minutes=60)).replace(microsecond=0)
+                    elif tsval["bu-cvalue"] == "ld":
+                        twhere = (dt.datetime.now()-dt.timedelta(days=1)).replace(microsecond=0)
+                    elif tsval["bu-cvalue"] == "lw":
+                        twhere = (dt.datetime.now()-dt.timedelta(days=7)).replace(microsecond=0)
+                    elif tsval["bu-cvalue"] == "lM":
+                        twhere = (dt.datetime.now()-dt.timedelta(days=31)).replace(microsecond=0)
+                    elif tsval["bu-cvalue"] == "ly":
+                        twhere = (dt.datetime.now()-dt.timedelta(days=365)).replace(microsecond=0)
+                    else: #Must be custom
+                        quant = int(tsval["quant"])
+                        if tsval["timeunit"]["bu-cvalue"] == "lm":
+                            twhere = (dt.datetime.now()-dt.timedelta(minutes=1*quant)).replace(microsecond=0)
+                        elif tsval["timeunit"]["bu-cvalue"] == "lh":
+                            twhere = (dt.datetime.now()-dt.timedelta(minutes=60*quant)).replace(microsecond=0)
+                        elif tsval["timeunit"]["bu-cvalue"] == "ld":
+                            twhere = (dt.datetime.now()-dt.timedelta(days=1*quant)).replace(microsecond=0)
+                        elif tsval["timeunit"]["bu-cvalue"] == "lw":
+                            twhere = (dt.datetime.now()-dt.timedelta(days=7*quant)).replace(microsecond=0)
+                        elif tsval["timeunit"]["bu-cvalue"] == "lM":
+                            twhere = (dt.datetime.now()-dt.timedelta(days=31*quant)).replace(microsecond=0)
                 #Value should contain "name", the name of the log and "last" the last oid received
-                self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(msg["content"]["value"]["name"],))
+                self.dbc.execute("SELECT DISTINCT entity FROM logged WHERE log = ? ORDER BY entity",(logname,))
                 loe=[x[0] for x in self.dbc.fetchall()]
-                if msg["content"]["value"]["name"] in self.doupdate:
+                if logname in self.doupdate:
                     #Cache might not be up-to-date but this will be a problem only at the start
-                    vmap=self.doupdate[msg["content"]["value"]["name"]][0]
-                    vmapdflt=self.doupdate[msg["content"]["value"]["name"]][1]
-                    labels=self.doupdate[msg["content"]["value"]["name"]][2]
+                    vmap=self.doupdate[logname][0]
+                    vmapdflt=self.doupdate[logname][1]
+                    labels=self.doupdate[logname][2]
                     count=len(vmap)
                     if count <= 3: #Map state values to 1,-1 and 0
                         count=3
                         stepgraph=True
                 else:
-                    self.dbc.execute("SELECT COUNT(DISTINCT value) FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
+                    self.dbc.execute("SELECT COUNT(DISTINCT value) FROM logged WHERE log = ?",(logname,))
                     count=self.dbc.fetchall()[0][0]
                     if count <= 3 and count > 1: #Map state values to 1,-1 and 0
+
                         count=3
                         stepgraph=True
-                        self.dbc.execute("SELECT DISTINCT value FROM logged WHERE log = ?",(msg["content"]["value"]["name"],))
+                        self.dbc.execute("SELECT DISTINCT value FROM logged WHERE log = ?",(logname,))
                         lov=[json.loads(x[0]) for x in self.dbc.fetchall()]
                         if "on" in lov:
                             vmap["on"]=1
@@ -144,7 +197,8 @@ class LoggerBridge(bl.BuddyBridge):
 
                 myresult=[["timestamp"]+loe]
                 isend=False
-                self.dbc.execute("SELECT * FROM logged WHERE log = ? ORDER BY timestamp,ROWID",(msg["content"]["value"]["name"],))
+                self.dbc.execute("SELECT * FROM logged WHERE log = ? AND timestamp > ? ORDER BY timestamp,ROWID",(logname,twhere,))
+                print ("\n\nSELECT * FROM logged WHERE log = {} AND timestamp > {} ORDER BY timestamp,ROWID\n\n".format(logname,twhere))
                 while not isend:
                     arec=None
                     myrecords=self.dbc.fetchmany()
@@ -183,11 +237,11 @@ class LoggerBridge(bl.BuddyBridge):
                                           "target": msg["content"]["target"],
                                           "stepgraph":stepgraph,
                                           "labels":labels,
-                                          "name": msg["content"]["value"]["name"],
+                                          "name": logname,
                                           "value":myresult}})
                     myresult=[]
-                self.doupdate[msg["content"]["value"]["name"]]=(vmap,vmapdflt,labels)
-                self.graphneeded.add(msg["content"]["value"]["name"])
+                self.doupdate[logname]=(vmap,vmapdflt,labels)
+                self.graphneeded.add(logname)
 
 
     def process_response(self, msg):
@@ -267,6 +321,11 @@ class LoggerBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.logger_config}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "graph available",
+                                          "target": self.target,
+                                          "value": [x["label"] for x in self.logger_config["eventlog"]]}})
 
         else:
             if self.log:
@@ -388,6 +447,8 @@ class LoggerBridge(bl.BuddyBridge):
         self.cleanup = aio.ensure_future(self.cleancache())
 
     async def cleancache(self):
+        # Clean up the graph that need to be updates
+        # Can take up to 2*CLEANUP_TIMEOUT to actually happen
         await aio.sleep(CLEANUP_TIMEOUT)
         lograph = [x for x in self.doupdate.keys()] #Need a copy, not a generator
         for x in lograph:
