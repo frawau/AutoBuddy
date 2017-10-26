@@ -2,6 +2,8 @@
 
 AutoBuddy is a would be *Home Automation* system. Head to http://frawau.github.io/AutoBuddy/ for some description and some screenshots.
 
+You can also check out these videos: [installation (part 1)](https://drive.google.com/open?id=0B-JicGkaZAeXRGIyd2FtWGNkSXM), [instalation (part 2)](https://drive.google.com/open?id=0B-JicGkaZAeXSlE2WXRUeER3ZGc), [configuring/using AutoBuddy](https://drive.google.com/open?id=0B-JicGkaZAeXM0JxYUNlUkFQejA)
+
 # Raspberry Pi Installation
 
 RPi3 and RPi2 are supported.
