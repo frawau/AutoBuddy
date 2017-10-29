@@ -40,7 +40,7 @@ parser.add_argument(
     "-M", "--mic", default="default",
                 help="ALSA device to use. (default  \"default\").")
 parser.add_argument(
-    "-s", "--decoder", choices=["simplesphinx", 'sphinx', 'google', 'wit.ai', "houndify", "ibm"], default="simplesphinx",
+    "-s", "--decoder", choices=["simplesphinx", 'sphinx', 'google', 'wit.ai', "houndify", "ibm", "bing"], default="simplesphinx",
                 help="What decoder to use. (default sphinx).")
 parser.add_argument(
     "-k", "--apikey", default="",
@@ -143,7 +143,7 @@ with m as source:
                 elif opts.decoder == "houndify" and opts.apikey and opts.apiid:
                     line = r.recognize_houndify(audio, opts.apiid, opts.apikey)
                 elif opts.decoder == "bing" and opts.apikey:
-                    line = r.recognize_bing(audio, key=opts.apikey)
+                    line = r.recognize_bing(audio, key=opts.apikey, language=opts.language)
                 elif opts.decoder == "ibm" and opts.apikey and opts.apiid:
                     line = r.recognize_ibm(audio, username=opts.apikey, password=opts.apiid, language=opts.language)
                 else:
