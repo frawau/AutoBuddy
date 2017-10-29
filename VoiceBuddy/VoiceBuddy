@@ -62,7 +62,7 @@ voice_config = """
 <buddyui version="0.1">
     <configuration  name="voice">
         <controlgroup type="listmaker"  name="command" label="Voice Command" >
-            <control type="text" name="phrase" length="32"/>
+            <control type="text" name="phrase" length="128"/>
             <control type="switch" name="active" label="Active">
                 <value label="Active">yes</value>
                 <value label="Inactive">no</value>
@@ -625,6 +625,8 @@ class VoiceBridge(bl.BuddyBridge):
                         self.reseting_icon = self.loop.create_task(self.reset_icon())
             else:
                 for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"]]:
+                    if event == "ignore this command":
+                        continue
                     self.log.debug("Evaluating {} | {} | {}".format(cmd, event, evalue))
                     if "$$" in cmd: #parametrized
                         sendme = True
