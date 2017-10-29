@@ -1073,8 +1073,6 @@ mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "voice"
 mycfg["subtype"] = "speech"
-
-mycfg["modeldir"] = "/usr/share/pocketsphinx/model/en-us/en-us"
 mycfg["voicepath"] = BUDDYLOCATION+"/VoiceBuddy/"
 mycfg["mic"] = voicedev
 mycfg["localname"] = voicename
