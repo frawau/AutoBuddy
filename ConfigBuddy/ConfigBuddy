@@ -259,7 +259,7 @@ else:
         print("\n\n\n\nNow we shall install/update the packages we need.")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "pyaudio", "zeroconf", "aiohttp","aiocoap","aiodns"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "zeroconf", "aiohttp","aiocoap","aiodns"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -476,9 +476,9 @@ if mainstation:
     if actionsender is None:
         actionsmtp = choice
         print ("\n Email need a sender, in many cases this must be a real user. \n\n")
-        choice=input("Sender (\"root\") => ").strip()
+        choice=input("Sender (\"autobuddy\") => ").strip()
         if choice=="":
-            actionsender="root"
+            actionsender="autobuddy"
         else:
             actionsender=choice
         print ("\n OK, we will use \"{}\" as sender. \n\n".format(actionsender))
@@ -591,7 +591,7 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
 voicedev="default"
 voicename = bl.genid().replace("-","")[:12]
 if dovoice:
-    import speech_recognition
+    import speech_recognition as sr
     gotit = False
     while not gotit:
         print (" Please select the audio device to use for listening.")
