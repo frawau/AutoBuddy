@@ -651,15 +651,18 @@ class Controller():
                 if msg["content_type"] == "request":
                     sess = self.DBSession
                     if msg["content"]["request"] == "configuration":
+                        cfgname = "configuration"
+                        if "value" in msg["content"] and "config name" in msg["content"]["value" ]:
+                            cfgname = msg["content"]["value" ]["config name"]
                         try:
                             myconfig = sess.query(bl.BuddyProperty)
-                            myconfig = myconfig.filter_by(name="configuration")
+                            myconfig = myconfig.filter_by(name=cfgname)
                             if len(msg["content"]["target"].split(".")) > 1:
                                 myconfig = myconfig.filter_by(
-                                    entity=msg["content"]["target"].split(".")[1]).one()
+                                    entity=msg["content"]["target"].split(".")[1].split("-")[0]).one()
                             else:
                                 myconfig = myconfig.filter_by(
-                                    entity=msg["content"]["target"]).one()
+                                    entity=msg["content"]["target"].split("-")[0]).one()
                             cfgdata = myconfig.values
                         except:
                             cfgdata = ""
@@ -703,14 +706,17 @@ class Controller():
                                                  "value": msgval}})
 
                     elif msg["content"]["request"] == "save configuration":
+                        cfgname = "configuration"
+                        if "config name" in msg["content"]:
+                            cfgname = msg["content"]["config name"]
                         try:
                             myconfig = sess.query(bl.BuddyProperty)
-                            myconfig = myconfig.filter_by(name="configuration")
+                            myconfig = myconfig.filter_by(name=cfgname)
                             myconfig = myconfig.filter_by(
                                 entity=msg["subject"].split(".")[1]).one()
                         except:
                             myconfig = bl.BuddyProperty()
-                            myconfig.name = "configuration"
+                            myconfig.name = cfgname
                             myconfig.entity = msg["subject"].split(".")[1]
                             sess.add(myconfig)
                         myconfig.values = msg["content"]["value"]

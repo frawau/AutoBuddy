@@ -28,24 +28,35 @@ import buddylib as bl
 import asyncio as aio
 from functools import partial
 import aiohttp
-import traceback
 import json
 import logging
 import os
 import ssl
 import re
 
-SUBTYPE = "main"
+SUBTYPE = "speech"
 CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
+
+PHRASETIMEOUT = 5
+FEEDBACKCOLOUR="#0050ff" #"#3bff00"
 
 def intround(x):
     return int(round(x))
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
-voice_commands = ""
+voice_function = """
+<buddyui version="0.1">
+<command name="speech">
+<control type="switch" name="viewspeech" label="View Recognized Speech" rteffect="1" help="Show the recognized sentences." >
+            <value label="On">on</value>
+            <value label="Off">off</value>
+        </control>
+    </command>
+</buddyui>
+"""
 
 voice_config = """
 <buddyui version="0.1">
@@ -60,15 +71,265 @@ voice_config = """
             <control type="text" name="event" label="Event"  length="32"/>
             <control type="text" name="value" label="Event Value" length="32"/>
         </controlgroup>
-        <control type="text" name="keyphrase" label="Trigger Phrase"  length="32"/>
+        <controlgroup type="list"  name="trigger" label="Trigger" >
+            <control type="text" name="keyphrase" label="Trigger Phrase"  length="32"/>
+            <control type="spinner" name="keytimer" label="Trigger Phrase Validity"  length="32">
+                <start>5</start>
+                <end>60</end>
+                <increment>1</increment>
+                <default>20</default>
+                <postfix>secs</postfix>
+            </control>
+        </controlgroup>
+        <controlgroup type="choice" name="decoder" label="Backend" >
+        <item value="simplesphinx" label="PocketSphinx Simple" >
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="en-US" label="English (US)" />
+                </controlgroup>
+            </item>
+            <item value="sphinx" label="PocketSphinx"  >
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="en-US" label="English (US)" />
+                    <item value="fr-FR" label="Français" />
+                </controlgroup >
+            </item>
+            <item value="google" label="Google Speech" >
+                <control type="text" name="apikey" label="API Key" length="4096"/>
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="af-ZA" label="Afrikaans" />
+                    <item value="ar-DZ" label="Arabic (Algeria)" />
+                    <item value="ar-BH" label="Arabic (Bahrain)" />
+                    <item value="ar-EG" label="Arabic (Egypt)" />
+                    <item value="ar-IL" label="Arabic (Israel)" />
+                    <item value="ar-IQ" label="Arabic (Iraq)" />
+                    <item value="ar-JO" label="Arabic (Jordan)" />
+                    <item value="ar-KW" label="Arabic (Kuwait)" />
+                    <item value="ar-LB" label="Arabic (Lebanon)" />
+                    <item value="ar-MA" label="Arabic (Morocco)" />
+                    <item value="ar-OM" label="Arabic (Oman)" />
+                    <item value="ar-PS" label="Arabic (Palestinian Territory)" />
+                    <item value="ar-QA" label="Arabic (Qatar)" />
+                    <item value="ar-SA" label="Arabic (Saudi Arabia)" />
+                    <item value="ar-TN" label="Arabic (Tunisia)" />
+                    <item value="ar-AE" label="Arabic (UAE)" />
+                    <item value="eu-ES" label="Basque" />
+                    <item value="bg-BG" label="Bulgarian" />
+                    <item value="ca-ES" label="Catalan" />
+                    <item value="cmn-Hans-CN" label="Chinese Mandarin (China (Simp.))" />
+                    <item value="cmn-Hans-HK" label="Chinese Mandarin (Hong Kong SAR (Trad.))" />
+                    <item value="cmn-Hant-TW" label="Chinese Mandarin (Taiwan (Trad.))" />
+                    <item value="yue-Hant-HK" label="Chinese Cantonese" />
+                    <item value="hr_HR" label="Croatian" />
+                    <item value="cs-CZ" label="Czech" />
+                    <item value="da-DK" label="Danish" />
+                    <item value="en-AU" label="English (Australia)" />
+                    <item value="en-CA" label="English (Canada)" />
+                    <item value="en-IN" label="English (India)" />
+                    <item value="en-IE" label="English (Ireland)" />
+                    <item value="en-NZ" label="English (New Zealand)" />
+                    <item value="en-PH" label="English (Philippines)" />
+                    <item value="en-ZA" label="English (South Africa)" />
+                    <item value="en-GB" label="English (United Kingdom)" />
+                    <item value="en-US" label="English (United States)" />
+                    <item value="fa-IR" label="Farsi" />
+                    <item value="fr-FR" label="Français" />
+                    <item value="fil-PH" label="Filipino" />
+                    <item value="gl-ES" label="Galician" />
+                    <item value="de-DE" label="German" />
+                    <item value="el-GR" label="Greek" />
+                    <item value="fi-FI" label="Finnish" />
+                    <item value="he-IL" label="Hebrew" />
+                    <item value="hi-IN" label="Hindi" />
+                    <item value="hu-HU" label="Hungarian" />
+                    <item value="id-ID" label="Indonesian" />
+                    <item value="is-IS" label="Icelandic" />
+                    <item value="it-IT" label="Italian (Italy)" />CMU
+                    <item value="it-CH" label="Italian (Switzerland)" />
+                    <item value="ja-JP" label="Japanese" />
+                    <item value="ko-KR" label="Korean" />
+                    <item value="lt-LT" label="Lithuanian" />
+                    <item value="ms-MY" label="Malaysian" />
+                    <item value="nl-NL" label="Dutch" />
+                    <item value="nb-NO" label="Norwegian" />
+                    <item value="pl-PL" label="Polish" />
+                    <item value="pt-BR" label="Portuguese (Brazil)" />
+                    <item value="pt-PT" label="Portuguese (Portugal)" />
+                    <item value="ro-RO" label="Romanian" />
+                    <item value="ru-RU" label="Russian" />
+                    <item value="sr-RS" label="Serbian" />
+                    <item value="sk-SK" label="Slovak" />
+                    <item value="sl-SI" label="Slovenian" />
+                    <item value="es-AR" label="Spanish (Argentina)" />
+                    <item value="es-BO" label="Spanish (Bolivia)" />
+                    <item value="es-CL" label="Spanish (Chile)" />
+                    <item value="es-CO" label="Spanish (Colombia)" />
+                    <item value="es-CR" label="Spanish (Costa Rica)" />
+                    <item value="es-DO" label="Spanish (Dominican Republic)" />
+                    <item value="es-EC" label="Spanish (Ecuador)" />
+                    <item value="es-SV" label="Spanish (El Salvador)" />
+                    <item value="es-GT" label="Spanish (Guatemala)" />
+                    <item value="es-HN" label="Spanish (Honduras)" />
+                    <item value="es-MX" label="Spanish (México)" />
+                    <item value="es-NI" label="Spanish (Nicaragua)" />
+                    <item value="es-PA" label="Spanish (Panamá)" />
+                    <item value="es-PY" label="Spanish (Paraguay)" />
+                    <item value="es-PE" label="Spanish (Perú)" />
+                    <item value="es-PR" label="Spanish (Puerto Rico)" />
+                    <item value="es-ES" label="Spanish (Spain)" />
+                    <item value="es-UY" label="Spanish (Uruguay)" />
+                    <item value="es-US" label="Spanish (United States)" />
+                    <item value="es-VE" label="Spanish (Venezuela)" />
+                    <item value="sv-SE" label="Swedish" />
+                    <item value="th-TH" label="Thai" />
+                    <item value="tr-TR" label="Turkish" />
+                    <item value="uk-UA" label="Ukrainian" />
+                    <item value="vi-VN" label="Vietnamese" />
+                    <item value="zu-ZA" label="Zulu" />
+                </controlgroup>
+            </item>
+            <item value="wit.ai" label="Wit.ai" >
+                <control type="text" name="apikey" label="API Key" length="4096"/>
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="en-US" label="Set in Wit.ai app." />
+                </controlgroup>
+            </item>
+            <item value="houndify" label="Houndify" >
+                <control type="text" name="apiid" label="Client id" length="32"/>
+                <control type="text" name="apikey" label="Client Key" length="128"/>
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="en-US" label="English (US)" />
+                </controlgroup>
+            </item>
+            <item value="bing" label="Bing" >
+                <control type="text" name="apikey" label="API Key" length="4096"/>
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="af-ZA" label="Afrikaans" />
+                    <item value="ar-DZ" label="Arabic (Algeria)" />
+                    <item value="ar-BH" label="Arabic (Bahrain)" />
+                    <item value="ar-EG" label="Arabic (Egypt)" />
+                    <item value="ar-IL" label="Arabic (Israel)" />
+                    <item value="ar-IQ" label="Arabic (Iraq)" />
+                    <item value="ar-JO" label="Arabic (Jordan)" />
+                    <item value="ar-KW" label="Arabic (Kuwait)" />
+                    <item value="ar-LB" label="Arabic (Lebanon)" />
+                    <item value="ar-MA" label="Arabic (Morocco)" />
+                    <item value="ar-OM" label="Arabic (Oman)" />
+                    <item value="ar-PS" label="Arabic (Palestinian Territory)" />
+                    <item value="ar-QA" label="Arabic (Qatar)" />
+                    <item value="ar-SA" label="Arabic (Saudi Arabia)" />
+                    <item value="ar-TN" label="Arabic (Tunisia)" />
+                    <item value="ar-AE" label="Arabic (UAE)" />
+                    <item value="eu-ES" label="Basque" />
+                    <item value="bg-BG" label="Bulgarian" />
+                    <item value="ca-ES" label="Catalan" />
+                    <item value="cmn-Hans-CN" label="Chinese Mandarin (China (Simp.))" />
+                    <item value="cmn-Hans-HK" label="Chinese Mandarin (Hong Kong SAR (Trad.))" />
+                    <item value="cmn-Hant-TW" label="Chinese Mandarin (Taiwan (Trad.))" />
+                    <item value="yue-Hant-HK" label="Chinese Cantonese" />
+                    <item value="hr_HR" label="Croatian" />
+                    <item value="cs-CZ" label="Czech" />
+                    <item value="da-DK" label="Danish" />
+                    <item value="en-AU" label="English (Australia)" />
+                    <item value="en-CA" label="English (Canada)" />
+                    <item value="en-IN" label="English (India)" />
+                    <item value="en-IE" label="English (Ireland)" />
+                    <item value="en-NZ" label="English (New Zealand)" />
+                    <item value="en-PH" label="English (Philippines)" />
+                    <item value="en-ZA" label="English (South Africa)" />
+                    <item value="en-GB" label="English (United Kingdom)" />
+                    <item value="en-US" label="English (United States)" />
+                    <item value="fa-IR" label="Farsi" />
+                    <item value="fr-FR" label="Français" />
+                    <item value="fil-PH" label="Filipino" />
+                    <item value="gl-ES" label="Galician" />
+                    <item value="de-DE" label="German" />
+                    <item value="el-GR" label="Greek" />
+                    <item value="fi-FI" label="Finnish" />
+                    <item value="he-IL" label="Hebrew" />
+                    <item value="hi-IN" label="Hindi" />
+                    <item value="hu-HU" label="Hungarian" />
+                    <item value="id-ID" label="Indonesian" />
+                    <item value="is-IS" label="Icelandic" />
+                    <item value="it-IT" label="Italian (Italy)" />CMU
+                    <item value="it-CH" label="Italian (Switzerland)" />
+                    <item value="ja-JP" label="Japanese" />
+                    <item value="ko-KR" label="Korean" />
+                    <item value="lt-LT" label="Lithuanian" />
+                    <item value="ms-MY" label="Malaysian" />
+                    <item value="nl-NL" label="Dutch" />
+                    <item value="nb-NO" label="Norwegian" />
+                    <item value="pl-PL" label="Polish" />
+                    <item value="pt-BR" label="Portuguese (Brazil)" />
+                    <item value="pt-PT" label="Portuguese (Portugal)" />
+                    <item value="ro-RO" label="Romanian" />
+                    <item value="ru-RU" label="Russian" />
+                    <item value="sr-RS" label="Serbian" />
+                    <item value="sk-SK" label="Slovak" />
+                    <item value="sl-SI" label="Slovenian" />
+                    <item value="es-AR" label="Spanish (Argentina)" />
+                    <item value="es-BO" label="Spanish (Bolivia)" />
+                    <item value="es-CL" label="Spanish (Chile)" />
+                    <item value="es-CO" label="Spanish (Colombia)" />
+                    <item value="es-CR" label="Spanish (Costa Rica)" />
+                    <item value="es-DO" label="Spanish (Dominican Republic)" />
+                    <item value="es-EC" label="Spanish (Ecuador)" />
+                    <item value="es-SV" label="Spanish (El Salvador)" />
+                    <item value="es-GT" label="Spanish (Guatemala)" />
+                    <item value="es-HN" label="Spanish (Honduras)" />
+                    <item value="es-MX" label="Spanish (México)" />
+                    <item value="es-NI" label="Spanish (Nicaragua)" />
+                    <item value="es-PA" label="Spanish (Panamá)" />
+                    <item value="es-PY" label="Spanish (Paraguay)" />
+                    <item value="es-PE" label="Spanish (Perú)" />
+                    <item value="es-PR" label="Spanish (Puerto Rico)" />
+                    <item value="es-ES" label="Spanish (Spain)" />
+                    <item value="es-UY" label="Spanish (Uruguay)" />
+                    <item value="es-US" label="Spanish (United States)" />
+                    <item value="es-VE" label="Spanish (Venezuela)" />
+                    <item value="sv-SE" label="Swedish" />
+                    <item value="th-TH" label="Thai" />
+                    <item value="tr-TR" label="Turkish" />
+                    <item value="uk-UA" label="Ukrainian" />
+                    <item value="vi-VN" label="Vietnamese" />
+                    <item value="zu-ZA" label="Zulu" />
+                </controlgroup>
+            </item>
+            <item value="ibm" label="IBM" >
+                <control type="text" name="apikey" label="User Name" length="128"/>
+                <control type="text" name="apiid" label="Password" length="32"/>
+                <controlgroup type="choice" name="language" label="Language" default="en-US" >
+                    <item value="ar-AR" label="Arabic" />
+                    <item value="en-GB" label="English (GB)" />
+                    <item value="en-US" label="English (US)" />
+                    <item value="fr-FR" label="Français" />
+                    <item value="ja-JP" label="Japanese" />
+                    <item value="pt-BR" label="Portuguese (Brazil)" />
+                    <item value="es-ES" label="Spanish (Spain)" />
+                    <item value="zh-CN" label="Mandarin Chinese" />
+                </controlgroup>
+            </item>
+        </controlgroup>
     </configuration>
 </buddyui>
 """
-voice_config_default = {"command": [], "keyphrase": "listen_buddy"}
+voice_config_default = {"command": [], "trigger":{"keyphrase": "listen buddy","keytimer":20}}
+
 
 voice_module_commands = {}
 
-async def build_corpus(txt, path):
+class CorpusProtocol(aio.SubprocessProtocol):
+    def __init__(self, exit_future):
+        self.exit_future = exit_future
+        self.output = bytearray()
+
+    def pipe_data_received(self, fd, data):
+        self.output.extend(data)
+
+    def process_exited(self):
+        self.exit_future.set_result(True)
+
+async def build_corpus(txt, path, future):
+    bridgectl.log.debug("Going the motion... rebuilding corpus")
     myfn = "/tmp/myvocab.txt"
     """txt is an array of sentences"""
     myfile = open(myfn, "w")
@@ -76,19 +337,44 @@ async def build_corpus(txt, path):
         myfile.write(aline.lower() + "\n")
     myfile.close()
     url = 'http://www.speech.cs.cmu.edu/cgi-bin/tools/lmtool/run'
-    files = {'corpus': open(myfn, 'rb'), "formtype": "simple", }
     isdone = False
+    nbtry = 3
+    wasproblem=None
+    methodtoggle=False
     while not isdone:
+        methodtoggle = not methodtoggle
         try:
-            session = aiohttp.ClientSession()
-            async with session.post(url, data=files) as resp:
-                ttext = await resp.text()
+            if methodtoggle:
+                bridgectl.log.debug("Trying aiohttp.")
+                #TODO This should be working but a problem in aiohttp 2.3.1 with redirect makes this crash
+                files = {'corpus': open(myfn, 'rb'), "formtype": "simple", }
+                session = aiohttp.ClientSession()
+                async with session.post(url, data=files) as resp:
+                    ttext = await resp.text()
+                    urls = re.search(
+                        r"(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+]*[\w\-\@?^=%&amp;/~\+])?",
+                        ttext)
+            else:
+                bridgectl.log.debug("Trying curl.")
+                curlfuture = aio.Future()
+                # Create the subprocess controlled by the protocol CorpusProtocol,
+                # redirect the standard output into a pipe
+                create = loop.subprocess_exec(lambda: CorpusProtocol(curlfuture),
+                                              "curl","-s","-L", "-F","formtype=single", '-F', "corpus=@"+myfn,
+                                              url,stdin=None, stderr=None)
+                transport, protocol = await create
+                await curlfuture
+                transport.close()
                 urls = re.search(
-                    r"(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+]*[\w\-\@?^=%&amp;/~\+])?",
-                    ttext)
+                        r"(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+]*[\w\-\@?^=%&amp;/~\+])?",
+                        protocol.output.decode("utf8").rstrip().lower())
+
             all = urls.group().split("/")
             server = "/".join(all[:-1]) + "/"
             doccode = re.findall(r'\d+', all[-1])[0]
+            bridgectl.log.debug("\n\nGot these urls {} using {}.\n\n".format(all,doccode))
+            if not methodtoggle:
+                session = aiohttp.ClientSession()
             for ext in [".dic", ".lm"]:
                 filename = os.path.join(path, "autobuddy" + ext)
                 async with session.get(server + doccode + ext) as resp:
@@ -99,47 +385,69 @@ async def build_corpus(txt, path):
                                 break
                             fd.write(chunk)
             isdone = True
-        except:
+            wasproblem=None
+        except Exception as e:
+            bridgectl.log.warning(
+                "Problem building corpus",
+                        exc_info=(type(e),
+                                  e,
+                                  e.__traceback__))
+            wasproblem = e
             await aio.sleep(5)
-            continue
+            nbtry -= 1
+            isdone = nbtry == 0
+            await aio.sleep(1)
         finally:
             session.close()
 
+    if wasproblem:
+        future.set_exception(wasproblem)
+    else:
+        future.set_result(True)
 
 def voice_process(self, msg):
     """Voice is a one way communication bridge"""
+    global bridgectl
     if msg["content"]["command"] == "nickname":
         # print msg
         self.nickname = msg["content"]["value"]
-        self.controller.sending(
-            {"subject": "control" + "." + self.controller.type,
+        bridgectl.sending(
+            {"subject": "control" + "." + bridgectl.type,
                 "content_type": "request",
                 "content": {"request": "nickname",
-                            "target": self.controller.type + "." + self.name,
-                            #"token": self.controller.target,
+                            "target": bridgectl.type + "." + self.name,
+                            #"token": bridgectl.target,
                             "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
     elif msg["content"]["command"] == "status":
         # Not gone the way of the dodo
-        self.controller.sending({"subject": self.controller.type,
+        bridgectl.sending({"subject": bridgectl.type,
                                  "content_type": "event",
                                  "content": {"event": "status",
-                                             "target": self.controller.type +
+                                             "target": bridgectl.type +
                                              "." +
                                              self.name,
                                              "icon status":
                                              {"bu-not-present": {
                                                  "opacity": 0}},
-                                             "value": {}}})
+                                             "value": {"viewspeech": self.view_speech and "on" or "off"}}})
 
     elif msg["content"]["command"] == "deletion":
-        self.controller.sending(
-            {"subject": "control" + "." + self.controller.type,
+        bridgectl.sending(
+            {"subject": "control" + "." + bridgectl.type,
                 "content_type": "request",
                 "content": {"request": "deletion",
-                            "target": self.controller.type,
+                            "target": bridgectl.type,
                             "purge": True,
                             "value": self.name}})
-
+    elif msg["content"]["command"] == "viewspeech":
+        self.view_speech = msg["content"]["value"]== "on"
+        bridgectl.sending({"subject": bridgectl.type,
+                                     "content_type": "event",
+                                     "content": {"event": "viewspeech",
+                                                 "target": bridgectl.type +
+                                                 "." +
+                                                 self.name,
+                                                 "value": msg["content"]["value"]}})
     return None
 
 
@@ -151,122 +459,240 @@ class VoiceBridge(bl.BuddyBridge):
 
     """
     This is the bridge application.
-    It will report any new bulb
     """
 
     def __init__(self, loop, future, config, log):
         super(VoiceBridge, self).__init__(loop, future, config, log)
-        self.voice_device = None
         self.voice_decoding = None
+        self.voice_decoding_process = None
         self.voice_config = voice_config_default
         self.corpus_build = None
         self.newconfig = None
+        self.reseting_icon = None
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
+            self.log.debug("Rebuilding Corpus")
             if msg["content"]["target"] == self.target and not self.corpus_build:
-                if msg["content"]["value"] != voice_config_default:
+                if msg["content"]["value"]["command"] != self.voice_config["command"] or \
+                            msg["content"]["value"]["trigger"]["keyphrase"] != self.voice_config["trigger"]["keyphrase"]:
+
                     self.newconfig = {}
                     for k, v in msg["content"]["value"].items():
                         self.newconfig[k] = v
                     # Create new corpus and restart the decoder
-                    self.corpus_build = aio.ensure_future(
+                    self.corpus_build = aio.Future()
+                    xx = aio.ensure_future(
                         build_corpus(
-                            [self.newconfig["keyphrase"]] + [x["phrase"]
-                                                             for x in self.newconfig[
+                            [self.newconfig["trigger"]["keyphrase"]] + [x["phrase"].replace("$$","")
+                                                                        for x in self.newconfig[
                                                                  "command"]],
-                            self.config["voicepath"]))
+                            self.config["voicepath"],self.corpus_build))
                     xx = self.loop.create_task(self.check_corpus())
+                else:
+                    self.newconfig = {}
+                    for k, v in msg["content"]["value"].items():
+                        self.newconfig[k] = v
+
+                    self.sending({"subject": "control" + "." + self.subtype,
+                                "content_type": "request",
+                                "content": {"request": "save configuration",
+                                            "target": self.type,
+                                            "config name": self.subtype+"-"+self.config["localname"],
+                                            "value": bl.encrypt(self.newconfig, self.config["buddykey"])}})
+
         else:
-            if self.voice_device:
-                self.voice_device.process(msg)
+            for voicedev in self.devices:
+                voicedev.process(msg)
 
     async def check_corpus(self):
         """Check if the corpus generation is done"""
-        while True:
-            if self.corpus_build:
-                try:
-                    await aio.wait_for(self.corpus_build, 60)
-                    self.corpus_build = None
+        if self.corpus_build:
+            try:
+                self.log.debug("Waiting for corpus")
+                await self.corpus_build
+                self.log.debug("Done for corpus")
+                self.corpus_build.result()
 
-                    self.sending({"subject": self.target,
-                                  "content_type": "event",
-                                  "content": {"event": "gui alert",
-                                              "target": bridgectl.target,
-                                              "value": "Voice command dictionary rebuilt."}})
+                self.sending({"subject": self.target,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target": self.target,
+                                            "value": "Voice command dictionary rebuilt."}})
 
-                    for k, v in self.newconfig.items():
-                        voice_config_default[k] = v
-                    self.newconfig = None
-                    self.sending({"subject": "control" + "." + self.subtype,
-                                  "content_type": "request",
-                                  "content": {"request": "save configuration",
-                                              "target": self.type,
-                                              "value": bl.encrypt(voice_config_default, self.config["buddykey"])}})
-                    if self.voice_decoding:
-                        self.voice_decoding.cancel()
-                    await aio.sleep(5)  # Give some time for the device to close alright
-                    self.voice_decoding = self.loop.create_task(
-                        self.decode_voice())
-                except:
-                    self.newconfig = None
-                    self.sending({"subject": self.target,
-                                  "content_type": "event",
-                                  "content": {"event": "gui alert",
-                                              "target": bridgectl.target,
-                                              "value": "Voice command dictionary could not be rebuilt."}})
+                #for k, v in self.newconfig.items():
+                    #self.voice_config[k] = v
+                #self.newconfig = None
+                self.sending({"subject": "control" + "." + self.subtype,
+                                "content_type": "request",
+                                "content": {"request": "save configuration",
+                                            "target": self.type,
+                                            "config name":self.subtype+"-"+self.config["localname"],
+                                            "value": bl.encrypt(self.newconfig, self.config["buddykey"])}})
+            except Exception as e:
+                self.newconfig = None
+                self.log.debug("Bad for corpus",
+                        exc_info=(type(e),
+                                  e,
+                                  e.__traceback__))
+                self.sending({"subject": self.target,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target": self.target,
+                                            "value": "Voice command dictionary could not be rebuilt."}})
 
-            await aio.sleep(10)
+    async def reset_icon(self):
+        await aio.sleep(self.voice_config["trigger"]["keytimer"])
+        for voicedev in self.devices:
+            self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "status",
+                                            "target": self.type +
+                                            "." +
+                                            voicedev.name,
+                                            "icon status":
+                                                {"bu-activated": {
+                                                "fill": "#000000"}},
+                                                "value": {"viewspeech":voicedev.view_speech and "on" or "off"}}})
+        self.reseting_icon = None
 
     async def decode_voice(self):
 
         self.log.debug("Starting decoder")
+        apikey =""
+        if "apikey" in self.voice_config["decoder"]:
+            apikey = self.voice_config["decoder"]["apikey"]
+        apiid = ""
+        if "apiid" in self.voice_config["decoder"]:
+            apiid = self.voice_config["decoder"]["apiid"]
+
+        #try:
+
         decode = aio.create_subprocess_exec(
             os.path.join(
-                self.config[
-                    "voicepath"], "decoder.py"), '-m', self.config["modeldir"],
-                                            "-c", self.config["voicepath"], "-d", config[
-                                                "mic"], "-t", voice_config_default["keyphrase"],
-                                            stdout=aio.subprocess.PIPE)
-        proc = await decode
-
+                self.config["voicepath"], "decoder.py"),
+                        '-m', self.config["modeldir"],
+                        "-c", self.config["voicepath"],
+                        "--mic", self.config["mic"],
+                        "-t", self.voice_config["trigger"]["keyphrase"],
+                        "--duration", str(self.config["timer"]),
+                        "--timer", str(self.voice_config["trigger"]["keytimer"]),
+                        "--language",self.voice_config["decoder"]["language"]["bu-cvalue"],
+                        "--apikey", apikey,
+                        "--apiid", apiid,
+                        "--decoder",self.voice_config["decoder"]["bu-cvalue"],
+                        stdout=aio.subprocess.PIPE, stderr=aio.subprocess.DEVNULL)
+        #except:
+            #self.log.debug("\n\nOpps\n\n")
+        self.log.debug("Awaiting")
+        self.voice_decoding_process = await decode
         while True:
             # Read one line of output
-            data = await proc.stdout.readline()
+            data = await self.voice_decoding_process.stdout.readline()
             line = data.decode("utf8").rstrip().lower()
+
             self.log.debug("Received voice command {}".format(line))
+            for voicedev in self.devices:
+                if voicedev.view_speech:
+                    self.sending({"subject": self.target,
+                                "content_type": "event",
+                                "content": {"event": "gui alert",
+                                            "target": self.type +
+                                                    "." +
+                                                    voicedev.name,
+                                            "value": "{}: Speech is:\"{}\"".format(voicedev.nickname,line)}})
+
+
             linebits = [x.lower() for x in line.split(" ") if x != ""]
-            if linebits == [x.lower() for x in voice_config_default["keyphrase"].split(" ") if x != ""]:
+            if linebits == [x.lower() for x in self.voice_config["trigger"]["keyphrase"].split(" ") if x != ""]:
                 bridgectl.sending({"subject": bridgectl.target,
                                 "content_type": "event",
                                 "content": {"event": "voice trigger",
                                             "target": bridgectl.target,
-                                            "value": voice_config_default["keyphrase"]}})
-            else:
-                for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in voice_config_default["command"] if x["active"]]:
-                    cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
-                    if len(linebits) < len(cmdbits):
-                        continue
-                    allin = True
-                    for x in linebits:
-                        if x not in cmdbits:
-                            allin = False
-                            break
-                    if not allin:
-                        continue
-
-                    # So we have all the bits... are they in the right order?
-                    cmdbits = [x.lower()
-                            for x in cmd.split(" ") if x.lower() in linebits]
-                    self.log.debug("Compare {} to {}".format(cmdbits, linebits))
-                    if cmdbits == linebits:
-                        # Got it
-
-                        bridgectl.sending({"subject": bridgectl.target,
+                                            "value": self.voice_config["trigger"]["keyphrase"]}})
+                if self.reseting_icon is None:
+                    for voicedev in self.devices:
+                        bridgectl.sending({"subject": self.target,
                                         "content_type": "event",
-                                        "content": {"event": event,
-                                                    "target": bridgectl.target,
-                                                    "value": evalue}})
+                                        "content": {"event": "status",
+                                                    "target": self.type +
+                                                    "." +
+                                                    voicedev.name,
+                                                    "icon status":
+                                                        {"bu-activated": {
+                                                        "fill": FEEDBACKCOLOUR}},
+                                                    "value": {}}})
+                        self.reseting_icon = self.loop.create_task(self.reset_icon())
+            else:
+                for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"]]:
+                    self.log.debug("Evaluating {} | {} | {}".format(cmd, event, evalue))
+                    if "$$" in cmd: #parametrized
+                        sendme = True
+
+                        cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
+                        passit = False
+                        for y in range(len(cmdbits)):
+                            cmdword = cmdbits[0]
+                            cmdbits = cmdbits[1:]
+                            if cmdword == "$$":
+                                passit = True
+                                continue
+                            for x in range(len(linebits)):
+                                if linebits[0] == cmdword:
+                                    passit = False
+                                    linebits = linebits[1:]
+                                    break
+                                elif passit:
+                                    linebits = linebits[1:]
+                                    continue
+                                else:
+                                    sendme = False
+                                    break
+                            if not sendme:
+                                break
+                        if not sendme:
+                            continue
+                        if not passit and len(linebits) != 0:
+                            continue #Check next utterance
+
+                        dcount = cmd.count("$$")
+
+                        if dcount:
+                            for x in range(dcount-1):
+                                cmd = cmd.replace("$$","(.*?)",1)
+
+                            cmd = cmd.replace("$$","(.*)",1)
+
+                            for x in [x+1 for x in range(dcount)]:
+                                evalue = evalue.replace("$%d"%x,"\\%d"%x)
+                            evalue = re.sub(cmd, evalue,line)
+
+                    else:
+                        cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
+
+                        if len(linebits) < len(cmdbits):
+                            continue #Check next utterance
+                        allin = True
+                        for x in linebits:
+                            if x not in cmdbits:
+                                allin = False
+                                break
+                        if not allin:
+                            continue #Check next utterance
+
+                        # So we have all the bits... are they in the right order?
+                        cmdbits = [x.lower()
+                                for x in cmd.split(" ") if x.lower() in linebits]
+                        self.log.debug("Compare {} to {}".format(cmdbits, linebits))
+                        if cmdbits != linebits:
+                            continue #Check next utterance
+                    for voicedev in self.devices:
+                        self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": event,
+                                                "target":  self.type +
+                                                    "." + voicedev.name,
+                                                "value": evalue}})
 
     def process_response(self, msg):
         if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
@@ -297,6 +723,7 @@ class VoiceBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
+                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -306,17 +733,29 @@ class VoiceBridge(bl.BuddyBridge):
                 else:
                     print("Warning: Configuration was not saved.")
             else:
+                if self.newconfig:
+                    for k, v in self.newconfig.items():
+                        self.voice_config[k] = v
+                self.newconfig = None
+
+                if self.voice_decoding:
+                    self.voice_decoding_process.terminate()
+                    self.voice_decoding.cancel()
+
                 self.sending({"subject": "control" + "." + self.target,
                               "content_type": "request",
                               "content": {"request": "functions",
                                           "target": self.type,
                                           "subtype": self.subtype,
-                                          "value": {"configs": [voice_config, voice_config_default]}}})
+                                          "value": {"configs": [voice_config, self.voice_config]}}})
                 self.sending({"subject": self.target,
                               "content_type": "event",
                               "content": {"event": "config updated",
                                           "target": self.target,
-                                          "value": voice_config_default}})
+                                          "value": self.voice_config}})
+
+                self.voice_decoding = self.loop.create_task(self.decode_voice())
+
 
         elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             if msg["content"]["configuration"]:
@@ -349,8 +788,8 @@ class VoiceBridge(bl.BuddyBridge):
                 sess = bl.getSession(self.config["database"])
                 device = sess.query(bl.voice).filter_by(
                     name=msg["subject"].split(".")[-1]).one()
-                self.voice_device = device
-                self.voice_device.controller = self
+                device.view_speech = False
+                self.devices.append(device)
                 self.sending({"subject": self.type,
                               "content_type": "event",
                               "content": {"event": "new device",
@@ -374,28 +813,30 @@ class VoiceBridge(bl.BuddyBridge):
                 if msg["content"]["status"] == "done":
                     if self.log:
                         self.log.debug(msg)
-                    if self.voice_device.name == msg["subject"].split(".")[-1]:
-                        self.voice_device.nickname = msg["content"]["value"]
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "nickname",
-                                                  "target": self.type +
-                                                  "." +
-                                                  self.voice_device.name,
-                                                  "value": self.voice_device.nickname}})
+                    for voicedev in self.devices:
+                        if voicedev.name == msg["subject"].split(".")[-1]:
+                            voicedev.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                        "content_type": "event",
+                                        "content": {"event": "nickname",
+                                                    "target": self.type +
+                                                    "." +
+                                                    voicedev.name,
+                                                    "value": voicedev.nickname}})
 
             elif msg["content"]["response"] == "deletion":
                 if msg["content"]["status"] == "done":
                     if self.log:
                         self.log.debug(msg)
-                    if self.voice_device.name == msg["subject"].split(".")[-1]:
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "deletion",
-                                                  "target": self.type +
-                                                  "." +
-                                                  self.voice_device.name,
-                                                  "value": self.voice_device.name}})
+                    for voicedev in self.devices:
+                        if voicedev.name == msg["subject"].split(".")[-1]:
+                            self.sending({"subject": self.type,
+                                        "content_type": "event",
+                                        "content": {"event": "deletion",
+                                                    "target": self.type +
+                                                    "." +
+                                                    voicedev.name,
+                                                    "value": voicedev.name}})
 
         else:
             if self.log:
@@ -416,7 +857,7 @@ class VoiceBridge(bl.BuddyBridge):
                                   "target": self.type,
                                   "subtype": self.subtype,
                                   #"token": self.target,
-                                  "value": {"functions": "", "configs": [voice_config, voice_config_default]}}})
+                                  "value": {"functions": voice_function, "configs": [voice_config, voice_config_default]}}})
 
         self.sending({"subject": self.target,
                       "content_type": "event",
@@ -426,23 +867,18 @@ class VoiceBridge(bl.BuddyBridge):
         # Is device present
         try:
             sess = bl.getSession(self.config["database"])
-            self.voice_device = sess.query(
-                bl.voice).filter_by(
-                    name=self.type +
-                    "-" +
-                    self.subtype).one(
-            )
-            self.voice_device.controller = self
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type +
-                                      "." +
-                                      self.type +
-                                      "-" +
-                                      self.subtype,
-                                      "value": "online",
-                                      "icon status": {"bu-not-present": {"opacity": 0}}}})
+            self.devices = [ sess.query(
+                bl.voice).filter_by(name=self.subtype+"-"+self.config["localname"]).one(
+            )]
+            for voicedev in self.devices:
+                voicedev.view_speech = False
+                self.sending({"subject": self.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": self.type +
+                                        "." + voicedev.name,
+                                        "value": "online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
         except:
             # first run, create
 
@@ -452,7 +888,7 @@ class VoiceBridge(bl.BuddyBridge):
                                       "target": self.type,
                                           # Here we need the type
                                       #"token": self.target,
-                                      "value": {"name": self.type + "-" + self.subtype, "nickname": self.subtype, "subtype": self.subtype}}})
+                                      "value": {"name": self.subtype + "-" + self.config["localname"], "nickname": self.subtype, "subtype": self.subtype}}})
         finally:
             sess.close()
 
@@ -461,7 +897,20 @@ class VoiceBridge(bl.BuddyBridge):
 
 
 aboutstr = """<p>VoiceBuddy is an application looking for voice command. When a known voice command is detected,
-the associated event is sent. VoiceBuddy uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Melon University's PocketSphinx</a>. The icon used
+the associated event is sent. VoiceBuddy uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Melon University's PocketSphinx</a>. PocketSphinx is always used to
+hunt for the trigger utterance (by default: Listen Buddy). For speech recognition it can be configured to use:
+<ul>
+<li>PocketSphinx, either the full dictionary or a limited one</li>
+<li>Google Speech (No API key)</li>
+<li>Google Cloud Speech (With API Key)</li>
+<li>Wit.ai</li>
+<li>Houndify</li>
+<li>Bing</li>
+<li>IBM</li>
+</ul>
+<p>VoiceBuddy uses the python library <a href="https://github.com/Uberi/speech_recognition">speech_recognition</a>
+<p>
+The icon used
 has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>. </p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
@@ -481,6 +930,7 @@ iconstr = """
               0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
 </g>
+<circle class="bu-activated" fill="#000000" cx="896" cy="750" r="200"/>
 </svg>
 """
 
@@ -491,9 +941,12 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "modeldir": "/usr/share/pocketsphinx/model/en-us/en-us",
+     "modeldir": "",
      "voicepath": "./",
-     "mic": "default"}
+     "mic": "default",
+     "localname":"",
+     "language":"en-US",
+     "timer": 5}
 
 
 def configure():
@@ -513,6 +966,12 @@ def configure():
                         help="Where to find the voice model (default \"%s\")." % cfgdefault["modeldir"])
     parser.add_argument("-m", "--mic", default=cfgdefault["mic"],
                         help="The microphone device to use (default \"%s\")." % cfgdefault["mic"])
+    parser.add_argument("-T", "--timer", type=int, default=cfgdefault["timer"],
+                        help="Max length (in secs) of a voice command (default %d secs)." % cfgdefault["timer"])
+    parser.add_argument("-l", "--localname", default=cfgdefault["localname"],
+                        help="The name of this voice instance (default \"%s\")." % cfgdefault["localname"])
+    parser.add_argument("-L", "--language", default=cfgdefault["language"],
+                        help="The language to use (default \"%s\")." % cfgdefault["language"])
     parser.add_argument("-c", "--config", default="/etc/autobuddy/voice.cfg", type=argparse.FileType('r'),
                         help="Config file to use (default \"/etc/autobuddy/voice.cfg\")")
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
@@ -559,91 +1018,24 @@ def configure():
         except:
             cfgdata = {}
             voicelog.warning("Config file could not be opened.")
-        if opts.type != cfgdefault["type"]:
-            voicecfg["type"] = opts.type
-        elif "type" in cfgdata:
-            voicecfg["type"] = cfgdata["type"]
-        else:
-            voicecfg["type"] = opts.type
-        if opts.debug:
-            voicelog.debug("The type is %s." % voicecfg["type"])
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            voicecfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            voicecfg["subtype"] = cfgdata["subtype"]
-        else:
-            voicecfg["subtype"] = opts.subtype
-        if opts.debug:
-            voicelog.debug("The subtype is %s." % voicecfg["subtype"])
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                voicecfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                voicecfg[attr] = cfgdata[attr]
+            else:
+                voicecfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                voicelog.debug("The %s is %s." % (attr,voicecfg[attr]))
 
-        if opts.credential != cfgdefault["credential"]:
-            voicecfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            voicecfg["credential"] = cfgdata["credential"]
-        else:
-            voicecfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            voicelog.debug("The credential is %s" % voicecfg["credential"])
 
-        if opts.port != cfgdefault["port"]:
-            voicecfg["port"] = opts.port
-        elif "port" in cfgdata:
-            voicecfg["port"] = cfgdata["port"]
-        else:
-            voicecfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            voicelog.debug("The port is %s" % (voicecfg["port"]))
-
-        if opts.host != cfgdefault["host"]:
-            voicecfg["host"] = opts.host
-        elif "host" in cfgdata:
-            voicecfg["host"] = cfgdata["host"]
-        else:
-            voicecfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            voicelog.debug("The host is %s" % voicecfg["host"])
-
-        if opts.voicepath != cfgdefault["voicepath"]:
-            voicecfg["voicepath"] = opts.voicepath
-        elif "voicepath" in cfgdata:
-            voicecfg["voicepath"] = cfgdata["voicepath"]
-        else:
-            voicecfg["voicepath"] = cfgdefault["voicepath"]
-        if opts.debug:
-            voicelog.debug("The voice path is %s" % voicecfg["voicepath"])
-
-        if opts.modeldir != cfgdefault["modeldir"]:
-            voicecfg["modeldir"] = opts.modeldir
-        elif "modeldir" in cfgdata:
-            voicecfg["modeldir"] = cfgdata["modeldir"]
-        else:
-            voicecfg["modeldir"] = cfgdefault["modeldir"]
-        if opts.debug:
-            voicelog.debug("The model directory is %s" % voicecfg["modeldir"])
-
-        if "buddykey" in cfgdata:
-            voicecfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.mic != cfgdefault["mic"]:
-            voicecfg["mic"] = opts.mic
-        elif "mic" in cfgdata:
-            voicecfg["mic"] = cfgdata["mic"]
-        else:
-            voicecfg["mic"] = cfgdefault["mic"]
-
-        if opts.ssl != cfgdefault["ssl"]:
-            voicecfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            voicecfg["ssl"] = cfgdata["ssl"]
-        else:
-            voicecfg["ssl"] = cfgdefault["ssl"]
         if voicecfg["ssl"] and not (os.path.isfile(voicecfg["ssl"] + "/" + CERTFILE)):
             voicelog.critical("Encryption: Could not find {} .".format(
                 voicecfg["ssl"] + "/" + CERTFILE))
             sys.exit()
+
         if opts.debug:
             if voicecfg["ssl"]:
                 voicelog.debug(
@@ -652,12 +1044,19 @@ def configure():
             else:
                 voicelog.debug("The connection is not encrypted")
 
+        if "buddykey" in cfgdata:
+            voicecfg["buddykey"] = cfgdata["buddykey"]
+
         if opts.configonly:
 
             if "buddykey" not in voicecfg:
                 if opts.debug:
                     voicelog.debug("Generating random key")
                 voicecfg["buddykey"] = bl.keygen()
+
+            if "localname" not in voicecfg or voicecfg["localname"] == "":
+                voicecfg["localname"] = bl.genid().replace("-","")[:12]
+
             try:
                 del(voicecfg["debug"])
             except:
@@ -702,13 +1101,18 @@ if __name__ == "__main__":
     loop.call_soon(
         bridgectl.configrequest,
         {"about": {"VoiceBuddy": aboutstr},
-         "display": {config["subtype"]: iconstr}})
+         "display": {config["subtype"]: iconstr},
+         "config name":config["subtype"]+"-"+config["localname"]})
 
     try:
         loop.run_until_complete(connFuture)
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-        bridgectl.voice_decoding.cancel()
+        try:
+            bridgectl.voice_decoding_process.terminate()
+            bridgectl.voice_decoding.cancel()
+        except:
+            pass
         conn.close()
         loop.close()

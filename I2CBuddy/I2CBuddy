@@ -187,6 +187,7 @@ class I2CSensorBridge(bl.BuddyBridge):
                               "content": {"request": "save configuration",
                                           "target": self.type,
                                           #"token": self.target,
+                                          "config name": self.subtype+"-"+self.config["localname"],
                                           "value": bl.encrypt(i2csensor_config_default, self.config["buddykey"])}})
         else:
             for sensor in self.devices:
@@ -748,7 +749,8 @@ if __name__ == "__main__":
     loop.call_soon(
         bridgectl.configrequest,
         {"about": {"I2CSensorBuddy": aboutstr},
-         "display": {config["subtype"]: iconstr}})
+         "display": {config["subtype"]: iconstr},
+         "config name":config["subtype"]+"-"+config["localname"]})
 
     try:
         loop.run_until_complete(connFuture)

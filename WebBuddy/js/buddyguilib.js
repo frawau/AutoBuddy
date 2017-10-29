@@ -1,14 +1,14 @@
 /*!
  * AutoBuddy JavaScript Library v0.1
- * 
+ *
 
  * Copyright 2016 François Wautier
  * Released under the MIT license
  *
- * Date: 2016-12-12   First baby steps 
+ * Date: 2016-12-12   First baby steps
 */
 
-//A 
+//A
 var buwidgetRegistry = {};
 
 var buddyPanel = Class.extend({
@@ -16,14 +16,14 @@ var buddyPanel = Class.extend({
         // Build a panel
         // Elt is the object on behalf of which we do this
         // Def is a parsed XML documents
-        // realtime indicates whether we should try to 
+        // realtime indicates whether we should try to
         this.ctxname = ctxname.replace(/\s+/g, "_-_");
         this.def = xmldef;
         this.realtime = realtime || false;
         this.locontrols = [];
         this.statevalue = {};
     },
-    
+
     render: function ( what ) {
         var self = this;
         var ctxname=this.ctxname;
@@ -111,31 +111,31 @@ var buddyPanel = Class.extend({
                             }
                             locontrols.push(nco)
                         }
-                            
+
                     }
                 }
             })
         })
         if ( dotabs ) {
             msg+="</ul>"+tabmsg+"</div></div>";
-        } else { 
+        } else {
             msg=tabmsg+"</div>";
         }
         return msg;
     },
-    
+
     activate: function(size) {
         $.each(this.locontrols, function (elt, actrl) {
             actrl.activate(size);
             });
     },
-    
+
     setCallback: function(callback) {
         $.each(this.locontrols, function (elt, actrl) {
             actrl.setCallback(callback);
         });
     },
-    
+
     getValue: function() {
 
         var resu={};
@@ -152,17 +152,17 @@ var buddyPanel = Class.extend({
         })
         return resu
     },
-    
+
     setValue: function(vals) {
         $.each(this.locontrols, function (idx, actrl) {
             actrl.setValue(vals);
         })
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -220,17 +220,17 @@ var listCG = Class.extend({
         this.paramlist = [];
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         var self = this;
         if (this.checkDoAdd(this.part)) {
-        
+
             if (this.part.attr("widget") && this.part.attr("widget") in buwidgetRegistry) {
                 this.widget_name = this.part.attr("widget")
                 tabmsg += "<div id=\""+this.jsid+"\"";
                 tabmsg += " class=\"bu-widget bu-widget-"+this.part.attr("widget")
-                if ( classes != undefined ) { 
+                if ( classes != undefined ) {
                     tabmsg += classes;
                 }
                 tabmsg += "\" paramlist=\"";
@@ -330,34 +330,34 @@ var listCG = Class.extend({
         }
         return tabmsg;
     },
-            
+
     activate: function( size) {
-         //size is an array with 2 values, 
+         //size is an array with 2 values,
          // call back is an actual call back for widget, True or false otherwise
          if ( this.widget_name ) {
              if ( this.widget == undefined ) {
                 this.widget = new buwidgetRegistry[this.widget_name]($("#"+this.jsid)[0],size[0],size[1])
              }
-         } else { 
+         } else {
             $.each(this.locontrols, function (elt, actrl) {
                 actrl.activate(size);
             });
         }
-        $("#"+this.jsid).data("buguiObj",this);    
+        $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function( callback) {
          if ( this.widget_name ) {
              if ( this.realtime && this.part.attr("rteffect") ) {
                  this.widget.onChange(callback);
-             } 
-         } else { 
+             }
+         } else {
             $.each(this.locontrols, function (elt, actrl) {
                 actrl.setCallback(callback);
             });
         }
     },
-    
+
     getValue: function() {
 
         var resu={};
@@ -373,7 +373,7 @@ var listCG = Class.extend({
                 } else {
                     zz[actrl.part.attr("name")] = aval;
                 }
-                    
+
                 zz=$.extend(resu,zz);
             })
         }
@@ -381,21 +381,21 @@ var listCG = Class.extend({
         if ( self.part.attr("name") in resu ) {
             if ( resu.length <= 1 ) {
                 return resu;
-            } else if ( ! ( $.isNumeric(resu[self.part.attr("name")]) || 
+            } else if ( ! ( $.isNumeric(resu[self.part.attr("name")]) ||
                             $.type(resu[self.part.attr("name")]) === "string" ||
                             $.isArray(resu[self.part.attr("name")]) ||
                             $.type(resu[self.part.attr("name")]) === "boolean" ) ) {
                 var tmp = resu[self.part.attr("name")];
                 delete resu[self.part.attr("name")];
                 tmp=$.extend(resu,tmp);
-            
+
             }
-                           
+
         }
         r[self.part.attr("name")] = resu;
         return r;
     },
-    
+
     setValue: function(vals) {
         var thiscmd = this.part.attr("name")
         var self = this;
@@ -417,17 +417,17 @@ var listCG = Class.extend({
             }
         }
     },
-    
+
     resetMe: function() {
         $.each(this.locontrols, function (idx, actrl) {
             actrl.resetMe();
         })
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -482,7 +482,7 @@ var grouplistCG = Class.extend({
         this.jsid += "__"+this.part.attr("name").replace(/\s+/g, "_-_")+"__groupdiv";
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part)) {
@@ -499,38 +499,38 @@ var grouplistCG = Class.extend({
         }
         return tabmsg;
     },
-            
+
     activate: function( size) {
-         //size is an array with 2 values, 
+         //size is an array with 2 values,
          // call back is an actual call back for widget, True or false otherwise
         this.list.activate(size)
         if (this.realtime) {
-            
+
             $("#"+this.jsid).data("buguiObj",this);
         }
     },
-    
+
     setCallback: function( callback) {
         $("#"+this.jsid+"__bapply").on("click", callback);
     },
-    
+
     getValue: function() {
 
        return this.list.getValue()
     },
-    
+
     setValue: function(vals) {
         this.list.setValue(vals)
     },
-    
+
     resetMe: function() {
         this.list.resetMe()
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -602,7 +602,7 @@ var listmakerCG = Class.extend({
         this.dnidx = 0;
         this.statevalue = {};
     },
-    
+
     genname: function () {
         if (this.dfltname == undefined ) {
             this.dfltname=this.key;
@@ -615,19 +615,19 @@ var listmakerCG = Class.extend({
         }
         return newname;
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         var self = this;
-        
+
         if (this.checkDoAdd(this.part)) {
-        
+
             var ctxname = this.newctxname;
             var cname = this.pname;
             var realtime = this.realtime;
             var locontrols = this.locontrols;
             tabmsg += "<div id=\""+this.jsid+"_bulmdiv\"";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg += " class=\""+classes+"\" ";
             }
             tabmsg += ">"
@@ -638,7 +638,7 @@ var listmakerCG = Class.extend({
             tabmsg += "<option value=\"bulmknew\" >Add New</option>";
             tabmsg += "</select></div>";
             tabmsg += "<div id=\""+this.jsid+"_budiv\"";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg += " class=\""+classes+"\" ";
             }
             tabmsg += ">"
@@ -663,7 +663,7 @@ var listmakerCG = Class.extend({
                     self.lotab.push("#"+ctxname+"-"+cname+"-"+$(actrl).attr("name")+"-tab-pane");
                 }
                 if ( $(actrl).is("controlgroup") ) {
-                    var ncg = false; 
+                    var ncg = false;
                     if ( $(actrl).attr("type") == "list" ) {
                         ncg = new listCG(ctxname,cname,$(actrl), realtime)
                         } else if ( $(actrl).attr("type") == "grouplist" ) {
@@ -736,9 +736,9 @@ var listmakerCG = Class.extend({
         }
         return tabmsg;
     },
-            
+
     activate: function( size) {
-         //size is an array with 2 values, 
+         //size is an array with 2 values,
         this.size=size
         $("#"+this.jsid+"__selector").on("changed.bs.select", this.onProxy);
         //$("#"+this.jsid+"__badd").on("click", $.debounce(1,this.onProxy));
@@ -758,11 +758,11 @@ var listmakerCG = Class.extend({
             return false;
         });
     },
-    
+
     setCallback: function ( callback ) {
         this.callback = callback;
     },
-    
+
     onProxy: function (e)  {
         var cmd = this.id.split("__").slice(-1)[0];
         var n = this.id.search("__"+cmd);
@@ -778,7 +778,7 @@ var listmakerCG = Class.extend({
         }
         return false;
     },
-       
+
     onChange: function (e)  {
         var newval = $("#"+this.jsid+"__selector").find("option:selected").val();
         var vals = this.listvals[newval];
@@ -796,14 +796,14 @@ var listmakerCG = Class.extend({
         }
         return false;
     },
-    
+
     onAdd: function (e) {
         e.stopImmediatePropagation();
         if ( this.callback) {
             this.callback(e);
         }
         var val = {};
-        $.each(this.locontrols, function (elt, actrl) {                
+        $.each(this.locontrols, function (elt, actrl) {
             var aval = actrl.getValue();
             if ( actrl.widget_name || ( $.isPlainObject(aval) && actrl.part.attr("name") in aval && Object.keys(aval).length <= 1)) {
                 var zz=$.extend(val,aval);
@@ -823,7 +823,7 @@ var listmakerCG = Class.extend({
         return this.onChange();
         //return false;
     },
-    
+
     onDelete: function (e) {
         if ( this.callback) {
             this.callback(e);
@@ -832,7 +832,7 @@ var listmakerCG = Class.extend({
         $.each(this.locontrols, function (elt, actrl) {
             val[actrl.part.attr("name")]=actrl.getValue();
         });
-        if ( val[this.key] == "bulmknew" ) { return; } 
+        if ( val[this.key] == "bulmknew" ) { return; }
         delete this.listvals[val[this.key]];
         this.setValue(this.getValue());
         $("#"+this.jsid+"__selector").selectpicker('val', "bulmknew");
@@ -842,7 +842,7 @@ var listmakerCG = Class.extend({
         return this.onChange();
         //return false;
     },
-        
+
     getValue: function() {
         var r = {};
         var kl = [];
@@ -861,14 +861,14 @@ var listmakerCG = Class.extend({
         r[self.part.attr("name")] =a;
         return r;
     },
-    
+
     resetMe: function() {
         this.listvals={};
         $("#"+this.jsid+"__selector").empty().append(new Option("Add New", "bulmknew"));
         $("#"+this.jsid+"__selector").selectpicker("refresh")
         $("#"+this.jsid+"__selector").selectpicker('val', "bulmknew");
     },
-    
+
     setValue: function(vals) {
         var thiscmd = this.part.attr("name")
         var self = this;
@@ -901,20 +901,20 @@ var listmakerCG = Class.extend({
                             }
                             anopt.before(new Option(kl[klidx],kl[klidx]));
                             klidx++;
-                            
+
                         }
                     }
-                
+
                 }
                 docheck=true;
-            }); 
+            });
             if ( klidx < kl.length) {
                 for ( x=klidx; x<kl.length; x++ ) {
                     $("#"+this.jsid+"__selector").append(new Option(kl[klidx],kl[klidx]));
                     klidx++;
                 }
             }
-             
+
             $.each(tbdel, function (elt, anopt) {
                 anopt.remove();
             });
@@ -923,13 +923,13 @@ var listmakerCG = Class.extend({
             });
             $("#"+self.jsid+"__selector").selectpicker('refresh');
         }
- 
+
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -963,7 +963,7 @@ var listmakerCG = Class.extend({
         }
         return false;
     }
-}) 
+})
 var choiceCG = Class.extend({
     init: function (ctxname, pname,part, realtime) {
         // Build a panel
@@ -991,15 +991,15 @@ var choiceCG = Class.extend({
         this.aboveclasses = "";
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
-        
+
         var tabmsg = "";
         if (this.checkDoAdd(this.part)) {
             var self = this;
             var locontrols = this.locontrols;
             tabmsg += "<div id=\""+this.jsid+"_budiv\"";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg += " class=\""+classes+"\" ";
                 this.aboveclasses = classes;
             }
@@ -1025,9 +1025,9 @@ var choiceCG = Class.extend({
         }
         return tabmsg;
     },
-            
+
     activate: function( size) {
-        //size is an array with 2 values, 
+        //size is an array with 2 values,
         this.size = size;
         $("#"+this.jsid).on("changed.bs.select", this.proxyChange);
         var thisval = this.part.find("#"+this.jsid +" > default").text();
@@ -1038,15 +1038,15 @@ var choiceCG = Class.extend({
         this.onChange();
         $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function(callback) {
         this.callback=callback;
     },
-    
+
     proxyChange: function(e) {
         return $(this).data("buguiObj").onChange(e);
     },
-    
+
     onChange: function (e) {
         if ( this.callback) {
             this.callback(e);
@@ -1060,7 +1060,7 @@ var choiceCG = Class.extend({
         this.locontrols=[];
         var newval = $("#"+this.jsid).find("option:selected").val();
         $.each(this.itemlist[newval], function (jdx, actrl) {
-            
+
             if ( $(actrl).is("controlgroup") ) {
                 var ncg = false;
                 if ( $(actrl).attr("type") == "list" ) {
@@ -1133,15 +1133,15 @@ var choiceCG = Class.extend({
         });
         return false;
     },
-    
+
     getValue: function() {
         var resu={};
         resu[this.part.attr("name")] = {"bu-cvalue":$("#"+this.jsid).val()};
         var zz = {};
-        var self = this;     
+        var self = this;
 
         $.each(this.locontrols, function (idx, actrl) {
-            var aval = actrl.getValue();        
+            var aval = actrl.getValue();
             if ( $.isPlainObject(aval) && actrl.part.attr("name") in aval ) {
                 zz = aval;
             } else {
@@ -1158,7 +1158,7 @@ var choiceCG = Class.extend({
 
     setValue: function(vals) {
         var thiscmd = this.part.attr("name");
-        
+
         if ( thiscmd in vals ) {
             $("#"+this.jsid).selectpicker('val', vals[thiscmd]['bu-cvalue']);
             this.onChange();
@@ -1167,14 +1167,14 @@ var choiceCG = Class.extend({
             })
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1209,7 +1209,7 @@ var choiceCG = Class.extend({
         return false;
     }
 })
-  
+
 
 
 var sliderControl = Class.extend({
@@ -1219,7 +1219,7 @@ var sliderControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1229,10 +1229,10 @@ var sliderControl = Class.extend({
         this.widget = undefined;
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
-        if (this.checkDoAdd(this.part) ) { 
+        if (this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             if (classes != undefined ) {
                 tabmsg += " class=\""+classes+"\"";
@@ -1252,43 +1252,43 @@ var sliderControl = Class.extend({
             tabmsg += " class=\"bu-slider-for-"+this.jsid+"\" /></div>"
         }
         return tabmsg;
-    },   
-    
-    activate: function( size ) {
-        
-        this.widget = $("#"+this.jsid).bootstrapSlider({precision: 2});
-        $("#"+this.jsid).data("buguiObj",this);    
-             
     },
-    
+
+    activate: function( size ) {
+
+        this.widget = $("#"+this.jsid).bootstrapSlider({precision: 2});
+        $("#"+this.jsid).data("buguiObj",this);
+
+    },
+
     setCallback: function( callback ) {
         if ( this.realtime &&  callback && this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("slide",callback)
             $("#"+this.jsid).on("change",callback)
         }
     },
-    
+
     getValue: function() {
         return this.widget.bootstrapSlider('getValue');
     },
-    
+
     getDefault: function() {
         return this.part.find("default").text() || this.part.find("start").text() || "0"
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             this.widget.bootstrapSlider('setValue',vals[this.part.attr("name")])
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1324,7 +1324,7 @@ var sliderControl = Class.extend({
     }
 })
 
-  
+
 var switchControl = Class.extend({
     init: function (ctxname, pname,part, realtime) {
         // Build a panel
@@ -1332,7 +1332,7 @@ var switchControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1341,8 +1341,8 @@ var switchControl = Class.extend({
         this.realtime = realtime || false;
         this.statevalue = {};
     },
-    
-    render: function (classes) { 
+
+    render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div  id=\""+this.jsid+"_bucont\"";
@@ -1373,42 +1373,42 @@ var switchControl = Class.extend({
                     tabmsg+=" data-off-text=\""+val.attr("label")+"\" "
                     tabmsg+=" bu-off-cmdvalue=\""+val.text()+"\" "
                 }
-            }) 
-            
+            })
+
             tabmsg += " class=\"bu-switch-for-"+this.jsid+"\"  /></div>";
         }
         return tabmsg;
-            
-    },   
-    
+
+    },
+
     activate: function( size ) {
         $("#"+this.jsid).bootstrapSwitch();
-        $("#"+this.jsid).data("buguiObj",this);    
+        $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime && this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("switchChange.bootstrapSwitch",callback)
         }
     },
-    
+
     getValue: function() {
         return ($("#"+this.jsid).bootstrapSwitch('state') && $("#"+this.jsid).attr("bu-on-cmdvalue")) || $("#"+this.jsid).attr("bu-off-cmdvalue");
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             $("#"+this.jsid).bootstrapSwitch('state',vals[this.part.attr("name")]==$("#"+this.jsid).attr("bu-on-cmdvalue"));
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1442,8 +1442,8 @@ var switchControl = Class.extend({
         }
         return false;
     }
-})    
-    
+})
+
 var spinnerControl = Class.extend({
     init: function (ctxname, pname,part, realtime) {
         // Build a panel
@@ -1451,7 +1451,7 @@ var spinnerControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1460,8 +1460,8 @@ var spinnerControl = Class.extend({
         this.realtime = realtime || false;
         this.statevalue = {};
     },
-    
-    render: function (classes) { 
+
+    render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<span  id=\""+this.jsid+"_bucont\" ";
@@ -1477,8 +1477,8 @@ var spinnerControl = Class.extend({
         }
 
         return tabmsg;
-    },   
-    
+    },
+
     activate: function( size ) {
         var param = {};
         param["max"] = this.part.find("end").text() || 100;
@@ -1489,16 +1489,16 @@ var spinnerControl = Class.extend({
         param["decimals"] = this.part.find("decimals").text()|| 0;
 
         $("#"+this.jsid).TouchSpin(param);
-        $("#"+this.jsid).data("buguiObj",this);    
-             
+        $("#"+this.jsid).data("buguiObj",this);
+
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime &&  this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("change",callback)
         }
     },
-    
+
     getValue: function() {
         if (this.part.find("decimals").text() &&  parseInt(this.part.find("decimals").text()) != 0 ) {
             return parseFloat($("#"+this.jsid).val());
@@ -1506,20 +1506,20 @@ var spinnerControl = Class.extend({
             return parseInt($("#"+this.jsid).val());
         }
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             $("#"+this.jsid).val(vals[this.part.attr("name")])
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1553,7 +1553,7 @@ var spinnerControl = Class.extend({
         }
         return false;
     }
-})    
+})
 
 
 var textControl = Class.extend({
@@ -1563,7 +1563,7 @@ var textControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1572,7 +1572,7 @@ var textControl = Class.extend({
         this.realtime = realtime || false;
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
@@ -1596,28 +1596,28 @@ var textControl = Class.extend({
             tabmsg += " /></span>";
         }
         return tabmsg;
-    },   
-    
+    },
+
     activate: function( size ) {
         var spvalue = this.part.find("default").text();
         if ( spvalue ) {
             $("#"+this.jsid).val(spvalue);
         } else {
             $("#"+this.jsid).val("");
-        } 
+        }
         $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime && this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("change",callback)
         }
     },
-    
+
     getValue: function() {
         return $("#"+this.jsid).val();
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             $("#"+this.jsid).val(vals[this.part.attr("name")]);
@@ -1625,14 +1625,14 @@ var textControl = Class.extend({
             $("#"+this.jsid).val("");
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1676,7 +1676,7 @@ var dateControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1685,12 +1685,12 @@ var dateControl = Class.extend({
         this.realtime = realtime || false;
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg += " class=\""+classes;
             }
             tabmsg += "\" >";
@@ -1702,8 +1702,8 @@ var dateControl = Class.extend({
             tabmsg += "</div>";
         }
         return tabmsg;
-    },   
-    
+    },
+
     activate: function( size ) {
         var param = {};
         $("#"+this.jsid).datepicker({
@@ -1711,33 +1711,33 @@ var dateControl = Class.extend({
                 changeYear: false,
                 showButtonPanel: false,
             });
-        $("#"+this.jsid).data("buguiObj",this);    
+        $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime && this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("input change",callback)
         }
     },
-    
+
     getValue: function() {
         return ($("#"+this.jsid).datepicker("getDate").getMonth()+1).toString()+"/"+$("#"+this.jsid).datepicker("getDate").getDate().toString();
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             var zz = new Date(2017,parseInt(vals[this.part.attr("name")].split("/")[0])-1,parseInt(vals[this.part.attr("name")].split("/")[1]),0,0,0,0);
             $("#"+this.jsid).datepicker('setDate', zz);
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1782,7 +1782,7 @@ var timeControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1791,13 +1791,13 @@ var timeControl = Class.extend({
         this.realtime = realtime || false;
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             tabmsg +=" class=\"input-group ";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg +=classes;
             }
             tabmsg += "\" >";
@@ -1810,41 +1810,41 @@ var timeControl = Class.extend({
             tabmsg += "</span>";
         }
         return tabmsg;
-    },   
-    
+    },
+
     activate: function( size ) {
-        var param = {};       
+        var param = {};
         param["minuteStep"] = 1;
         param["showSeconds"] = false;
         param["showMeridian"] = false;
         param["decimal"] = 0;
-        $("#"+this.jsid).timepicker(param); 
-        $("#"+this.jsid).data("buguiObj",this);    
+        $("#"+this.jsid).timepicker(param);
+        $("#"+this.jsid).data("buguiObj",this);
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime && this.part.attr("rteffect") ) {
             $("#"+this.jsid).on("changeTime.timepicker",callback)
         }
     },
-    
+
     getValue: function() {
         return $("#"+this.jsid).val()
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             $("#"+this.jsid).timepicker('setTime', vals[this.part.attr("name")]);
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {
@@ -1887,7 +1887,7 @@ var timerangeControl = Class.extend({
         // Def is a parsed XML documents
         this.ctxname = ctxname;
         this.pname = pname;
-        this.part = part;        
+        this.part = part;
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -1897,13 +1897,13 @@ var timerangeControl = Class.extend({
         this.callback = undefined;
         this.statevalue = {};
     },
-    
+
     render: function (classes) {
         var tabmsg = "";
         if ( this.checkDoAdd(this.part) ) {
             tabmsg += "<div id=\""+this.jsid+"_bucont\"";
             tabmsg +=" class=\"input-group ";
-            if ( classes != undefined ) { 
+            if ( classes != undefined ) {
                 tabmsg +=classes;
             }
             tabmsg += "\" >";
@@ -1918,28 +1918,28 @@ var timerangeControl = Class.extend({
             tabmsg += "</span>";
         }
         return tabmsg;
-    },   
-    
+    },
+
     activate: function( size ) {
-        var param = {};       
+        var param = {};
         param["minuteStep"] = 1;
         param["showSeconds"] = false;
         param["showMeridian"] = false;
         param["decimal"] = 0;
-        $("#"+this.jsid).timepicker(param); 
-        $("#"+this.jsid+"-after").timepicker(param); 
+        $("#"+this.jsid).timepicker(param);
+        $("#"+this.jsid+"-after").timepicker(param);
         $("#"+this.jsid).on("changeTime.timepicker", this.proxyChange);
         $("#"+this.jsid+"-after").on("changeTime.timepicker", this.proxyChange);
         $("#"+this.jsid).data("buguiObj",this);
         $("#"+this.jsid+"-after").data("buguiObj",this);
     },
-    
+
     setCallback: function( callback ) {
         if ( this.realtime && this.part.attr("rteffect") ) {
             this.callback = callback;
         }
     },
-    
+
     proxyChange: function(e) {
         if ( this.id.includes("-after") ){
             return $(this).data("buguiObj").onChangeAfter(e);
@@ -1947,7 +1947,7 @@ var timerangeControl = Class.extend({
             return $(this).data("buguiObj").onChange(e);
         }
     },
-    
+
     onChange: function (e) {
         if (this.callback) {
             this.callback(e);
@@ -1958,7 +1958,7 @@ var timerangeControl = Class.extend({
             $("#"+this.jsid+"-after").timepicker('setTime', e.time.value);
         }
     },
-    
+
     onChangeAfter: function (e) {
         if (this.callback) {
             this.callback(e);
@@ -1969,25 +1969,25 @@ var timerangeControl = Class.extend({
             $("#"+this.jsid).timepicker('setTime', e.time.value);
         }
     },
-    
+
     getValue: function() {
         return  [$("#"+this.jsid).val(),$("#"+this.jsid+"-after").val()];
     },
-    
+
     setValue: function(vals) {
         if ( this.part.attr("name") in vals ) {
             $("#"+this.jsid).timepicker('setTime', vals[this.part.attr("name")][0]);
             $("#"+this.jsid+"-after").timepicker('setTime', vals[this.part.attr("name")][1]);
         }
     },
-    
+
     resetMe: function() {
     },
-    
+
     setStateValue: function(val) {
         this.statevalue = val;
     },
-    
+
     checkDoAdd: function(part) {
         if (! this.realtime) {
             if (part.attr("rteffect") == undefined) {

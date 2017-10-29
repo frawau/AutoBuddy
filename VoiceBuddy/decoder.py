@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application is simply a bridge application for Lifx bulbs.
+# This application recognize speech.
 #
 # Copyright (c) 2016 François Wautier
 #
@@ -23,33 +23,52 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
 import argparse
-import os
 import sys
+import speech_recognition as sr
 import datetime
-from ctypes import *
+import os
 
-import alsaaudio
-from pocketsphinx.pocketsphinx import *
-from sphinxbase.sphinxbase import *
 
+PSSENSIBILITY = 1.0
+TRIGLANG = "en-US"
+ENERGYTRESH = 1000
 
 parser = argparse.ArgumentParser(
-    description="Listen on the microphone and transcribe.")
+    description="Listen on the microphone and send.")
 # version="%prog " + __version__ + "/" + bl.__version__)
 parser.add_argument(
-    "-m", "--model", default="/usr/share/pocketsphinx/model/en-us/en-us",
-                help="Where to find pocketsphinx models. (default  \"/usr/share/pocketsphinx/model/en-us/en-us\").")
+    "-M", "--mic", default="default",
+                help="ALSA device to use. (default  \"default\").")
 parser.add_argument(
-    "-c", "--corpus", default="/usr/share/pocketsphinx/model/en-us",
-                help="Where to find the corpus files (autobuddy.ln and autobuddy.dic). (default  \"/usr/share/pocketsphinx/model/en-us\").")
-parser.add_argument("-d", "--device", default="default",
-                    help="ALSA device to use. (default  \"default\").")
-parser.add_argument("-t", "--toggle", default="listen_buddy",
-                    help="Phrase toggling recognition. (default  \"listen_buddy\").")
-parser.add_argument("-D", "--duration", type=int, default=10,
-                    help="How long to wait for phrase after recognition started. (default 10 secs).")
-parser.add_argument("-l", "--longest", type=int, default=10,
-                    help="How long to wait vefore returning a guess. (default 10 secs).")
+    "-s", "--decoder", choices=["simplesphinx", 'sphinx', 'google', 'wit.ai', "houndify", "ibm"], default="simplesphinx",
+                help="What decoder to use. (default sphinx).")
+parser.add_argument(
+    "-k", "--apikey", default="",
+                help="API Key to use when decoding.")
+parser.add_argument(
+    "-i", "--apiid", default="",
+                help="API ID to use when decoding.")
+parser.add_argument(
+    "-D", "--duration", type=int, default=5,
+                help="How long to wait for phrase after recognition started. (default 5 secs).")
+parser.add_argument(
+    "-t", "--trigger", default="listen buddy",
+                help="Phrase triggering recognition. (default  \"listen buddy\").")
+parser.add_argument(
+    "-T", "--timer", type=int, default=20,
+                help="Time frame (in secs) for decoding after trigger. (default 20 secs).")
+parser.add_argument(
+    "-l", "--language", default="en-US",
+                help="language used. (default  \"en-US\").")
+parser.add_argument(
+    "-m", "--model", default="",
+                help="Where to find pocketsphinx models. (default  \"\").")
+parser.add_argument(
+    "-c", "--corpus", default="",
+                help="Where to find the corpus files (autobuddy.lm and autobuddy.dic). (default  \"\").")
+parser.add_argument(
+    "-d", "--debug", action="count", default=0,
+                help="Log debug information (default False)")
 
 try:
     opts = parser.parse_args()
@@ -57,60 +76,96 @@ except Exception as e:
     parser.error("Error: " + str(e))
     sys.exit(-1)
 
-# logfile=open("/tmp/voice.log","w")
+if opts.decoder != "sphinx":
+    if opts.corpus:
+        sr.default_language_model_file = os.path.join(opts.corpus, "autobuddy.lm")
+        sr.default_phoneme_dictionary_file = os.path.join(opts.corpus, "autobuddy.dic")
 
-# model_dir = "/usr/share/pocketsphinx/model/fr-fr/"
-# hmm = os.path.join(model_dir, "fr-ptm")
-# lm = os.path.join(model_dir, "fr-small.lm.bin")
-# dic = os.path.join(model_dir, "fr.dict")
+    if opts.model:
+        sr.default_acoustic_parameters_directory = opts.model
 
-config = Decoder.default_config()
-config.set_string('-hmm', opts.model)
-config.set_string('-lm', os.path.join(opts.corpus, "autobuddy.lm"))
-config.set_string('-dict', os.path.join(opts.corpus, "autobuddy.dic"))
-config.set_string('-logfn', '/dev/null')
-decoder = Decoder(config)
-stream = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, 0, device=opts.device)
-# Set attributes: Mono, 16000 Hz, 16 bit little endian samples
-stream.setchannels(1)
-stream.setrate(16000)
-stream.setformat(alsaaudio.PCM_FORMAT_S16_LE)
-stream.setperiodsize(1024)
-in_speech_bf = True
-decoder.start_utt()
-cmd_mode = False
-cmd_tstmp = datetime.datetime.now()
-sentence_delay = cmd_tstmp + datetime.timedelta(seconds=opts.longest)
-while True:
-    l, buf = stream.read()
-    if buf:
-        isnow = datetime.datetime.now()
-        decoder.process_raw(buf, False, False)
-        if decoder.get_in_speech() != in_speech_bf or isnow > sentence_delay:
-            in_speech_bf = decoder.get_in_speech()
-            if not in_speech_bf or isnow > sentence_delay:
-                decoder.end_utt()
-                try:
-                    if decoder.hyp().hypstr != '':
-                        # logfile.write('Stream decoding result:
-                        # {}'.format(decoder.hyp().hypstr))
-                        if decoder.hyp().hypstr.upper() == opts.toggle.upper():
-                            cmd_mode = True
-                            cmd_tstmp = datetime.datetime.now() + datetime.timedelta(
-                                seconds=opts.duration)
-                            print(decoder.hyp().hypstr)
-                            sys.stdout.flush()
-                        elif cmd_mode:
-                            print(decoder.hyp().hypstr)
-                            sys.stdout.flush()
-                except AttributeError:
-                    pass
-                decoder.start_utt()
-                sentence_delay = isnow + \
-                    datetime.timedelta(seconds=opts.longest)
-    else:
+if opts.debug:
+    dfile=open("/tmp/decoder.log","w")
+    dfile.write("Config is {}\n".format(opts))
+
+mode="keyword"
+timer=datetime.datetime.now()
+r = sr.Recognizer()
+r.energy_threshold = ENERGYTRESH
+m = None
+for i, microphone_name in enumerate(sr.Microphone.list_microphone_names()):
+    if microphone_name ==  opts.mic:
+        m = sr.Microphone(device_index=i)
         break
-    if cmd_mode and datetime.datetime.now() > cmd_tstmp:
-        cmd_mode = False
+if not m:
+    raise Exception("Could not find microphone %s"%self.config["mic"])
+with m as source:
+    r.adjust_for_ambient_noise(source)
+    while True:
+        #try:
+        audio = r.listen(source,phrase_time_limit=opts.duration)
+        if datetime.datetime.now() > timer:
+            mode="keyword"
+        if opts.debug:
+            dfile.write("Got audio whilst in %s mode\n"%mode)
+        if  mode == "keyword":
+            config = {}
+            if opts.corpus:
+                config["language_model_file"] = os.path.join(opts.corpus, "autobuddy.lm")
+                config["phoneme_dictionary_file"] = os.path.join(opts.corpus, "autobuddy.dic")
 
-decoder.end_utt()
+            if opts.model:
+                config["acoustic_parameters_directory"] = opts.model
+            try:
+                line = r.recognize_sphinx(audio, language=TRIGLANG,config=config)
+            except:
+                line=""
+            if opts.debug:
+                dfile.write("Received keyword  {}\n".format(line))
+            linebits = [x.lower() for x in line.split(" ") if x != ""]
+            if linebits == [x.lower() for x in opts.trigger.split(" ") if x != ""]:
+                mode = "command"
+                print(line.lower())
+                sys.stdout.flush()
+                timer=datetime.datetime.now()+datetime.timedelta(seconds=opts.timer)
+        else:
+            line=""
+            try:
+                if opts.decoder == "google":
+                    if opts.apikey:
+                        line = r.recognize_google_cloud(audio, credentials_json= opts.apikey, language=opts.language)
+                    else:
+                        line = r.recognize_google(audio, language=opts.language)
+                elif opts.decoder == "sphinx":
+                    line = r.recognize_sphinx(audio, language=opts.language)
+                elif opts.decoder == "wit.ai" and opts.apikey:
+                    line = r.recognize_wit(audio, key=opts.apikey)
+                elif opts.decoder == "houndify" and opts.apikey and opts.apiid:
+                    line = r.recognize_houndify(audio, opts.apiid, opts.apikey)
+                elif opts.decoder == "bing" and opts.apikey:
+                    line = r.recognize_bing(audio, key=opts.apikey)
+                elif opts.decoder == "ibm" and opts.apikey and opts.apiid:
+                    line = r.recognize_ibm(audio, username=opts.apikey, password=opts.apiid, language=opts.language)
+                else:
+                    config = {}
+                    if opts.corpus:
+                        config["language_model_file"] = os.path.join(opts.corpus, "autobuddy.lm")
+                        config["phoneme_dictionary_file"] = os.path.join(opts.corpus, "autobuddy.dic")
+
+                    if opts.model:
+                        config["acoustic_parameters_directory"] = opts.model
+                    line = r.recognize_sphinx(audio, language=opts.language, config=config)
+            except:
+                if opts.debug:
+                    dfile.write("Evil man!\n")
+                line=""
+
+            if line:
+                if opts.debug:
+                    dfile.write("Received command \n")
+                print(line.lower())
+                sys.stdout.flush()
+        #except Exception as e:
+            #pass
+
+
