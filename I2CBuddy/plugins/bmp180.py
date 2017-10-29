@@ -31,7 +31,7 @@ except:
     from i2clib import i2c
 
 
-SENSORS = ["temperature", "pressure"]
+SENSORS = {"temperature": "°C", "pressure":"Pa"}
 I2CBUS = 0
 # BMP085 default address.
 BMP085_I2CADDR           = 0x77

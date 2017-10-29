@@ -739,8 +739,14 @@ class VoiceBridge(bl.BuddyBridge):
                 self.newconfig = None
 
                 if self.voice_decoding:
-                    self.voice_decoding_process.terminate()
-                    self.voice_decoding.cancel()
+                    try:
+                        self.voice_decoding_process.terminate()
+                    except:
+                        pass
+                    try:
+                        self.voice_decoding.cancel()
+                    except:
+                        pass
 
                 self.sending({"subject": "control" + "." + self.target,
                               "content_type": "request",

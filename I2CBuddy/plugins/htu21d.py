@@ -31,7 +31,7 @@ except:
     from i2clib import i2c
 
 
-SENSORS = ["temperature","humidity"]
+SENSORS = {"temperature":"°C","humidity":"%"}
 I2CBUS = 0
 
 HTU21D_ADDR = 0x40

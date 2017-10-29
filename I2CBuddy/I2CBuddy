@@ -40,6 +40,8 @@ import importlib
 SUBTYPE = "i2csensor"  #
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
+INFOTIMER = 90 #in secs
+
 i2csensor_function = """
 <buddyui version="0.1">
     <command name="i2csensor">
@@ -155,6 +157,31 @@ def i2csensor_process(self, msg):
                                 "target": bridgectl.type,
                                 "value": self.name}})
 
+def sendInfo(self, lifx=None):
+    global bridgectl
+
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x in self.infoval:
+                msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>"+str(getattr(self.conn,x))+"</dd>"
+                prefix=""
+        if msg:
+            msg+="</dl></div>"
+            bridgectl.sending({"subject": bridgectl.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": bridgectl.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except Exception as e:
+        bridgectl.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
 
 
 bl.sensor._process = i2csensor_process
@@ -175,6 +202,8 @@ class I2CSensorBridge(bl.BuddyBridge):
         self.i2c_probeclk = None
         self.probe_sensor = None
         self.map_plug = {}    #Key is address, value is plugin name
+        self.infoval={}
+        self.send_info = None
 
 
     def process_command(self, msg):
@@ -289,8 +318,6 @@ class I2CSensorBridge(bl.BuddyBridge):
                                           "value": self.i2csensor_config}})
 
                 for aplug,dorun in self.i2csensor_config["runplugin"].items():
-                    #TO DELETE
-                    self.log.debug("Updating {} from {} to {}".format(i2c_plugins[aplug].name,i2c_plugins[aplug].is_running,dorun))
                     if dorun == "on" and not i2c_plugins[aplug].is_running:
                         i2c_plugins[aplug].is_running=True
                         if aplug in self.i2csensor_config["calibrate"]:
@@ -448,6 +475,8 @@ class I2CSensorBridge(bl.BuddyBridge):
             self.log.debug("Clock is first: {}".format(self.i2c_probeclk))
         coro = partial(I2CSensorBridge.probe_i2csensor, self)
         self.probe_sensor = aio.ensure_future(coro(), loop=self.loop)
+        coro = partial(I2CSensorBridge.send_sensor_info, self)
+        self.send_info = aio.ensure_future(coro(), loop=self.loop)
 
 
     async def probe_i2csensor(self):
@@ -467,6 +496,7 @@ class I2CSensorBridge(bl.BuddyBridge):
                             for x in plug.measurements:
                                 if x in result:
                                     thisresult[x]=result[x]
+                                self.infoval[x]=(result[x],plug.measurements[x])
                             if thisresult:
                                 for sensor in self.devices:
                                     self.sending({"subject": self.type,
@@ -496,6 +526,33 @@ class I2CSensorBridge(bl.BuddyBridge):
                                     #"target": self.type,
                                     #"value": {"name": asensor["name"], "nickname": asensor["nickname"], "subtype": self.subtype}}})
 
+    async def send_sensor_info(self, lifx=None):
+        while True:
+            await aio.sleep(INFOTIMER)
+            try:
+                msg=""
+                prefix="<div><dl class=\"dl-horizontal\">"
+                lov = [x for x in self.infoval.keys()]
+                lov.sort()
+                for x in lov:
+                    v = self.infoval[x]
+                    msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
+                    prefix=""
+                if msg:
+                    msg+="</dl></div>"
+                    self.sending({"subject": self.type,
+                                        "content_type": "event",
+                                        "content": {"event": "info",
+                                                    "target": self.type +
+                                                    "." +
+                                                    self.devices[0].name,
+                                                    "value": msg }})
+            except Exception as e:
+                self.log.debug(
+                    "Ooops could not send info",
+                    exc_info=(type(e),
+                            e,
+                            e.__traceback__))
 
     def register(self, entity):
         pass
