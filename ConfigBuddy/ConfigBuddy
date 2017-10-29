@@ -227,20 +227,22 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
-        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan pyaudio aiohttp aiocoap zeroconf aiodns speech_recognition\n")
+        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio")
+        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap zeroconf aiodns speech_recognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname pyaudio zeroconf aiohttp aiocoap aiodns speech_recognition\n\n"
+        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname zeroconf aiohttp aiocoap aiodns\n\n"
+        remindmeattheend+="\nIf using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis"])
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "pyaudio", "zeroconf", "aiohttp","aiocoap","aiodns", "speech_recognition"])
+            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "zeroconf", "aiohttp","aiocoap","aiodns"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+            print("\nRemember...If using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n")
         choice = input(" Press '<enter>' to continue")
         os.system('clear')
 else:
@@ -250,9 +252,9 @@ else:
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following command should be run:\n")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan pyaudio aiohttp aiocoap zeroconf aiodns\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap zeroconf aiodns\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname pyaudio zeroconf aiohttp aiocoap aiodns\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname zeroconf aiohttp aiocoap aiodns\n\n"
     else:
         print("\n\n\n\nNow we shall install/update the packages we need.")
         choice = input(" Press '<enter>' to proceed")
