@@ -625,8 +625,6 @@ class VoiceBridge(bl.BuddyBridge):
                         self.reseting_icon = self.loop.create_task(self.reset_icon())
             else:
                 for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"]]:
-                    if event == "ignore this command":
-                        continue
                     self.log.debug("Evaluating {} | {} | {}".format(cmd, event, evalue))
                     if "$$" in cmd: #parametrized
                         sendme = True
