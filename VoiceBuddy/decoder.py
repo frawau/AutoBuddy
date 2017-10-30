@@ -98,7 +98,7 @@ for i, microphone_name in enumerate(sr.Microphone.list_microphone_names()):
         m = sr.Microphone(device_index=i)
         break
 if not m:
-    raise Exception("Could not find microphone %s"%self.config["mic"])
+    raise Exception("Could not find microphone %s"%opts.mic)
 with m as source:
     r.adjust_for_ambient_noise(source)
     while True:

@@ -605,14 +605,16 @@ class VoiceBridge(bl.BuddyBridge):
 
             linebits = [x.lower() for x in line.split(" ") if x != ""]
             if linebits == [x.lower() for x in self.voice_config["trigger"]["keyphrase"].split(" ") if x != ""]:
-                bridgectl.sending({"subject": bridgectl.target,
-                                "content_type": "event",
-                                "content": {"event": "voice trigger",
-                                            "target": bridgectl.target,
-                                            "value": self.voice_config["trigger"]["keyphrase"]}})
-                if self.reseting_icon is None:
-                    for voicedev in self.devices:
-                        bridgectl.sending({"subject": self.target,
+                for voicedev in self.devices:
+                    self.sending({"subject": self.target,
+                                    "content_type": "event",
+                                    "content": {"event": "voice trigger",
+                                                "target":  self.type +
+                                                    "." +
+                                                    voicedev.name,
+                                                "value": self.voice_config["trigger"]["keyphrase"]}})
+                    if self.reseting_icon is None:
+                        self.sending({"subject": self.target,
                                         "content_type": "event",
                                         "content": {"event": "status",
                                                     "target": self.type +
@@ -625,11 +627,13 @@ class VoiceBridge(bl.BuddyBridge):
                         self.reseting_icon = self.loop.create_task(self.reset_icon())
             else:
                 for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"]]:
-                    self.log.debug("Evaluating {} | {} | {}".format(cmd, event, evalue))
+                    cmd = cmd.lower()
+                    self.log.debug("Evaluating {} | {} | {} | with {}".format(cmd, event, evalue,line))
                     if "$$" in cmd: #parametrized
                         sendme = True
 
                         cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
+                        cmplinebits = [x for x in linebits] #Quick copy
                         passit = False
                         for y in range(len(cmdbits)):
                             cmdword = cmdbits[0]
@@ -637,13 +641,13 @@ class VoiceBridge(bl.BuddyBridge):
                             if cmdword == "$$":
                                 passit = True
                                 continue
-                            for x in range(len(linebits)):
-                                if linebits[0] == cmdword:
+                            for x in range(len(cmplinebits)):
+                                if cmplinebits[0] == cmdword:
                                     passit = False
-                                    linebits = linebits[1:]
+                                    cmplinebits = cmplinebits[1:]
                                     break
                                 elif passit:
-                                    linebits = linebits[1:]
+                                    cmplinebits = cmplinebits[1:]
                                     continue
                                 else:
                                     sendme = False
@@ -652,7 +656,7 @@ class VoiceBridge(bl.BuddyBridge):
                                 break
                         if not sendme:
                             continue
-                        if not passit and len(linebits) != 0:
+                        if not passit and len(cmplinebits) != 0:
                             continue #Check next utterance
 
                         dcount = cmd.count("$$")
@@ -665,11 +669,12 @@ class VoiceBridge(bl.BuddyBridge):
 
                             for x in [x+1 for x in range(dcount)]:
                                 evalue = evalue.replace("$%d"%x,"\\%d"%x)
+                            self.log.debug("Substitute {} in {} from {}".format(cmd,evalue,line))
                             evalue = re.sub(cmd, evalue,line)
 
                     else:
                         cmdbits = [x.lower() for x in cmd.split(" ") if x != ""]
-
+                        #self.log.debug("{} vs {}".format(cmdbits,linebits))
                         if len(linebits) < len(cmdbits):
                             continue #Check next utterance
                         allin = True
