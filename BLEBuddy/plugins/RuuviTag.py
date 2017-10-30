@@ -38,7 +38,7 @@ SENSORS = {"temperature": "°C","pressure": "Pa","humidity": "%","accelerometer"
 #This class manages RuuviTag sensors
 class RuuviTag(object):
     name="RuuviTag"
-    measurements=SEMSORS
+    measurements=SENSORS
     is_running = False
 
     def __init__(self,parent,calibration,throttle):
