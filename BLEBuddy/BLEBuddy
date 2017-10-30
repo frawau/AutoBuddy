@@ -446,7 +446,7 @@ class BLESensorBridge(bl.BuddyBridge):
                             self.map_plug[result["mac address"]]=plug.name
                         sensor = None
                         for x in self.devices:
-                            if x.name == mac_to_name[result["mac address"]]:
+                            if x.name == mac_to_name(result["mac address"]):
                                 sensor = x
                                 break
                         thisresult={}
