@@ -555,9 +555,15 @@ class BLESensorBridge(bl.BuddyBridge):
                     lov = [x for x in sensor.infoval.keys()]
                     lov.sort()
                     for x in lov:
-                        v = sensor.infoval[x]
-                        msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
-                        prefix=""
+                        try:
+                            if x == "accelerometer":
+                                v = (sensor.infoval[x][0]["vector"],sensor.infoval[x][1])
+                            else:
+                                v = sensor.infoval[x]
+                            msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
+                            prefix=""
+                        except:
+                            pass
                     if msg:
                         msg+="</dl></div>"
                         self.sending({"subject": self.type,
