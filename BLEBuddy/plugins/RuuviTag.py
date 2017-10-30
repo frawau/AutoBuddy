@@ -32,13 +32,15 @@ from statistics import mean
 import datetime as dt
 
 SAMPLESIZE=200
+SENSORS = {"temperature": "°C","pressure": "Pa","humidity": "%","accelerometer": "mɡ","battery": "V"}
+
 
 #This class manages RuuviTag sensors
 class RuuviTag(object):
     name="RuuviTag"
-    measurements=["temperature","pressure","humidity","accelerometer","battery"]
+    measurements=SEMSORS
     is_running = False
-    
+
     def __init__(self,parent,calibration,throttle):
         self.parent=parent
         self.calibration = calibration
@@ -61,7 +63,7 @@ class RuuviTag(object):
     def TearDown(self):
         """HCI commands to send when closing probe"""
         return []
-    
+
 
     def done_calibrate(self,mac):
         cx=0-round(mean(self.calibrating[mac][0]))
@@ -70,7 +72,7 @@ class RuuviTag(object):
         self.calibration[mac]={"cx":cx,"cy":cy,"cz":cz}
         self.parent.update_calibrate(self.name,self.calibration)
         del(self.calibrating[mac])
-        
+
     def do_calibrate(self, mac):
         self.calibrating[mac]=[[],[],[]]
 
@@ -94,7 +96,7 @@ class RuuviTag(object):
                             self.next_run[macaddr][x]=thisrun
                     if macaddr not in self.calibration:
                         self.calibration[macaddr]={"cx":0,"cy":0,"cz":0}
-                            
+
                     result["mac address"]=packet.retrieve("peer")[0].val
                     val=val[2:]
                     if thisrun >= self.next_run[macaddr]["humidity"]:
@@ -108,13 +110,13 @@ class RuuviTag(object):
                         hasinfo = True
                         if "temperature" in self.throttle:
                             self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
-                            
+
                     if thisrun >= self.next_run[macaddr]["pressure"]:
                         result["pressure"]=int.from_bytes(val[4:6],"big")+50000
                         hasinfo = True
                         if "pressure" in self.throttle:
                             self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
-                    
+
                     dx=int.from_bytes(val[6:8],"big",signed=True) + self.calibration[macaddr]["cx"]
                     dy=int.from_bytes(val[8:10],"big",signed=True) + self.calibration[macaddr]["cy"]
                     dz=int.from_bytes(val[10:12],"big",signed=True) + self.calibration[macaddr]["cz"]
@@ -123,7 +125,7 @@ class RuuviTag(object):
                         hasinfo = True
                         if "accelerometer" in self.throttle:
                             self.next_run[macaddr]["accelerometer"]=thisrun+dt.timedelta(seconds=self.throttle["accelerometer"])
-                    
+
                     if macaddr in self.calibrating:
                         self.calibrating[macaddr][0].append(int.from_bytes(val[6:8],"big",signed=True) )
                         self.calibrating[macaddr][1].append(int.from_bytes(val[8:10],"big",signed=True) )
@@ -140,12 +142,12 @@ class RuuviTag(object):
                         hasinfo = True
                         if "battery" in self.throttle:
                             self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
-                    
+
                     if hasinfo:
                         return result
                     else:
                         return None
-            
+
             else:
                 return None
         rssi=packet.retrieve("rssi")
@@ -163,7 +165,7 @@ class RuuviTag(object):
                     self.next_run[macaddr]={}
                     for x in self.measurements:
                         self.next_run[macaddr][x]=thisrun
-                url=url["url"].split("//ruu.vi/#")[-1] 
+                url=url["url"].split("//ruu.vi/#")[-1]
                 if len(url)>8:
                     url=url[:-1]
                 val=b64decode(url+ '=' * (4 - len(url) % 4),"#.")
@@ -191,14 +193,14 @@ class RuuviTag(object):
                         hasinfo = True
                         if "humidity" in self.throttle:
                             self.next_run[macaddr]["humidity"]=thisrun+dt.timedelta(seconds=self.throttle["humidity"])
-                    
+
                     if thisrun >= self.next_run[macaddr]["temperature"]:
                         result["temperature"]=unpack(">b",int(val[2]).to_bytes(1,"big"))[0]
                         result["temperature"]+=val[3]/100.0
                         hasinfo = True
                         if "temperature" in self.throttle:
                             self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
-                            
+
                     if thisrun >= self.next_run[macaddr]["pressure"]:
                         result["pressure"]=int.from_bytes(val[4:6],"big")+50000
                         hasinfo = True
@@ -228,5 +230,5 @@ class RuuviTag(object):
         except:
             return None
         return None
-    
+
 PluginObject=RuuviTag

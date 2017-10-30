@@ -40,6 +40,8 @@ import importlib
 SUBTYPE = ""  # more than 1 subtypes, male,female, trans? dog? cat?
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
+INFOTIMER = 90 #secs
+
 blesensor_function = """
 <buddyui version="0.1">
     <command name="blesensor">
@@ -196,6 +198,7 @@ class BLESensorBridge(bl.BuddyBridge):
         self.blesensor_config = blesensor_config_default
         self.ble_adv = None
         self.probe_sensor = None
+        self.send_info = None
         self.map_plug = {}    #Key is address, value is plugin name
 
 
@@ -412,6 +415,7 @@ class BLESensorBridge(bl.BuddyBridge):
         )
         for sensor in self.devices:
             sensor.present = True
+            sensor.infoval={}
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
@@ -422,6 +426,8 @@ class BLESensorBridge(bl.BuddyBridge):
 
         coro = partial(BLESensorBridge.probe_blesensor, self)
         self.probe_sensor = aio.ensure_future(coro(), loop=self.loop)
+        coro = partial(BLESensorBridge.send_sensor_info, self)
+        self.send_info = aio.ensure_future(coro(), loop=self.loop)
 
     def ble_process(self,packet):
         global ble_plugins
@@ -438,10 +444,16 @@ class BLESensorBridge(bl.BuddyBridge):
                             self.newsensor(result,plug)
                         if self.map_plug[result["mac address"]] is None:
                             self.map_plug[result["mac address"]]=plug.name
+                        sensor = None
+                        for x in self.devices:
+                            if x.name == mac_to_name[result["mac address"]]:
+                                sensor = x
+                                break
                         thisresult={}
                         for x in plug.measurements:
                             if x in result:
                                 thisresult[x]=result[x]
+                                sensor.infoval[x]=(result[x],plug.measurements[x])
                         if thisresult:
                             self.sending({"subject": self.type,
                                 "content_type": "event",
@@ -513,6 +525,7 @@ class BLESensorBridge(bl.BuddyBridge):
 
 
     def register(self, entity):
+        entity.infoval={}
         self.devices.append(entity)
 
     def unregister(self, entity):
@@ -532,6 +545,34 @@ class BLESensorBridge(bl.BuddyBridge):
                                     #"token": self.target,
                                     "value": bl.encrypt(blesensor_config_default, self.config["buddykey"])}})
 
+    async def send_sensor_info(self, lifx=None):
+        while True:
+            await aio.sleep(INFOTIMER)
+            try:
+                for sensor in self.devices:
+                    msg=""
+                    prefix="<div><dl class=\"dl-horizontal\">"
+                    lov = [x for x in sensor.infoval.keys()]
+                    lov.sort()
+                    for x in lov:
+                        v = sensor.infoval[x]
+                        msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
+                        prefix=""
+                    if msg:
+                        msg+="</dl></div>"
+                        self.sending({"subject": self.type,
+                                            "content_type": "event",
+                                            "content": {"event": "info",
+                                                        "target": self.type +
+                                                        "." +
+                                                        sensor.name,
+                                                        "value": msg }})
+            except Exception as e:
+                self.log.debug(
+                    "Ooops could not send info",
+                    exc_info=(type(e),
+                            e,
+                            e.__traceback__))
 
 aboutstr = """<p>BLESensorBuddy is an application tracking BLE sensors advertising their values. At this time, only <a href="https://tag.ruuvi.com/">
 Ruuvi Tag</a> is supported.</p>
