@@ -52,7 +52,8 @@ ONE_TIME_HIGH_RES_MODE_2 = 0x21
 # Device is automatically set to Power Down after measurement.
 ONE_TIME_LOW_RES_MODE = 0x23
 
-SENSORS = {"luminosity": "lux"}
+#Key is measurement, value is 2-uple, unit symbol, lambda expression to transform to that unit from raw data if needed
+SENSORS = {"luminosity": ("lux",None)}
 I2CBUS = 0
 
 #This class manages BH1750 sensors

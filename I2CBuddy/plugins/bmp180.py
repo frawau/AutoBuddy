@@ -30,8 +30,8 @@ try:
 except:
     from i2clib import i2c
 
-
-SENSORS = {"temperature": "°C", "pressure":"Pa"}
+#Key is measurement, value is 2-uple, unit symbol, lambda expression to transform to that unit from raw data if needed
+SENSORS = {"temperature": ("°C",None), "pressure":("hPa", lambda x: x/100.0)}
 I2CBUS = 0
 # BMP085 default address.
 BMP085_I2CADDR           = 0x77

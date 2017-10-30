@@ -32,7 +32,8 @@ from statistics import mean
 import datetime as dt
 
 SAMPLESIZE=200
-SENSORS = {"temperature": "°C","pressure": "Pa","humidity": "%","accelerometer": "mɡ","battery": "V"}
+#Key is measurement, value is 2-uple, unit symbol, lambda expression to transform to that unit from raw data if needed
+SENSORS = {"temperature": ("°C", None),"pressure": ("hPa", lambda x: x/100.0),"humidity": ("%",None),"accelerometer": ("mɡ",lambda x: x["vector"]),"battery": ("V",lambda x: x/1000.0)}
 
 
 #This class manages RuuviTag sensors

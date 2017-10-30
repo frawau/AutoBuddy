@@ -57,6 +57,13 @@ i2csensor_config = """
 <buddyui version="0.1">
     <configuration  name="i2csensor">
         <controlgroup type="list" name="throttle" label="Timing">
+            <control type="spinner" name="info" label="Updating GUI info">
+                <start>15</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>90</default>
+            </control>
             <control type="spinner" name="temperature" label="Temp Sensing interval">
                 <start>0</start>
                 <end>600</end>
@@ -109,7 +116,8 @@ i2csensor_config = """
         </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
-i2csensor_config_default = {"throttle":{"temperature": 60,
+i2csensor_config_default = {"throttle":{"info": 90,
+                                        "temperature": 60,
                                         "humidity": 60,
                                         "pressure": 60,
                                         "accelerometer":1,
@@ -528,16 +536,23 @@ class I2CSensorBridge(bl.BuddyBridge):
 
     async def send_sensor_info(self, lifx=None):
         while True:
-            await aio.sleep(INFOTIMER)
+            await aio.sleep(self.i2csensor_config["throttle"]["info"])
             try:
                 msg=""
                 prefix="<div><dl class=\"dl-horizontal\">"
                 lov = [x for x in self.infoval.keys()]
                 lov.sort()
                 for x in lov:
-                    v = self.infoval[x]
-                    msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
-                    prefix=""
+                    try:
+                        unit,transform = self.infoval[x][1]
+                        if transform:
+                            v = (transform(self.infoval[x][0]),unit)
+                        else:
+                            v = (self.infoval[x][0],unit)
+                        msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
+                        prefix=""
+                    except:
+                        pass
                 if msg:
                     msg+="</dl></div>"
                     self.sending({"subject": self.type,
@@ -814,7 +829,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-
         bridgectl.probe_sensor.set_result('done')
+        bridgectl.send_info.set_result('done')
         conn.close()
         loop.close()

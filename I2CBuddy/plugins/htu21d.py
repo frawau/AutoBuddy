@@ -30,8 +30,8 @@ try:
 except:
     from i2clib import i2c
 
-
-SENSORS = {"temperature":"°C","humidity":"%"}
+#Key is measurement, value is 2-uple, unit symbol, lambda expression to transform to that unit from raw data if needed
+SENSORS = {"temperature":("°C",None),"humidity":("%",None)}
 I2CBUS = 0
 
 HTU21D_ADDR = 0x40

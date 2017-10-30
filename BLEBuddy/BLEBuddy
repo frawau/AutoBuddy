@@ -57,6 +57,13 @@ blesensor_config = """
 <buddyui version="0.1">
     <configuration  name="blesensor">
         <controlgroup type="list" name="throttle" label="Timing">
+            <control type="spinner" name="info" label="Updating GUI info">
+                <start>15</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>90</default>
+            </control>
             <control type="spinner" name="temperature" label="Temp Sensing interval">
                 <start>0</start>
                 <end>600</end>
@@ -109,7 +116,8 @@ blesensor_config = """
         </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
-blesensor_config_default = {"throttle":{"temperature": 60,
+blesensor_config_default = {"throttle":{"info": 90,
+                                        "temperature": 60,
                                         "humidity": 60,
                                         "pressure": 60,
                                         "accelerometer":0,
@@ -547,7 +555,7 @@ class BLESensorBridge(bl.BuddyBridge):
 
     async def send_sensor_info(self, lifx=None):
         while True:
-            await aio.sleep(INFOTIMER)
+            await aio.sleep(self.blesensor_config["throttle"]["info"])
             try:
                 for sensor in self.devices:
                     msg=""
@@ -556,10 +564,11 @@ class BLESensorBridge(bl.BuddyBridge):
                     lov.sort()
                     for x in lov:
                         try:
-                            if x == "accelerometer":
-                                v = (sensor.infoval[x][0]["vector"],sensor.infoval[x][1])
+                            unit,transform = sensor.infoval[x][1]
+                            if transform:
+                                v = (transform(sensor.infoval[x][0]),unit)
                             else:
-                                v = sensor.infoval[x]
+                                v = (sensor.infoval[x][0],unit)
                             msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
                             prefix=""
                         except:
@@ -844,5 +853,6 @@ if __name__ == "__main__":
     finally:
 
         bridgectl.probe_sensor.set_result('done')
+        bridgectl.send_info.set_result('done')
         conn.close()
         loop.close()
