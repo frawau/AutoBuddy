@@ -198,7 +198,6 @@ class LoggerBridge(bl.BuddyBridge):
                 myresult=[["timestamp"]+loe]
                 isend=False
                 self.dbc.execute("SELECT * FROM logged WHERE log = ? AND timestamp > ? ORDER BY timestamp,ROWID",(logname,twhere,))
-                print ("\n\nSELECT * FROM logged WHERE log = {} AND timestamp > {} ORDER BY timestamp,ROWID\n\n".format(logname,twhere))
                 while not isend:
                     arec=None
                     myrecords=self.dbc.fetchmany()
