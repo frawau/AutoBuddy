@@ -108,20 +108,42 @@
                     <li>Email</li>
                     <li><a href="https://slack.com/">Slack</a></li>
                     <li><a href="https://www.pushbullet.com/">Pushbullet</a></li>
-                    <li><a href="https://pushover.net/">Slack</a></li>
+                    <li><a href="https://pushover.net/">Pushover</a></li>
                 </ul>
             </p>
           <h2>VoiceBuddy</h2>
           <p>VoiceBuddy is AutoBuddy's voice recognition module. It uses <a href="http://cmusphinx.sourceforge.net/">Carnegie Mellon University's PockectSphinx</a>.
           <p>VoiceBuddy allows you to define <span style="font-syle: italic;">utterances</span> and to trigger events when they are detected.</p>
-          <p>There is a configurable trigger utterance. By default it is <span style="font-weight:bold;">listen buddy</span> defined as "listen_buddy", a single
-          word rather than 2, to make recognition more reliable.</p>
+          <p>There is a configurable trigger utterance. By default it is <span style="font-weight:bold;">listen buddy</span>.</p>
+          <p>Whilst VoiceBuddy always uses PocketSphinx to detect the trigger utterance, it can be configure to uses other voice recognition engines:
+              <dl>
+              <dt>SimplePocketSphinx</dt><dd>This version of pocket sphinx is the one used for detecting the trigger utterance. It uses a dictionary limited to the
+                   words defined in the various recognized voice commands. You can add words (like numeral for example) by listing them in a disabled voice command.
+                   This method is working very well and with little delay.</dd>
+              <dt>PocketSphinx</dt><dd>This uses the full dictionary that comes with PocketSphinx.</dd>
+              <dt>Google</dt><dd>It you set an API key, it will use <a href="https://cloud.google.com/speech/">Google Cloud Speech API</a>, if no key is provided it will use the
+               <a href="http://www.chromium.org/developers/how-tos/api-keys">Google Speech Recognition API</a> with no key. (Not sure I should...)</dd>
+              <dt>Houndify</dt><dd>Uses the <a href="https://www.houndify.com">Houndify</a> engine. You need an id and key.</dd>
+              <dt>Wit.ai</dt><dd>Uses <a href="https://wit.ai/">Wit.ai</a> engines. You must setup your own application on their website, and get a key.</dd>
+              <dt>IBM</dt><dd>Uses <a href="https://www.ibm.com/watson/developercloud/text-to-speech/api/v1/">IBM Watson Text-to-Speech</a> engine. You must setup an
+                account and get a key.</dd>
+                <dt>Bing</dt><dd>Uses <a href="https://docs.microsoft.com/en-gb/azure/cognitive-services/speech/concepts#recognition-language">Bing</a> engine. You need
+                an Azure account. This was not tested.</dd>
+                </dl>
           <p>In general, to improve reliability, it is a good idea to use multi-syllables words when defining voice commands. Also try to separate similar sounding
-          commands when possible. For instance, instead of "turn the lights on" and "turn the ligths off" use "turn_on the_lights" and "turn the_light off". Another
-          example, instead of "lock the door" and "unlock the door", use "do_lock the_door" and "unlock the_door".</p>
+          commands when possible. For instance, instead of "turn the lights on" and "turn the ligths off" use "turn on the lights" and "turn the light off". Another
+          example, instead of "lock the door" and "unlock the door", use "do lock the door" and "unlock the door".</p>
           <p>In general, be aware that voice recognition does not work very well in noisy environments.</p>
-          <p>VoiceBuddy uses the python module <a href="https://github.com/larsimmisch/pyalsaaudio">alsaaudio</a>.</p>
-          <p>VoiceBuddy requires an Internet connection when configuring it. Normal use does not require an Internet connection.</p>
+          <p>VoiceBuddy uses a modified version of the python module <a href="https://github.com/frawau/speech_recognition">speech_recognition</a>.</p>
+          <p>VoiceBuddy requires an Internet connection when configuring it. When using the PocketSphinx engine it does not require an Internet connection.</p>
+          <p>Voice command can be parametrized by using "$$" in the phrase and "$1","$2", .... in the event value. For instance:</p>
+              <dl><dt>Phrase</dt><dd>play $$ songs by $$</dd>
+                  <dt>Event value</dt><dd>kodi play song artist $2 count $1</dd>
+             </dl>
+          <p>When presented with the utterance "Play five songs by the beach boys", the phrase will match and send the value "kodi play song artist the beach boys count five"</p>
+          <p>This is currently not very useful since the rules cannot yet handle this.</p>
+          <p>In the gui, you can request VoiceBuddy the raw text-to-speech result, click on the icon and switch it on."
+          <p>There is now a visual feedback to indicate that VoiceBuddy is actively trying to recognize speech.</p>
           <h2>SocketBuddy</h2>
           <p>SocketBuddy provides 2-way communication between websocket and the AutoBuddy bus. It serves WebBuddy and also provides login service to
           WebBuddy. It uses <a href="http://aiohttp.readthedocs.io/en/stable/">aiohttp</a> Python library.</p>
@@ -164,6 +186,7 @@
           <h2>BLEBuddy</h2>
           <p>BLEBuddy monitors the bluetooth LE airwaves for advertised packets. It then uses plugins to decode the information and send it onto the AutoBuddy bus.</p>
           <p>At this time (July 2017) there is a <a href="https://tag.ruuvi.com/">Ruuvi Tag</a> plugin. It can decode the temperature, atmospheric pressure, huminidity, and accelerometer values. It will also decode battery information if present. The accelerometer can be calibrated. If you want to use Ruuvi Tag to detect movement, you should use an updated firmware, for instance <a href="https://drive.google.com/open?id=0B-JicGkaZAeXLU9ydHdURGxfRlU"> this one</a>, the sources are available in the ruuvi_tag repository.</p>
+          <p>Ctrl-click on the icon will show the current values of the sensors.</p>
           <h2>LoggerBuddy</h2>
           <p>LoggerBuddy allows you to persist values associated with events. The data can then be graphed by WebBuddy. For instance Ruuvi Tag temperature measurements.</p>
           <img src="images/temp-graph.png" />
@@ -178,7 +201,8 @@
               <li>HTU21D: A sensor that gives you temperature in °C and relative humidity in percent.</li>
           </ul>
           <p>By default no plugin will run. Plugins must be enabled in the device configuration using WebBuddy.</p>
-          <p>I2CBuddy broadcast measurement events. The frequency of each measurement can be set in the configuration.
+          <p>I2CBuddy broadcast measurement events. The frequency of each measurement can be set in the configuration.</p>
+          <p>Ctrl-click on the icon will show the current values of the sensors.</p>
           <h2>ConfigBuddy</h2>
           <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
 
@@ -213,6 +237,8 @@
           <p>Description of the messages and their function is somewhat documented on
           <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>. It is currently woefully outdated.</p>
           <h1>Status</h1>
+          <h3>End of October 2017</h3>
+          <p>Added support for multiple speech-to-text engines in VoiceBuddy</p>
           <h3>October 2017</h3>
           <p>Added I2CBuddy.</p>
           <h3>June 2017</h3>
