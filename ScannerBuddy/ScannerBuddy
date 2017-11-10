@@ -305,11 +305,7 @@ class ScannerBridge(bl.BuddyBridge):
                                           "value": self.scanner_config}})
 
                 #No need for events, we don't have any handler
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "mute events",
-                                          "target": self.type,
-                                          "subtype": self.subtype}})
+                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
                 self.sending({"subject": self.target,
                               "content_type": "event",
                               "content": {"event": "new scanner",

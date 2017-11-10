@@ -1285,7 +1285,6 @@ class KodiBridge(bl.BuddyBridge):
                 seen = mediaplayer
                 break
         if not seen:
-            print("\n\nCreating {}\n\n".format(ename))
             self.pending.append(entity)
             self.sending({"subject": "control" + "." + self.type,
                           "content_type": "request",
