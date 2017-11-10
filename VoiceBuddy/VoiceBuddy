@@ -626,7 +626,7 @@ class VoiceBridge(bl.BuddyBridge):
                                                     "value": {}}})
                         self.reseting_icon = self.loop.create_task(self.reset_icon())
             else:
-                for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"]]:
+                for cmd, event, evalue in [(x["phrase"], x["event"], x["value"]) for x in self.voice_config["command"] if x["active"] == "yes"]:
                     cmd = cmd.lower()
                     self.log.debug("Evaluating {} | {} | {} | with {}".format(cmd, event, evalue,line))
                     if "$$" in cmd: #parametrized

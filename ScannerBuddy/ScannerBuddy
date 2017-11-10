@@ -30,18 +30,25 @@ import json
 import os
 import ssl
 import logging
-import ipaddress
-import subprocess
-import datetime as dt
+#import ipaddress
 import asyncio as aio
+import aiohttp as aioh
 import buddylib as bl
 import socket
+import netifaces
 from functools import partial
-from zeroconf import ZeroconfServiceTypes,ServiceBrowser, Zeroconf
+from aiozeroconf import ZeroconfServiceTypes,ServiceBrowser, Zeroconf
 from struct import pack,unpack
-import aioarping
+from urllib.parse import urlparse
+import xml.etree.ElementTree as ET
+from io import StringIO
 
-SUBTYPE = "scanner"  
+UPNP_PORT = 1900
+UPNP_ADDR = "239.255.255.250"
+UPNP6_ADDR = "ff05::c"
+
+
+SUBTYPE = "scanner"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
 scanner_function = """
@@ -65,13 +72,120 @@ scanner_config_default = {"probe": 600}
 class MyService(object):
 
     def remove_service(self, zeroconf, type, name):
-        pass
+        aio.ensure_future(bridgectl.unregister(name),loop=bridgectl.loop)
 
     def add_service(self, zeroconf, type, name):
-        info = zeroconf.get_service_info(type, name)
+        aio.ensure_future(self.found_service(zeroconf,type,name))
+
+    async def found_service(self,zc,type,name):
+        global bridgectl
+        info = await zc.get_service_info(type, name)
         if info:
             info.address=socket.inet_ntoa(pack('>L',unpack('>L',info.address)[0]))
-            bridgectl.register(info)
+            aio.ensure_future(bridgectl.register(info),loop=bridgectl.loop)
+
+
+class upnp_info(object):
+    def __init__(self):
+        self.name = None
+        self.type = None
+        self.port = None
+        self.address = None
+        self.mac = None
+        self.properties = {}
+
+class UpnpDiscovery:
+    def __init__(self, loop,addr):
+        self.loop = loop
+        self.transport = None
+        self.addr=addr
+
+    def connection_made(self, transport):
+        self.transport = transport
+        sock = self.transport.get_extra_info('socket')
+        sock.settimeout(3)
+        addrinfo = socket.getaddrinfo(self.addr, None)[0]
+        ttl = pack('@i', 1)
+        if addrinfo[0] == socket.AF_INET: # IPv4
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
+        else:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
+        request = '\r\n'.join(("M-SEARCH * HTTP/1.1",
+                               "HOST:{}:{}",
+                               "ST:upnp:rootdevice",
+                               "MX:2",
+                               'MAN:"ssdp:discover"',
+                               "", "")).format(self.addr,UPNP_PORT)
+        self.transport.sendto(request.encode(), (self.addr,UPNP_PORT))
+        self.loop.call_later(3,self.timeme)
+
+
+    def datagram_received(self, data, addr):
+        info = upnp_info()
+        info.address = addr[0]
+        info.port = addr[1]
+        loc=None
+        for x in data.decode("ascii").split("\r\n"):
+            if x.upper().startswith("LOCATION:"):
+                pat=x.split(":")[0]
+                loc=x.replace(pat+":","").strip()
+        if loc:
+            loc = urlparse(loc)
+            if loc.port:
+                info.port=loc.port
+            info.properties["location"]=loc.geturl()
+            aio.ensure_future(self.scpd_parse(info,loc),loop=bridgectl.loop)
+        # Don't close the socket as we might get multiple responses.
+
+    async def scpd_parse(self, tinfo, loc):
+        """Retrieve the XML info from the given location"""
+        global bridgectl
+        info = upnp_info()
+        info.address = tinfo.address
+        info.port = tinfo.port
+        for x,y in tinfo.properties.items():
+            info.properties[x]=y
+        xmldoc=None
+        try:
+            async with aioh.ClientSession(loop=self.loop) as session:
+                with aioh.Timeout(10, loop=session.loop):
+                    async with session.get(loc.geturl()) as response:
+                        xmldoc = await response.text()
+        except Exception as e:
+            bridgectl.log.critical("Ooops, failed to retrieve {}".format(loc.geturl()),
+                exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+            return
+        #try:
+        it = ET.iterparse(StringIO(xmldoc))
+        for _, el in it:
+            if '}' in el.tag:
+                el.tag = el.tag.split('}', 1)[1]  # strip all namespaces
+
+        root = it.root
+        try:
+            info.type = root.find("device/deviceType").text
+        except:
+            pass
+        try:
+            info.name = root.find("device/friendlyName").text
+        except:
+            pass
+
+        aio.ensure_future(bridgectl.register(info),loop=self.loop)
+
+
+    def error_received(self, exc):
+        pass
+        #print('Error received:', exc)
+
+    def connection_lost(self, exc):
+        pass
+
+    def timeme(self):
+        self.transport.close()
+
 
 class ScannerBridge(bl.BuddyBridge):
 
@@ -82,11 +196,12 @@ class ScannerBridge(bl.BuddyBridge):
 
     def __init__(self, loop, future, config, log):
         super(ScannerBridge, self).__init__(loop, future, config, log)
-        self.probe_service = None
+        self.probe_service = []
         self.seen_service = {}
         self.scanner_config = scanner_config_default
         self.scan_request=None
-        self.towait=0
+        self.zeroconf = None
+        self.browsers = {}
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
@@ -119,17 +234,27 @@ class ScannerBridge(bl.BuddyBridge):
                                         "target": msg["content"]["target"],
                                         #"token": self.target,
                                         "value":los }})
-        elif msg["content"]["command"] == "scan request" and msg["subject"] == self.target:
+        elif msg["content"]["command"] == "scan request":
             if "service" in msg["content"]["value"]:
                 if isinstance(msg["content"]["value"]["service"],list):
-                    self.scan_request=msg["content"]["value"]["service"]
+                    for serv in msg["content"]["value"]["service"]:
+                        if serv in self.browsers:
+                            self.send_service_status(serv)
+                        else:
+                            try:
+                                self.browsers[serv] = ServiceBrowser(self.zeroconf,serv,listener=MyService())
+                            except:
+                                pass
                 else:
-                    self.scan_request=[msg["content"]["value"]["service"]]
-                if "delay" in msg["content"]["value"] and isinstance(msg["content"]["value"] ["delay"],int):
-                    self.towait = msg["content"]["value"]["delay"]
-                else:
-                    self.towait = 15
-                
+                    serv = msg["content"]["value"]["service"]
+                    if serv in self.browsers:
+                        self.send_service_status(serv)
+                    else:
+                        try:
+                            self.browsers[serv] = ServiceBrowser(self.zeroconf,serv,listener=MyService())
+                        except:
+                            pass
+
         # else:
             # for aconn in self.devices:
                 # aconn.process(msg)
@@ -165,6 +290,7 @@ class ScannerBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
+                self.zeroconf = Zeroconf(self.loop, iface=self.config["iface"])
                 self.sending({"subject": "control" + "." + self.target,
                               "content_type": "request",
                               "content": {"request": "functions",
@@ -177,6 +303,18 @@ class ScannerBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.scanner_config}})
+
+                #No need for events, we don't have any handler
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "mute events",
+                                          "target": self.type,
+                                          "subtype": self.subtype}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "new scanner",
+                                          "target": self.target,
+                                          "value": self.subtype}})
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -224,7 +362,7 @@ class ScannerBridge(bl.BuddyBridge):
                                                        msg["content"]))
 
     def process_event(self, msg):
-        # We can react to no event. 
+        # We can react to no event.
         # TODO
         return
 
@@ -237,67 +375,99 @@ class ScannerBridge(bl.BuddyBridge):
                                   "value": {"functions": "", "configs": [scanner_config, self.scanner_config]}}})
 
         coro = partial(ScannerBridge.service_scanner, self)
-        self.probe_service = aio.ensure_future(coro(), loop=self.loop)
+        self.probe_service.append(aio.ensure_future(coro(), loop=self.loop))
 
     async def service_scanner(self):
         # Give time for things to settle
         await aio.sleep(2)
         # Here we actually start the probe
         while True:
+            for maddr in [UPNP_ADDR,UPNP6_ADDR]:
+                addrinfo = socket.getaddrinfo(maddr, None)[0]
+                sock = socket.socket(addrinfo[0], socket.SOCK_DGRAM)
+                connect = self.loop.create_datagram_endpoint(
+                    lambda: UpnpDiscovery(self.loop,maddr),
+                    sock=sock
+                )
+                x = self.loop.create_task(connect)
+                await aio.sleep(1)
             #Get the list of serivces
-            if self.scan_request is None:
-                zc=Zeroconf(interfaces=self.config["addresses"])
-                los=ZeroconfServiceTypes.find(zc);
-                zc.close()
-            else:
-                los=self.scan_request
-                self.scan_request = None
-            
-            for aserv in los:
-                if self.config["debug"]:
-                    self.log.debug(
-                        "Scanning for service {}".format(aserv))
-                zc=Zeroconf(interfaces=self.config["addresses"])
-                slistener = MyService()
-                browser = ServiceBrowser(zc, aserv, slistener)
-                await aio.sleep(5)
-                zc.close()
-            self.towait = self.scanner_config["probe"]
-            while self.towait>0:
-                self.towait -= 5
-                await aio.sleep(5)
+            try:
+                los=await ZeroconfServiceTypes.find(self.zeroconf);
+            except:
+                pass
 
+            await aio.sleep(self.scanner_config["probe"])
 
-    def register(self, entity):
+    def send_service_status(self, servname):
+        for knownserv, entity in  self.seen_service.items():
+            if knownserv.endswith(servname):
+                self.sending({"subject": self.target,
+                            "content_type": "event",
+                            "content": {"event": "service found",
+                                        "target": self.target,
+                                        "value": {"name":entity.name,"address":entity.address,
+                                                  "port":entity.port,"properties":entity.decoded_properties,
+                                                  "type":entity.type, "mac": entity.mac}}})
+
+    async def register(self, entity):
         if entity.name not in self.seen_service or entity.address != self.seen_service[entity.name].address or entity.port != self.seen_service[entity.name].port:
             newprop={}
             for x,y in entity.properties.items():
                 try:
                     newprop[x.decode()]=y.decode()
                 except:
-                    newprop[x.decode()]=y
+                    try:
+                        newprop[x.decode()]=y
+                    except:
+                        newprop[x]=y
+            entity.decoded_properties = newprop
             #Mac address if IPv4Address
-            if isinstance(ipaddress.ip_address(entity.address),ipaddress.IPv4Address):
+            #if isinstance(ipaddress.ip_address(entity.address),ipaddress.IPv4Address):
+            addrinfo=socket.getaddrinfo(entity.address, None)[0]
+            if addrinfo[0] == socket.AF_INET: # IPv4
                 #Cheat... uses arp command after a quick ping
                 try:
-                    cheat=subprocess.getoutput("ping -c 1 -t 5 "+entity.address)
-                    mymac=subprocess.getoutput("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'")
+                    cheat = await aio.create_subprocess_shell("ping -c 1 -t 5 "+entity.address,stdout=aio.subprocess.PIPE)
+                    await cheat.wait()
+                    cheat = await aio.create_subprocess_shell("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'",stdout=aio.subprocess.PIPE)
+                    mymac = await cheat.stdout.readline()
+                    mymac = mymac.decode('utf-8').rstrip()
+                    await cheat.wait()
+                    #mymac=subprocess.getoutput("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'")
+                except Exception as e:
+                    #print("oops {}: {}".format(e,e.__traceback__))
+                    mymac=""
+            else:
+                try:
+                    cheat = await aio.create_subprocess_shell("ip -6 neighbor show|grep -w '"+entity.address+"'| awk '{ print $5 }'",stdout=aio.subprocess.PIPE)
+                    mymac = await cheat.stdout.readline()
+                    mymac = mymac.decode('utf-8').rstrip()
+                    await cheat.wait()
                 except:
                     mymac=""
             if mymac == "":
                 #Local?
-                iplist=subprocess.getoutput("ip addr").split("\n")
-                prev=""
-                for x in iplist:
-                    if entity.address in x:
-                        mymac=[ aa for aa in prev.split(" ") if  aa ][1]
-                        break
-                    prev=x
+                try:
+                    for ifc in netifaces.interfaces():
+                        loa = netifaces.ifaddresses(ifc)
+                        for af in loa:
+                            for addr in loa[af]:
+                                if "addr" in addr and addr["addr"] == entity.address:
+                                    mymac=loa[netifaces.AF_LINK][0]["addr"]
+                                    break
+                            if mymac:
+                                break
+                        if mymac:
+                            break
+                except Exception as e:
+                    pass
+
             if mymac == "":
                 self.log.debug(
                     "Could not figure out mac address for service {}".format(entity))
                 return
-            
+
             self.seen_service[ entity.name] = entity
             entity.mac = mymac
             self.sending({"subject": self.target,
@@ -305,20 +475,29 @@ class ScannerBridge(bl.BuddyBridge):
                             "content": {"event": "service found",
                                         "target": self.target,
                                         "value": {"name":entity.name,"address":entity.address,
-                                                  "port":entity.port,"properties":newprop,
-                                                  "type":entity.type, "mac": mymac}}})
-            
+                                                  "port":entity.port,"properties":entity.decoded_properties,
+                                                  "type":entity.type, "mac": entity.mac}}})
+
             if self.config["debug"]:
                 self.log.debug(
                     "Found new service {}".format(entity))
-            
 
-    def unregister(self, entity):
-        pass
+    async def unregister(self, name):
+        if name in self.seen_service:
+            entity = self.seen_service[name]
+            self.sending({"subject": self.target,
+                            "content_type": "event",
+                            "content": {"event": "service gone",
+                                        "target": self.target,
+                                        "value": {"name":entity.name,"address":entity.address,
+                                                  "port":entity.port,
+                                                  "type":entity.type, "mac": entity.mac}}})
+            del(self.seen_service[entity.name])
+
 
 
 aboutstr = """<p>ScannerBuddy is an application scanning the LAN for services published using Avahi/Bonjour. Upon discovery of a new or modified
-service, it will send a "service found" event. The value associated with the event is a dictionary with key "name", "type", "address", "mac", "port" and, 
+service, it will send a "service found" event. The value associated with the event is a dictionary with key "name", "type", "address", "mac", "port" and,
 "properties". It will respond to "known services" commands, content.target should be the type.subtype of the requester. content.value should be
 the type of service requested.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
@@ -333,7 +512,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "addresses": []}
+     "iface": ""}
 
 
 def configure():
@@ -353,8 +532,8 @@ def configure():
     parser.add_argument("-c", "--config", default="/etc/autobuddy/scanner.cfg", type=argparse.FileType('r'),
                         help="Config file to use (default \"/etc/autobuddy/scanner.cfg\")")
 
-    parser.add_argument("-A", "--addresses", action="append", default=[],
-                        help="The adresses of the interfaces to use (default [\"0.0.0.0\"]).")
+    parser.add_argument("-i", "--iface", action="append", default=cfgdefault["iface"],
+                        help="The interfaces to use (default all).")
 
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
                         help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
@@ -395,86 +574,25 @@ def configure():
     scannercfg = {"debug": opts.debug}
     try:
     # if True:
-        if opts.configonly:
-            try:
-                cfgdata = json.load(opts.config)
-                opts.config.close()
-            except:
-                cfgdata = {}
-        else:
+        try:
             cfgdata = json.load(opts.config)
             opts.config.close()
+        except:
+            cfgdata = {}
+            scannerlog.warning("Config file could not be opened.")
 
         # Definition
-        if opts.type != cfgdefault["type"]:
-            scannercfg["type"] = opts.type
-        elif "type" in cfgdata:
-            scannercfg["type"] = cfgdata["type"]
-        else:
-            scannercfg["type"] = opts.type
-        if opts.debug:
-            scannerlog.debug("The type is %s." % scannercfg["type"])
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                scannercfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                scannercfg[attr] = cfgdata[attr]
+            else:
+                scannercfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                scannerlog.debug("The %s is %s." % (attr,scannercfg[attr]))
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            scannercfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            scannercfg["subtype"] = cfgdata["subtype"]
-        else:
-            scannercfg["subtype"] = opts.subtype
-        if opts.debug:
-            scannerlog.debug("The subtype is %s." % scannercfg["subtype"])
 
-        # Controller
-        if opts.host != cfgdefault["host"]:
-            scannercfg["host"] = opts.host
-        elif "host" in cfgdata:
-            scannercfg["host"] = cfgdata["host"]
-        else:
-            scannercfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            scannerlog.debug("The host is %s" % scannercfg["host"])
-
-        if opts.port != cfgdefault["port"]:
-            scannercfg["port"] = opts.port
-        elif "port" in cfgdata:
-            scannercfg["port"] = cfgdata["port"]
-        else:
-            scannercfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            scannerlog.debug("The port is %s" % (scannercfg["port"]))
-
-        # Bluetooth
-        if opts.addresses != cfgdefault["addresses"]:
-            scannercfg["addresses"] = opts.addresses
-        elif "addresses" in cfgdata:
-            scannercfg["addresses"] = cfgdata["addresses"]
-        else:
-            scannercfg["addresses"] = ["0.0.0.0"]
-        if opts.debug:
-            scannerlog.debug(
-                "The addresses list is %s" %
-                (scannercfg["addresses"]))
-
-        # Authentication and encryption
-        if opts.credential != cfgdefault["credential"]:
-            scannercfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            scannercfg["credential"] = cfgdata["credential"]
-        else:
-            scannercfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            scannerlog.debug(
-                "The credential is %s" %
-                scannercfg["credential"])
-
-        if opts.ssl != cfgdefault["ssl"]:
-            scannercfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            scannercfg["ssl"] = cfgdata["ssl"]
-        else:
-            scannercfg["ssl"] = cfgdefault["ssl"]
         if scannercfg["ssl"] and not (os.path.isfile(scannercfg["ssl"] + "/" + CERTFILE)):
             scannerlog.critical("Encryption: Could not find {} .".format(
                 scannercfg["ssl"] + "/" + CERTFILE))
@@ -563,7 +681,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-
-        bridgectl.probe_service.set_result('done')
+        for x in bridgectl.probe_service:
+            x.set_result('done')
+        for x in bridgectl.browsers.values():
+            x.cancel()
+        loop.run_until_complete(bridgectl.zeroconf.close())
         conn.close()
         loop.close()

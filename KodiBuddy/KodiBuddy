@@ -171,17 +171,6 @@ kodi_config = """
             <control name="user" label="User" type="text" length="32" />
             <control name="password" label="Password" type="text" length="32" />
         </controlgroup>
-        <controlgroup type="listmaker"  name="bootdelay" label="Boot Delay">
-            <control name="label" label="Label" type="text" length="16" />
-            <control name="entity" expand="device::mediaplayer::Kodi" label="Kodi Device" type="text" length="16" />
-            <control type="spinner" name="delay" label="How long to boot">
-                <start>10</start>
-                <end>60</end>
-                <increment>5</increment>
-                <postfix>secs</postfix>
-                <default>30</default>
-            </control>
-        </controlgroup>
         <controlgroup type="listmaker"  name="shutdown" label="Shutdown">
             <control name="label" label="Label" type="text" length="16" />
             <control name="entity" expand="device::mediaplayer::Kodi" label="Kodi Device" type="text" length="16" />
@@ -193,11 +182,11 @@ kodi_config = """
     </configuration>
 </buddyui>
 """
-kodi_config_default = {"refresh": 120, "credential":{}, "shutdown":{},"bootdelay":{}}
+kodi_config_default = {"refresh": 120, "credential":{}, "shutdown":{}}
 
 
 class KodiConnection(object):
-    
+
     def __init__(self, loop, ip_addr, port, mac, parent,log):
         self.loop = loop
         self.port = port
@@ -206,7 +195,7 @@ class KodiConnection(object):
         self.parent = parent
         self.transport = None
         self.seq = 0
-        self.goon=True
+        self.goon=5
         self.log = log
         self.task = None
         self.session = None
@@ -219,12 +208,12 @@ class KodiConnection(object):
         self.song_list = None
         self.genre_list = None
         self.activeplayer = 0
-        self.connect_wait = 0
         self.player_repeat = "off"
-        
+
     async def connect(self, user=None, password=None):
         await aio.sleep(5)  #Looks like it is needed on RPi
         while self.goon:
+            self.goon -= 1
             self.log.debug("{}: Trying to connect".format(self.parent.nickname))
             if user:
                 self.session = aiohttp.ClientSession(loop=self.loop,auth=aiohttp.BasicAuth(user,password))
@@ -233,19 +222,14 @@ class KodiConnection(object):
             try:
                 ws = await self.session.ws_connect("ws://"+self.ip_addr+":%d"%self.port+"/jsonrpc")
             except aiohttp.ClientOSError:
-                self.session.close()
-                self.connect_wait=kodi_config_default["refresh"]
-                while self.connect_wait>0:
-                    self.connect_wait-=5
-                    await aio.sleep(5)
+                self.log.debug("Client not there connecting %s"%self.parent.name)
+                await aio.sleep(2)
+                await self.session.close()
                 continue
             except:
                 self.log.debug("Problem connecting %s"%self.parent.name)
-                self.session.close()
-                self.connect_wait=kodi_config_default["refresh"]
-                while self.connect_wait>0:
-                    self.connect_wait-=5
-                    await aio.sleep(5)
+                await self.session.close()
+                await aio.sleep(2)
                 continue
 
             self.transport=ws
@@ -254,19 +238,25 @@ class KodiConnection(object):
             if self.lastalbum == 0 and self.lastmovie == 0:
                 self.update_last()
             while True:
-                msg = await self.transport.receive()
-                if msg.type == aiohttp.WSMsgType.CLOSED:
-                    self.session.close()
-                    break
                 try:
+                    msg = await self.transport.receive()
+                    if msg.type == aiohttp.WSMsgType.CLOSED:
+                        await self.session.close()
+                        break
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         self.process_msg(json.loads(msg.data))
                 except:
-                    self.session.close()
+                    await self.session.close()
                     break
+            #try:
+            await self.transport.close()
             self.transport = None
             self.parent.send_status()
-            
+
+        self.goon=5
+        self.log.debug("Connection gone for %s"%self.parent.name)
+        self.task = None
+
     def update_last(self):
         """Get the last album and the last movie id for random generation"""
         self.send_cmd("AudioLibrary.GetRecentlyAddedAlbums",{"limits": { "start" : 0, "end": 1 },  "properties": ["artist", "genre", "year"]},"lastAlbum")
@@ -274,7 +264,7 @@ class KodiConnection(object):
         self.send_cmd("VideoLibrary.GetRecentlyAddedMovies", {"limits": { "start" : 0, "end": 1 },  "properties": ["title", "genre", "year"]}, "lastMovie")
         self.send_cmd("VideoLibrary.GetRecentlyAddedMusicVideos", {"limits": { "start" : 0, "end": 1 },  "properties": ["title", "genre", "year"]}, "lastMVideo")
         self.send_cmd("Playlist.GetPlaylists", {}, "allPlaylists")
-        
+
     def process_msg(self,msg):
         #print ("Message: {}".format(msg))
         #print ("-"*10)
@@ -320,12 +310,12 @@ class KodiConnection(object):
                         for ptype,pid in self.activeplayer.items():
                             self.send_cmd("Player.GetProperties", {"properties": ["speed"],"playerid":pid},"playerStatus")
                             if ptype == "video":
-                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat}) 
+                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat})
                                 self.send_cmd("Player.GetItem",{ "properties": ["title", "album", "artist", "season", "episode", "duration", "showtitle", "year","thumbnail", "art"], "playerid": pid },"videoInfo")
                             elif ptype == "audio":
-                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat}) 
+                                self.send_cmd("Player.SetRepeat",{ "playerid":pid,"repeat":self.player_repeat})
                                 self.send_cmd("Player.GetItem",{ "properties": ["title", "album", "artist", "duration", "thumbnail", "year"], "playerid": pid },"musicInfo")
-                            
+
                     if msg["id"] == "videoInfo":
                         self.send_movie_info(msg["result"]["item"])
                     if msg["id"] == "musicInfo":
@@ -344,9 +334,9 @@ class KodiConnection(object):
                         self.song_list=None
                     if msg["id"] == "startAudioPlaylist":
                         self.send_cmd("Player.Open", {"item":{"playlistid":self.playlists["audio"]}})
-                        
 
-                        
+
+
                     if isinstance(msg["id"], str):
                         if msg["id"].startswith("playAlbum-"):
                             offset=int(msg["id"].split("-")[-1])
@@ -364,7 +354,7 @@ class KodiConnection(object):
                             myalbum=msg["result"]["albums"][offset]
                             self.send_cmd("Player.Open", {"item":{"albumid":myalbum["albumid"]}})
                             send_music_info(myalbum)
-                            
+
                         if msg["id"].startswith("playSong-"):
                             offset=int(msg["id"].split("-")[-1])
                             if msg["result"]["limits"]["end"] == 0:
@@ -381,7 +371,7 @@ class KodiConnection(object):
                             mysong=msg["result"]["songs"][offset]
                             self.send_cmd("Player.Open", {"item":{"songid":mysong["songid"]}})
                             self.send_music_info(mysong)
-                        
+
                         if msg["id"].startswith("playMovie-"):
                             offset=int(msg["id"].split("-")[-1])
                             if msg["result"]["limits"]["end"] == 0:
@@ -398,7 +388,7 @@ class KodiConnection(object):
                             mymovie=msg["result"]["movies"][offset]
                             self.send_cmd("Player.Open", {"item":{"movieid":mymovie["movieid"]}})
                             self.send_movie_info(mymovie)
-                            
+
                         if msg["id"].startswith("playMVideo-"):
                             offset=int(msg["id"].split("-")[-1])
                             if msg["result"]["limits"]["end"] == 0:
@@ -415,8 +405,8 @@ class KodiConnection(object):
                             mymovie=msg["result"]["musicvideos"][offset]
                             self.send_cmd("Player.Open", {"item":{"musicvideoid":mymovie["musicvideoid"]}})
                             self.send_movie_info(mymovie)
-                            
-                            
+
+
                         if msg["id"].startswith("playRandomAlbum"):
                             length=msg["id"].split("-")[-1]
                             if length == "playRandomAlbum":
@@ -429,7 +419,7 @@ class KodiConnection(object):
                                         self.album_list = [msg["result"]["albumdetails"]["albumid"]]
                                     else:
                                         self.album_list.append(msg["result"]["albumdetails"]["albumid"])
-                                    
+
                                     length-= 1
                                     if length == 0:
                                         self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMyAlbums")
@@ -465,10 +455,10 @@ class KodiConnection(object):
                                             self.album_list += [x["albumid"] for x in loa ]
                                         else:
                                             self.album_list = [ x["albumid"] for x in loa ]
-                                            
+
                                         self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMyAlbums")
                                 self.genre_list = None
-                           
+
                         if msg["id"].startswith("playRandomSong"):
                             length=msg["id"].split("-")[-1]
                             if length == "playRandomSong":
@@ -481,12 +471,12 @@ class KodiConnection(object):
                                         self.song_list = [msg["result"]["songdetails"]["songid"]]
                                     else:
                                         self.song_list.append(msg["result"]["songdetails"]["songid"])
-                                    
+
                                     length-= 1
                                     if length == 0:
                                         self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMySongs")
                                         return
-                                self.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.lastsong),"properties":["title"]}, "playRandomSong-%d"%length) 
+                                self.send_cmd("AudioLibrary.GetSongDetails", {"songid":random.randint(1,self.lastsong),"properties":["title"]}, "playRandomSong-%d"%length)
                             else:
                                 #Must be a list of songs
                                 if msg["result"]["limits"]["end"] == 0:
@@ -517,11 +507,11 @@ class KodiConnection(object):
                                             self.song_list += [ x["songid"] for x in loa ]
                                         else:
                                             self.song_list = [ x["songid"] for x in loa ]
-                                            
+
                                         self.send_cmd("Playlist.Clear", {"playlistid":self.playlists["audio"]},"playMySongs")
                                 self.genre_list = None
-                                
-                    
+
+
                 if "error" in msg:
                     if msg["id"] == "playRandomAlbum":
                         self.send_cmd("Player.Open", {"item":{"albumid":random.randint(1,self.lastalbum)}}, "playRandomAlbum")
@@ -532,7 +522,7 @@ class KodiConnection(object):
                     elif msg["id"] == "playRandomMusicVideo":
                         self.send_cmd("Player.Open", {"item":{"musicvideoid":random.randint(1,self.lastmvideo)}}, "playRandomMovie")
                     elif msg["id"].startswith("playRandomAlbum-"):
-                        self.send_cmd("AudioLibrary.GetAlbumDetails", {"albumid":random.randint(1,self.lastalbum),"properties":["title"]},msg["id"]) 
+                        self.send_cmd("AudioLibrary.GetAlbumDetails", {"albumid":random.randint(1,self.lastalbum),"properties":["title"]},msg["id"])
                     #else:
                     self.log.debug("RPC error in {}".format(msg))
                 else:
@@ -559,7 +549,7 @@ class KodiConnection(object):
                                                     "value": {"remote": {"isplaying": False}}}})
                 if msg["method"]=="Player.OnStop":
                     self.send_clear_info()
-                
+
             if msg["method"] == 'VideoLibrary.OnUpdate':
                 if "type" in msg['params']['data']:
                     if msg['params']['data']['type'] == "movie" and \
@@ -570,16 +560,16 @@ class KodiConnection(object):
                     if msg['params']['data']['type'] == "album" and \
                         msg['params']['data']['id'] > self.lastalbum:
                         self.update_last()
-                
+
         except Exception as e:
             self.log.exception("Error: Problem processing msg from Kodi {} : Comparison failed with value \"{}\".\nTrace: ".format(
                 self.parent.name, msg, exc_info=(type(e),e,e.__traceback__)))
-        
-        
+
+
         if "method" in msg and msg["method"] in ["System.OnQuit", "System.OnRestart"]:
             self.send_clear_info()
             raise Exception
-        
+
     def send_cmd(self,method,param={},myid=None):
         self.log.debug("Send to Kodi: {} {}".format(method,param))
         if not myid:
@@ -587,7 +577,7 @@ class KodiConnection(object):
             myid=self.seq
         if self.transport:
             self.transport.send_json({"jsonrpc": "2.0", "method": method, "params": param, "id": myid})
-    
+
     def set_power(self,val):
         if val == "on":
             macaddress = self.mac
@@ -599,7 +589,7 @@ class KodiConnection(object):
             else:
                 self.log.warning("{} is not a proper MAC Address".format(self.mac))
                 return
-            
+
             # Pad the synchronization stream.
             data = ''.join(['FFFFFFFFFFFF', macaddress * 20])
             send_data = b''
@@ -615,26 +605,21 @@ class KodiConnection(object):
             sock.sendto(send_data, ("<broadcast>", 7))
             sock.close()
             #Request a scan for the service soon
-            sender = self.parent.controller 
-            delay=30
-            for x in sender.kodi_config["bootdelay"]:
-                if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
-                    delay=x["delay"]
-            self.connect_wait=delay #Just in case the thing is already there or has changes IP address
+            sender = self.parent.controller
         else:
             self.send_clear_info()
             method="System.Shutdown"
-            sender = self.parent.controller 
+            sender = self.parent.controller
             for x in sender.kodi_config["shutdown"]:
                 if x["entity"]["bu-cvalue"] == sender.type+"."+self.parent.name:
                     if x["method"]=="quit":
                         method="Application.Quit"
                         break
-                    
+
             self.send_cmd(method)
 
     def send_movie_info(self,mymovie):
-        self.log.debug("Play Movie info {}".format(mymovie)) 
+        self.log.debug("Play Movie info {}".format(mymovie))
         sender = self.parent.controller
         try:
             if not mymovie["title"]:
@@ -650,7 +635,7 @@ class KodiConnection(object):
 
             elif "thumb" in mymovie["art"] and mymovie["art"]["thumb"]:
                 infomsg += "<img  style=\"wfloat: left; width: 80px; padding: 5px;\" alt=\"Poster\" src=\"http://"+auth+self.ip_addr+":8080/image/"+quote(mymovie["art"]["thumb"])+"\" />"
-            
+
             if "type" in mymovie and mymovie["type"]=="episode":
                 infomsg +="<p style=\"margin-left: 10px;\">Playing \""+mymovie["title"]+"\""
                 if "showtitle" in mymovie and mymovie["showtitle"]:
@@ -670,10 +655,10 @@ class KodiConnection(object):
                     infomsg += " by "+",".join(mymovie["artist"])
                     if "album" in mymovie and mymovie["album"]:
                         infomsg += " on "+mymovie["album"]
-                        
+
             else:
                 infomsg +="<p style=\"margin-left: 10px;\">Playing \""+mymovie["title"]+"\""
-            
+
             if mymovie["year"]:
                 infomsg += " (%d)"%mymovie["year"]
             infomsg += "</p>"
@@ -691,7 +676,7 @@ class KodiConnection(object):
 
 
     def send_music_info(self,myalbum):
-        self.log.debug("Play Music info {}".format(myalbum)) 
+        self.log.debug("Play Music info {}".format(myalbum))
         sender = self.parent.controller
         try:
             auth = ""
@@ -705,12 +690,12 @@ class KodiConnection(object):
                 infomsg +="<p style=\"margin-left: 10px;\">Playing \""+myalbum["title"]+"\" on <span style=\"font-weight: bold;\">"+myalbum["album"]+"</span>"
                 if myalbum["artist"]:
                     infomsg += " by "+",".join(myalbum["artist"])
-                
+
                 if myalbum["year"]:
                     infomsg += " (%d)"%myalbum["year"]
                 infomsg += "</p>"
 
-                
+
                 sender.sending({"subject": sender.type,
                     "content_type": "event",
                     "content": {"event": "info",
@@ -732,7 +717,7 @@ class KodiConnection(object):
                                 "." +
                                 self.parent.name,
                         "value": ""}})
-            
+
 
 def kodi_process(self, msg):
     self.controller.log.debug ("Processing {} {} for {}".format(msg["content_type"],msg["content"]["command"],self.nickname))
@@ -756,7 +741,7 @@ def kodi_process(self, msg):
                     else:
                         self.log.warning("{} is not a proper MAC Address"%self.mac)
                         return
-                    
+
                     # Pad the synchronization stream.
                     data = ''.join(['FFFFFFFFFFFF', macaddress * 20])
                     send_data = b''
@@ -773,17 +758,13 @@ def kodi_process(self, msg):
                     sock.close()
                 if msg["content"]["value"] == "on":
                     #Request a scan for the service soon
-                    delay=30
-                    for x in self.controller.kodi_config["bootdelay"]:
-                        if x["entity"]["bu-cvalue"] == self.controller.type+"."+self.name:
-                            delay=x["delay"]
                     self.controller.sending (
                         {"subject": self.controller.config["scanner"],
                         "content_type": "command",
                         "content": {"command": "scan request",
                                     "target": self.controller.config["scanner"],
                                     #"token": self.controller.target,
-                                    "value": {"service": SERVICE, "delay": delay}}})
+                                    "value": {"service": SERVICE}}})
 
             elif msg["content"]["command"] == "status":
                 self.send_status()
@@ -791,7 +772,7 @@ def kodi_process(self, msg):
                     self.conn.send_cmd("Player.GetActivePlayers",{},"activePlayer")
             elif msg["content"]["command"] == "nickname":
                 # print msg
-                
+
                 self.controller.sending (
                     {"subject": "control" + "." + self.name,
                      "content_type": "request",
@@ -801,7 +782,7 @@ def kodi_process(self, msg):
                                  self.name,
                                  #"token": self.controller.target,
                                  "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
-                
+
 
             elif msg["content"]["command"] == "deletion":
                 self.controller.sending(
@@ -810,7 +791,7 @@ def kodi_process(self, msg):
                         "content": {"request": "deletion",
                                     "target": self.controller.type,
                                     "value": self.name}})
-                        
+
             elif msg["content"]["command"] == "remote":
                 rpcval={}
                 rpcmethod=None
@@ -818,7 +799,7 @@ def kodi_process(self, msg):
                     isplaying = msg["content"]["value"]["isplaying"]
                 else:
                     isplaying = False
-                    
+
                 for x,y in msg["content"]["value"].items():
                     rpcval={}
                     rpcmethod=None
@@ -879,7 +860,7 @@ def kodi_process(self, msg):
                 rpcmethod=None
                 allplayers=False
                 cmd=msg["content"]["value"]["bu-cvalue"]
-                
+
                 self.controller.log.debug ("Player command is {}".format(cmd))
                 if cmd == "play":
                     rpcmethod = "Player.PlayPause"
@@ -904,7 +885,7 @@ def kodi_process(self, msg):
                     rpcmethod = "Player.GoTo"
                     allplayers=True
                     rpcval = { "playerid": 0,"to":"previous"}
-                
+
                 if rpcmethod:
                     if self.conn:
                         if allplayers:
@@ -913,7 +894,7 @@ def kodi_process(self, msg):
                                 self.conn.send_cmd(rpcmethod,rpcval)
                         else:
                             self.conn.send_cmd(rpcmethod,rpcval)
-                
+
             elif msg["content"]["command"] == "playalbum":
                 if self.conn:
                     if "repeat" in msg["content"]["value"]:
@@ -971,7 +952,7 @@ def kodi_process(self, msg):
                     else:
                         pid = "playMVideo-%d"%(msg["content"]["value"]["offset"]-1)
                         self.conn.send_cmd("VideoLibrary.GetMusicVideos", {"sort": { "order": "ascending", "method": "year"} ,"filter": {"operator": "is", "field": "title", "value":msg["content"]["value"]["name"] }, "properties": [ "title", "art", "year","artist"], "limits": { "start" : 0, "end": 10 }}, pid)
-                
+
     except Exception as e:
         bridgectl.log.warning(
             "Bloody process problem",
@@ -985,7 +966,7 @@ def kodi_status(self):
     current = self.conn and (
         (self.conn.transport and "on") or "off")
     iconsts = {
-        "bu-fill": (self.conn and 
+        "bu-fill": (self.conn and
                     self.conn.transport and KODIBLUE) or KODITRANS}
     if current:
         self.controller.sending({"subject": self.controller.type,
@@ -1086,6 +1067,11 @@ class KodiBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": kodi_config_default}})
+                self.sending ({"subject": self.config["scanner"],
+                               "content_type": "command",
+                               "content": {"command": "scan request",
+                                           "target": self.config["scanner"],
+                                           "value": {"service": SERVICE}}})
             # if savenew or ("configonly" in self.config and self.config["configonly"]):
                 # self.sending({"subject":"control" + "." + self.subtype,
                                 #"content_type": "request",
@@ -1144,7 +1130,7 @@ class KodiBridge(bl.BuddyBridge):
                         self.pending = self.pending[
                             :bidx] + self.pending[
                                 bidx + 1:]
-                        
+
                         if mediaplayer.name in self.kodi_config["credential"]: #For credential, should be "bu-cvalue"
                             mycred=self.config["credential"][mediaplayer.name]
                             mediaplayer.conn.task = self.loop.create_task(
@@ -1218,14 +1204,18 @@ class KodiBridge(bl.BuddyBridge):
 
     def process_event(self, msg):
         proceed = False
-        if msg["content"]["event"] == "known services" and msg["content"]["target"] == self.target:
-            proceed=True
-            loent = msg["content"]["value"]
+        if msg["content"]["event"] == "new scanner":
+            self.sending (
+                {"subject": self.config["scanner"],
+                "content_type": "command",
+                "content": {"command": "scan request",
+                            "target": self.config["scanner"],
+                            #"token": self.controller.target,
+                            "value": {"service": SERVICE}}})
+
         elif msg["content"]["event"] == "service found" and msg["content"]["value"]["type"] == SERVICE:
-            proceed=True
             loent = [msg["content"]["value"]]
-            
-        if proceed:
+
             for entity in loent:
                 #ename = self.subtype + "-" + entity["mac"].replace(":", "")
                 #found = False
@@ -1234,8 +1224,8 @@ class KodiBridge(bl.BuddyBridge):
                         #found = True
                         #break
                 self.newplayer(entity)
-                    
-            
+
+
     def build(self):
         sess = bl.getSession(self.config["database"])
         self.sending({"subject": "control" + "." + self.target,
@@ -1261,19 +1251,19 @@ class KodiBridge(bl.BuddyBridge):
                                       "value": "online",
                                       "icon status": {"bu-fill": KODITRANS}}})
 
-        self.sending(
-                    {"subject": "scanner" + "." + self.type,
-                        "content_type": "command",
-                        "content": {"command": "known services",
-                                    "target": self.target,
-                                    "value": SERVICE}})
+        #self.sending(
+                    #{"subject": "scanner" + "." + self.type,
+                        #"content_type": "command",
+                        #"content": {"command": "known services",
+                                    #"target": self.target,
+                                    #"value": SERVICE}})
 
-    # 
+
+    #
     def newplayer(self, entity):
         ename = self.subtype + "-" + entity["mac"].replace(":", "")
-        notseen = True
+        seen = False
         for mediaplayer in self.devices:
-
             if ename == mediaplayer.name:
                 if not mediaplayer.conn:
                     mediaplayer.conn = KodiConnection(self.loop,entity["address"], entity["port"], entity["mac"], mediaplayer,self.log)
@@ -1289,11 +1279,13 @@ class KodiBridge(bl.BuddyBridge):
                                                 "icon status": {"bu-fill": KODITRANS }}})
                 else:
                     #Update the IP address and port
-                    mediaplayer.conn.ip_addr=entity["address"]
-                    mediaplayer.conn.port=entity["port"]
-                notseen = False
+                    mediaplayer.conn.ip_addr = entity["address"]
+                    mediaplayer.conn.port = entity["port"]
+
+                seen = mediaplayer
                 break
-        if notseen:
+        if not seen:
+            print("\n\nCreating {}\n\n".format(ename))
             self.pending.append(entity)
             self.sending({"subject": "control" + "." + self.type,
                           "content_type": "request",
@@ -1301,20 +1293,22 @@ class KodiBridge(bl.BuddyBridge):
                                       "target": self.type,
                                       "value": {"name": ename, "nickname": entity["name"], "subtype": self.subtype}}})
         else:
-            if mediaplayer.name in self.kodi_config["credential"]:
-                mycred=self.kodi_config["credential"][mediaplayer.name]
-                #print ("\n\nStarting connection for {} with credential {} {}".format(mediaplayer.nickname,mycred["user"],mycred["password"]))
-                mediaplayer.conn.task = self.loop.create_task(
-                    mediaplayer.conn.connect(myc["user"],myc["password"])
+            self.log.warning("Player {} found with {}.".format(seen.name, seen.conn.task ))
+            if seen.conn.task is None: #Is the connection to Kodi running?
+                if seen.name in self.kodi_config["credential"]:
+                    mycred=self.kodi_config["credential"][seen.name]
+                    #print ("\n\nStarting connection for {} with credential {} {}".format(seen.nickname,mycred["user"],mycred["password"]))
+                    seen.conn.task = self.loop.create_task(
+                        seen.conn.connect(myc["user"],myc["password"])
+                        )
+                else:
+                    #print ("\n\nStarting connection for {} with no credential".format(seen.nickname))
+                    seen.conn.task = self.loop.create_task(
+                        seen.conn.connect()
                     )
-            else:
-                #print ("\n\nStarting connection for {} with no credential".format(mediaplayer.nickname))
-                mediaplayer.conn.task = self.loop.create_task(
-                    mediaplayer.conn.connect()
-                )
 
 
-aboutstr = """<p>KodiBuddy is a bridge talking to <a href="http://www.kodi.com">Kodi</a> mediaplayers. 
+aboutstr = """<p>KodiBuddy is a bridge talking to <a href="http://www.kodi.com">Kodi</a> mediaplayers.
 <p>The icon used to represent Kodi devices has been lifted and adapted from Kodi.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
@@ -1350,7 +1344,7 @@ cfgdefault = {
      "host": "localhost",
      "port": 8745,
      "credential": "",
-     "scanner": "scanner.ipservices",
+     "scanner": "scanner",
      "ssl": ""}
 
 
@@ -1442,7 +1436,7 @@ def configure():
             kodicfg["credential"] = cfgdefault["credential"]
         if opts.debug:
             mediaplayerlog.debug("The credential is %s" % kodicfg["credential"])
-            
+
         if opts.scanner != cfgdefault["scanner"]:
             kodicfg["scanner"] = opts.scanner
         elif "scanner" in cfgdata:
@@ -1549,12 +1543,12 @@ if __name__ == "__main__":
     finally:
         for x in bridgectl.devices:
             if x.conn:
-                x.conn.goon=False
-                try:
-                    if x.conn.task:
-                        x.conn.session.close()
-                        x.conn.task.cancel()
-                except:
-                    pass
+                x.conn.goon=0
+                #try:
+                if x.conn.task:
+                    x.conn.session.close()
+                    x.conn.task.cancel()
+                #except:
+                    #pass
         conn.close()
         loop.close()
