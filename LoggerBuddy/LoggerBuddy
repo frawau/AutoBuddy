@@ -358,7 +358,7 @@ class LoggerBridge(bl.BuddyBridge):
         msgentity = msg["content"]["target"].split(".")[-1]
         for logdef in self.logger_config["eventlog"]:
             if msg["content"]["event"] == logdef["event"]:
-                if logdef["entity"]["bu-cvalue"] != "" and not msgentity == logdef["entity"]["bu-cvalue"] and not msg["content"]["target"].startswith(logdef["entity"]["bu-cvalue"]):
+                if logdef["entity"]["bu-cvalue"] and not msgentity == logdef["entity"]["bu-cvalue"] and not msg["content"]["target"].startswith(logdef["entity"]["bu-cvalue"]):
                     continue
                 #We got a live one
                 lov=logdef["evalue"].split("|")[0].split("::")
