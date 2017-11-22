@@ -43,10 +43,6 @@ from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 from io import StringIO
 
-UPNP_PORT = 1900
-UPNP_ADDR = "239.255.255.250"
-UPNP6_ADDR = "ff05::c"
-
 
 SUBTYPE = "scanner"
 __version__ = "0.10"
@@ -84,107 +80,6 @@ class MyService(object):
             info.address=socket.inet_ntoa(pack('>L',unpack('>L',info.address)[0]))
             aio.ensure_future(bridgectl.register(info),loop=bridgectl.loop)
 
-
-class upnp_info(object):
-    def __init__(self):
-        self.name = None
-        self.type = None
-        self.port = None
-        self.address = None
-        self.mac = None
-        self.properties = {}
-
-class UpnpDiscovery:
-    def __init__(self, loop,addr):
-        self.loop = loop
-        self.transport = None
-        self.addr=addr
-
-    def connection_made(self, transport):
-        self.transport = transport
-        sock = self.transport.get_extra_info('socket')
-        sock.settimeout(3)
-        addrinfo = socket.getaddrinfo(self.addr, None)[0]
-        ttl = pack('@i', 1)
-        if addrinfo[0] == socket.AF_INET: # IPv4
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
-        else:
-            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, ttl)
-        request = '\r\n'.join(("M-SEARCH * HTTP/1.1",
-                               "HOST:{}:{}",
-                               "ST:upnp:rootdevice",
-                               "MX:2",
-                               'MAN:"ssdp:discover"',
-                               "", "")).format(self.addr,UPNP_PORT)
-        self.transport.sendto(request.encode(), (self.addr,UPNP_PORT))
-        self.loop.call_later(3,self.timeme)
-
-
-    def datagram_received(self, data, addr):
-        info = upnp_info()
-        info.address = addr[0]
-        info.port = addr[1]
-        loc=None
-        for x in data.decode("ascii").split("\r\n"):
-            if x.upper().startswith("LOCATION:"):
-                pat=x.split(":")[0]
-                loc=x.replace(pat+":","").strip()
-        if loc:
-            loc = urlparse(loc)
-            if loc.port:
-                info.port=loc.port
-            info.properties["location"]=loc.geturl()
-            aio.ensure_future(self.scpd_parse(info,loc),loop=bridgectl.loop)
-        # Don't close the socket as we might get multiple responses.
-
-    async def scpd_parse(self, tinfo, loc):
-        """Retrieve the XML info from the given location"""
-        global bridgectl
-        info = upnp_info()
-        info.address = tinfo.address
-        info.port = tinfo.port
-        for x,y in tinfo.properties.items():
-            info.properties[x]=y
-        xmldoc=None
-        try:
-            async with aioh.ClientSession(loop=self.loop) as session:
-                with aioh.Timeout(10, loop=session.loop):
-                    async with session.get(loc.geturl()) as response:
-                        xmldoc = await response.text()
-        except Exception as e:
-            bridgectl.log.critical("Ooops, failed to retrieve {}".format(loc.geturl()),
-                exc_info=(type(e),
-                      e,
-                      e.__traceback__))
-            return
-        #try:
-        it = ET.iterparse(StringIO(xmldoc))
-        for _, el in it:
-            if '}' in el.tag:
-                el.tag = el.tag.split('}', 1)[1]  # strip all namespaces
-
-        root = it.root
-        try:
-            info.type = root.find("device/deviceType").text
-        except:
-            pass
-        try:
-            info.name = root.find("device/friendlyName").text
-        except:
-            pass
-
-        aio.ensure_future(bridgectl.register(info),loop=self.loop)
-
-
-    def error_received(self, exc):
-        pass
-        #print('Error received:', exc)
-
-    def connection_lost(self, exc):
-        pass
-
-    def timeme(self):
-        self.transport.close()
 
 
 class ScannerBridge(bl.BuddyBridge):
@@ -378,16 +273,6 @@ class ScannerBridge(bl.BuddyBridge):
         await aio.sleep(2)
         # Here we actually start the probe
         while True:
-            for maddr in [UPNP_ADDR,UPNP6_ADDR]:
-                addrinfo = socket.getaddrinfo(maddr, None)[0]
-                sock = socket.socket(addrinfo[0], socket.SOCK_DGRAM)
-                connect = self.loop.create_datagram_endpoint(
-                    lambda: UpnpDiscovery(self.loop,maddr),
-                    sock=sock
-                )
-                x = self.loop.create_task(connect)
-                await aio.sleep(1)
-            #Get the list of serivces
             try:
                 los=await ZeroconfServiceTypes.find(self.zeroconf);
             except:

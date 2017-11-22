@@ -1,0 +1,686 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for WeMo sensores
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import logging
+import os
+import ssl
+import buddylib as bl
+import asyncio as aio
+import datetime as dt
+from aioouimeaux.wemo import WeMo
+from functools import partial
+import random
+import string
+
+SUBTYPE = "wemosensor"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
+
+
+def intround(x):
+    return int(round(x))
+
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+wemo_commands = """
+"""
+
+wemo_config = """
+"""
+wemo_config_default = {
+    "colour": {
+        "hue": 102,
+         "saturation": 163,
+         "value": 211}}
+
+# coammands must be defined after the config has been read. See below
+wemo_module_commands = {}
+# wemo_module_commands={"scan":{"subject":"sensor.wemo","value":{}}}
+
+def animname():
+    res = ""
+    for x in range(4):
+        res += random.choice(string.ascii_letters)
+    return res
+
+
+def cssColour():
+
+    return "#73d34c"
+
+
+def wemo_process(self, msg):
+    """WeMo is a one way communication device"""
+    if msg["content"]["command"] == "nickname":
+        # print msg
+        self.nickname = msg["content"]["value"]
+        self.controller.sending(
+            {"subject": "control" + "." + self.controller.type,
+                "content_type": "request",
+                "content": {"request": "nickname",
+                            "target": self.controller.type + "." + self.name,
+                            #"token": self.controller.target,
+                            "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+    elif msg["content"]["command"] == "status":
+        # Not gone the way of the dodo
+        # try:
+        self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "status",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "icon status":
+                                                 {"bu-radar1": {"fill":"black", "opacity":"1"},
+                                                  "bu-radar2": {"fill":cssColour(), "opacity":"0"},
+                                                  "bu-not-present": {
+                                              "opacity": 0}},
+                                             "value": {}}})
+        # except: #Most probably is known but we lost pairing
+            # pass
+    elif msg["content"]["command"] == "deletion":
+        self.controller.sending(
+            {"subject": "control" + "." + self.controller.type,
+                "content_type": "request",
+                "content": {"request": "deletion",
+                            "target": self.controller.type,
+                            "value": self.name}})
+
+
+    return None
+
+
+
+def got_wemo(device):
+    """Register a wemo detected by the wemo environment"""
+    bridgectl.register(device)
+    device.register_callback("statechange", bridgectl.status_changed)
+
+
+# Hop we go....
+bl.sensor._process = wemo_process
+
+
+class WeMoBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of wemo
+    It will report any new bulb
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(WeMoBridge, self).__init__(loop, future, config, log)
+        self.wemo_env = None
+        self.wemo_config = wemo_config_default
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    wemo_config_default[k] = v
+
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "value": bl.encrypt(wemo_config_default, self.config["buddykey"])}})
+        else:
+            for awemo in self.devices:
+                awemo.process(msg)
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            newconfig = {}
+            fromconfig = []
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.wemo_config[x] = storedconfig[x]
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"value":bl.encrypt(wemo_config_default,self.config["buddykey"])}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [wemo_config, wemo_config_default]}}})
+                self.sending({"subject": self.target,
+                              "content_type": "event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": wemo_config_default}})
+                # Now update all the wemo present
+                for wemo in self.devices:
+                    if wemo.present:
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  wemo.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-not-present": {"opacity": 0}}}})
+
+        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            if msg["content"]["configuration"]:
+                try:
+                    storedprop = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored is {}".format(storedprop))
+                except:
+                    storedprop = {}
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored cannot be decrypted.")
+                for k, v in storedprop.items():
+                    wemo_config_default[k] = v
+
+            if not(msg["content"]["configuration"] and storedprop):
+                # First time around... was never saved that property.. let's do
+                # it
+                self.sending({"subject": "control" + "." + self.type,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.subtype,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(wemo_config_default, self.config["buddykey"])}})
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                sensor = sess.query(bl.sensor).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                sensor.state = 0
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          sensor.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": sensor.name, "nickname": sensor.nickname}}})
+                bidx = 0
+                notseen = True
+                for b in self.pending:
+                    if b.buddyname == sensor.name:
+                        sensor.present = True
+                        sensor.conn = b
+                        sensor.controller = self
+                        self.devices.append(sensor)
+                        self.pending = self.pending[
+                            :bidx] + self.pending[
+                                bidx + 1:]
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  sensor.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-radar1": {"fill": "black","opacity":"1"},
+                                                                  "bu-radar2": {"fill": cssColour(),"opacity":"0"},
+                                                                  "bu-not-present": {"opacity": 0}}}})
+
+                        notseen = False
+                        break
+                    bidx += 1
+                if notseen:
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              sensor.name,
+                                              "value": "offline",
+                                              "icon status": {"bu-radar1": {"fill": "black","opacity":"1"},
+                                                              "bu-radar2": {"fill": cssColour(),"opacity":"0"},
+                                                              "bu-not-present": {"opacity": 1}}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for sensor in self.devices:
+                        if sensor.name == msg["subject"].split(".")[-1]:
+                            sensor.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      sensor.name,
+                                                      "value": sensor.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for sensor in self.devices:
+                        if sensor.name == msg["subject"].split(".")[-1]:
+                            self.wemo_env.device_gone(sensor.conn)
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      sensor.name,
+                                                      "value": sensor.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+    def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": wemo_commands}}})
+
+        self.sending({"subject": self.target,
+                      "content_type": "event",
+                      "content": {"event": "config updated",
+                                  "target": self.target,
+                                  "value": wemo_config_default}})
+        # No wemo is present yet
+        self.wemo_env = WeMo(callback=got_wemo,types=["Motion"])
+        self.wemo_env.start()
+
+
+    def register(self, awemo):
+        awemo.buddyname = self.subtype + "-" + awemo.serialnumber
+        notseen = True
+        try:
+            sess = bl.getSession(self.config["database"])
+            sensor = sess.query(bl.sensor).filter_by(name=awemo.buddyname).one()
+            sensor.present = False
+            sensor.state = 0
+            self.devices.append(sensor)
+        except:
+            pass
+
+        for wemo in self.devices:
+            ispresent = False
+
+            if awemo.buddyname == wemo.name:
+                wemo.conn = awemo
+                wemo.controller = self
+                ispresent = True
+                if ispresent != wemo.present:
+                    wemo.present = ispresent
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              wemo.name,
+                                              "value":
+                                              ispresent and "online" or "offline",
+                                              "icon status": {"bu-not-present": {"opacity": (not ispresent and 1) or 0}}}})
+                notseen = False
+                break
+        if notseen:
+            self.pending.append(awemo)
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                          # Here we need the type
+                                      #"token": self.target,
+                                      "value": {"name": awemo.buddyname, "nickname": awemo.name, "subtype": self.subtype}}})
+
+    def unregister(self, awemo):
+        if awemo in self.pending:
+            self.pending.remove(awemo)
+        else:
+            for sensor in self.devices:
+                try:
+                    if sensor.name == awemo.buddyname:
+                        sensor.conn = None
+                        sensor.present = False
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  sensor.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                except:
+                    pass
+
+    def status_changed(self,device):
+        for sensor in self.devices:
+            if sensor.name == device.buddyname:
+                if sensor.state != device.get_state():
+                    sensor.state = device.get_state()
+                    self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "measurement",
+                                            "target": self.type +
+                                            "." +
+                                            sensor.name,
+                                            "timestamp": str(dt.datetime.now().replace(microsecond=0)),
+                                            "value": {"motion":sensor.state and "on" or "off"}}})
+                    if sensor.state:
+                        prefix = animname()
+                        iconsts = {"bu-radar1": {"opacity": "0.5","fill":cssColour()},
+                                   "bu-radar2": {"opacity": "0","fill":cssColour()},
+                                   "bu-not-present": {"opacity": 0}}
+                        anim = "@keyframes " + prefix + sensor.name + \
+                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-webkit-keyframes " + prefix + sensor.name + \
+                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-moz-keyframes " + prefix + sensor.name + \
+                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-o-keyframes " + prefix + sensor.name + \
+                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
+                        #anim += "@keyframes " + prefix + sensor.name + "bis" +\
+                            #" {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
+                        #anim += "\n@-webkit-keyframes " + prefix + sensor.name + "bis"  + \
+                            #" {  0% ,50%{ opacity: 0;}  100% { opacity: 1;}}"
+                        #anim += "\n@-moz-keyframes " + prefix + sensor.name + "bis"  + \
+                            #" {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
+                        #anim += "\n@-o-keyframes " + prefix + sensor.name + "bis"  + \
+                            #" {  0%,50$ { opacity: 0;}  100% { opacity: 1;}}"
+
+                        anim += "\n.run-animation-" + sensor.name + \
+                            " { animation-name: " + prefix + sensor.name + \
+                                "; animation-duration: 1s; animation-iteration-count: infinite; }"
+                        iconsts["animation"] = anim
+                        self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.type +
+                                                "." +
+                                                sensor.name,
+                                                "icon status":iconsts,
+                                                    "value": {}}})
+                    else:
+                        self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.type +
+                                                "." +
+                                                sensor.name,
+                                                "icon status":
+                                                    {"bu-radar1": {"fill": "black", "opacity":"1"},
+                                                    "bu-radar2": {"fill": cssColour(), "opacity":"0"},
+                                                    "bu-not-present": {
+                                                "opacity": 0}},
+                                                    "value": {}}})
+                break
+
+aboutstr = """<p>WeMoBuddy is a set of bridges talking to <a href="http://www.wemo.com/">Belkin's WeMo device</a>. WeMo devices will be automatically
+detected. The icon used is based on one made by Freepik from www.flaticon.com </p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+
+<polyline class="bu-fill" fill="none" stroke="black"
+    points="20,250 70,250 120,400 170,100 220,250 270,250" stroke-width="30px"/>
+<polyline class="bu-fill" fill="black" stroke="none"
+          points="155,98 165,30 185,98" />
+<polyline class="bu-fill" fill="black" stroke="none"
+          points="104,398 125,470 135.2,398" />
+<circle class="bu-fill" fill="black" stroke="none"  cx="310" cy="250" r="50"/>
+<g stroke="none" fill="black" class="bu-fill" >
+<path class="bu-radar1" d="
+M 310 135
+A 115 115 0 0 1 310 365
+L 310 335
+A 85 85 0 0 0 310 165
+Z" fill="black"/>
+<path  class="bu-radar2" d="
+M 310 75
+A 175 175 0 0 1 310 425
+L 310 395
+A 145 145 0 0 0 310 105
+Z" fill="transparent"/>
+</g>
+</svg>
+"""
+
+cfgdefault = {
+    "type": "sensor",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": ""}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Track wemo buttons..")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/wemo.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/wemo.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    wemolog = logging.getLogger('')
+    wemocfg = {"debug": opts.debug}
+    try:
+    # if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except:
+            cfgdata = {}
+            wemolog.warning("Config file could not be opened.")
+
+            # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                wemocfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                wemocfg[attr] = cfgdata[attr]
+            else:
+                wemocfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                wemolog.debug("The %s is %s." % (attr,wemocfg[attr]))
+
+        if wemocfg["ssl"] and not (os.path.isfile(wemocfg["ssl"] + "/" + CERTFILE)):
+            wemolog.critical("Encryption: Could not find {} .".format(
+                wemocfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+
+        if opts.debug:
+            if wemocfg["ssl"]:
+                wemolog.debug(
+                    "The ssl certificates can be found in %s" %
+                    wemocfg["ssl"])
+            else:
+                wemolog.debug("The connection is not encrypted")
+
+        if opts.configonly:
+
+            if "buddykey" not in wemocfg:
+                if opts.debug:
+                    wemolog.debug("Generating random key")
+                wemocfg["buddykey"] = bl.keygen()
+            try:
+                del(wemocfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(wemocfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        wemolog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (wemolog, wemocfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(WeMoBridge,
+                loop,
+                connFuture,
+                config,
+                log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"WeMoBuddy": aboutstr},
+         "display": {config["subtype"]: iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+
+        bridgectl.wemo_env.stop()
+        conn.close()
+        loop.run_until_complete(aio.sleep(1))
+        loop.close()
