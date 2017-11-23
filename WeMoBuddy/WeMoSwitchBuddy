@@ -114,7 +114,7 @@ def wemo_process(self, msg):
         if msg["content"]["value"] ["power"]=="on" and self.state != 1:
             self.conn.on()
             dosend = True
-        else:
+        elif msg["content"]["value"] ["power"]=="off" and self.state == 1:
             self.conn.off()
             dosend = True
         if dosend:

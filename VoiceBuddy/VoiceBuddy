@@ -501,6 +501,18 @@ class VoiceBridge(bl.BuddyBridge):
                                             "config name": self.subtype+"-"+self.config["localname"],
                                             "value": bl.encrypt(self.newconfig, self.config["buddykey"])}})
 
+        elif msg["content"]["command"] == "status":
+            for voicedev in self.devices:
+                self.sending({"subject": self.type,
+                                "content_type": "event",
+                                "content": {"event": "status",
+                                            "target": self.type +
+                                            "." +
+                                            voicedev.name,
+                                            "icon status":
+                                                {"bu-not-present": {"opacity": 0},
+                                                 "bu-activated": {"fill": "#000000"}},
+                                             "value": {"viewspeech":voicedev.view_speech and "on" or "off"}}})
         else:
             for voicedev in self.devices:
                 voicedev.process(msg)
@@ -551,9 +563,9 @@ class VoiceBridge(bl.BuddyBridge):
                                             "." +
                                             voicedev.name,
                                             "icon status":
-                                                {"bu-activated": {
-                                                "fill": "#000000"}},
-                                                "value": {"viewspeech":voicedev.view_speech and "on" or "off"}}})
+                                                {"bu-not-present": {"opacity": 0},
+                                                 "bu-activated": {"fill": "#000000"}},
+                                             "value": {"viewspeech":voicedev.view_speech and "on" or "off"}}})
         self.reseting_icon = None
 
     async def decode_voice(self):
@@ -621,8 +633,8 @@ class VoiceBridge(bl.BuddyBridge):
                                                     "." +
                                                     voicedev.name,
                                                     "icon status":
-                                                        {"bu-activated": {
-                                                        "fill": FEEDBACKCOLOUR}},
+                                                        {"bu-not-present": {"opacity": 0},
+                                                         "bu-activated": {"fill": FEEDBACKCOLOUR}},
                                                     "value": {}}})
                         self.reseting_icon = self.loop.create_task(self.reset_icon())
             else:

@@ -616,15 +616,23 @@ q0 145 81 275q6 9 62.5 90.5t101 151t99.5 178t83 201.5q9 30 34 47t51 17t51.5 -17t
 <g transform="scale(2.7,2.7)">
 <polyline class="bu-fill" fill="none" stroke="black"
     points="20,250 70,250 120,400 170,100 220,250 270,250" stroke-width="30px"/>
+<polyline class="bu-fill" fill="black" stroke="none"
+          points="155,98 165,30 185,98" />
+<polyline class="bu-fill" fill="black" stroke="none"
+          points="104,398 125,470 135.2,398" />
 <circle class="bu-fill"  cx="310" cy="250" r="50"/>
-<g stroke="none" fill="black" >
-<path d="
+<path class="bu-radar1" d="
 M 310 135
 A 115 115 0 0 1 310 365
 L 310 335
 A 85 85 0 0 0 310 165
-L 310 135
-Z"/>
+Z" fill="black"/>
+<path  class="bu-radar2" d="
+M 310 75
+A 175 175 0 0 1 310 425
+L 310 395
+A 145 145 0 0 0 310 105
+Z" fill="transparent"/>
 </g></g></g>
 </svg>
 """
