@@ -47,11 +47,10 @@ def intround(x):
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
-wemo_commands = """
-"""
+wemo_commands = ""
 
-wemo_config = """
-"""
+wemo_config = ""
+
 wemo_config_default = {
     "colour": {
         "hue": 102,

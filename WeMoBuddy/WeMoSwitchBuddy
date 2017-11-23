@@ -57,8 +57,7 @@ wemo_commands = """
 </buddyui>
 """
 
-wemo_config = """
-"""
+wemo_config = ""
 wemo_config_default = {
     "colour": {
         "hue": 102,

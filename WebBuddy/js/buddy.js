@@ -475,18 +475,22 @@ function bu_parse_xml(txt) {
                 var cnlist=[];
                 var clist={};
                 $.each( mylist, function (idx,val) {
-                    if (val[0]!=ctype) {
+                    if (val[0]!=ctype || val[1]!=cstype) {
                         ctype=val[0];
                         cstype=val[1];
                         cnlist=[];
-                        clist={}
-                        cxml=$( jQuery.parseXML(buddy.functions[ctype][cstype])).find( "command" );
-                        $.each(cxml.children(),function(idx,part) {
-                            if ( $(part).attr("rteffect") == undefined || $(part).attr("rteffect") >= 0 ) {
-                                cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
-                                clist[$(part).attr("name")]=part.outerHTML;
-                            }
-                        });
+                        clist={};
+                        try { // For those empty strings
+                            cxml=$( jQuery.parseXML(buddy.functions[ctype][cstype])).find( "command" );
+                            $.each(cxml.children(),function(idx,part) {
+                                if ( $(part).attr("rteffect") == undefined || $(part).attr("rteffect") >= 0 ) {
+                                    cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
+                                    clist[$(part).attr("name")]=part.outerHTML;
+                                }
+                            });
+                        }
+                        catch (err) {
+                        };
                     }
                     if (options == undefined || !options.includes("simplelist")) {
                         thisexpand+="<item value=\""+ctype+"."+val[3]+"\" label=\""+val[2]+"\" >";
