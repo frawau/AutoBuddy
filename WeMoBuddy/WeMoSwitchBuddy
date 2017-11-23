@@ -382,6 +382,7 @@ class WeMoBridge(bl.BuddyBridge):
                       "content": {"event": "config updated",
                                   "target": self.target,
                                   "value": wemo_config_default}})
+        self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
         # No wemo is present yet
         self.wemo_env = WeMo(callback=got_wemo,types=["Switch"])
         self.wemo_env.start()
@@ -641,7 +642,7 @@ if __name__ == "__main__":
     loop.call_soon(
         bridgectl.configrequest,
         {"about": {"WeMoBuddy": aboutstr},
-         "display": {config["subtype"]: iconstr}})
+         "display": {config["type"]:{config["subtype"]: iconstr}}})
 
     try:
         loop.run_until_complete(connFuture)

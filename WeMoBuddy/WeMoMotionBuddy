@@ -37,7 +37,7 @@ from functools import partial
 import random
 import string
 
-SUBTYPE = "wemosensor"
+SUBTYPE = "wemo"
 CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
@@ -370,6 +370,7 @@ class WeMoBridge(bl.BuddyBridge):
                       "content": {"event": "config updated",
                                   "target": self.target,
                                   "value": wemo_config_default}})
+        self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
         # No wemo is present yet
         self.wemo_env = WeMo(callback=got_wemo,types=["Motion"])
         self.wemo_env.start()
@@ -452,30 +453,33 @@ class WeMoBridge(bl.BuddyBridge):
                                             "value": {"motion":sensor.state and "on" or "off"}}})
                     if sensor.state:
                         prefix = animname()
-                        iconsts = {"bu-radar1": {"opacity": "0.5","fill":cssColour()},
-                                   "bu-radar2": {"opacity": "0","fill":cssColour()},
-                                   "bu-not-present": {"opacity": 0}}
-                        anim = "@keyframes " + prefix + sensor.name + \
-                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
-                        anim += "\n@-webkit-keyframes " + prefix + sensor.name + \
-                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
-                        anim += "\n@-moz-keyframes " + prefix + sensor.name + \
-                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
-                        anim += "\n@-o-keyframes " + prefix + sensor.name + \
-                            " {  0% { opacity: 0.5;}  50%,100% { opacity: 1;}}"
-                        #anim += "@keyframes " + prefix + sensor.name + "bis" +\
-                            #" {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
-                        #anim += "\n@-webkit-keyframes " + prefix + sensor.name + "bis"  + \
-                            #" {  0% ,50%{ opacity: 0;}  100% { opacity: 1;}}"
-                        #anim += "\n@-moz-keyframes " + prefix + sensor.name + "bis"  + \
-                            #" {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
-                        #anim += "\n@-o-keyframes " + prefix + sensor.name + "bis"  + \
-                            #" {  0%,50$ { opacity: 0;}  100% { opacity: 1;}}"
+                        iconsts = {"bu-radar1": {"opacity": "0.1","fill":cssColour()},
+                                   "bu-radar2": {"opacity": "0","fill":cssColour()}}
+                        anim = "@keyframes " + prefix + sensor.name + "-bu-radar1" +\
+                            " {  0% { opacity: 0.1;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-webkit-keyframes " + prefix + sensor.name +  "-bu-radar1" +\
+                            " {  0% { opacity: 0.1;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-moz-keyframes " + prefix + sensor.name +  "-bu-radar1" +\
+                            " {  0% { opacity: 0.1;}  50%,100% { opacity: 1;}}"
+                        anim += "\n@-o-keyframes " + prefix + sensor.name +  "-bu-radar1" +\
+                            " {  0% { opacity: 0.1;}  50%,100% { opacity: 1;}}"
+                        anim += "@keyframes " + prefix + sensor.name + "-bu-radar2" +\
+                            " {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
+                        anim += "\n@-webkit-keyframes " + prefix + sensor.name + "bu-radar2"  + \
+                            " {  0% ,50%{ opacity: 0;}  100% { opacity: 1;}}"
+                        anim += "\n@-moz-keyframes " + prefix + sensor.name + "bu-radar2"  + \
+                            " {  0%,50% { opacity: 0;}  100% { opacity: 1;}}"
+                        anim += "\n@-o-keyframes " + prefix + sensor.name + "bu-radar2"  + \
+                            " {  0%,50$ { opacity: 0;}  100% { opacity: 1;}}"
 
-                        anim += "\n.run-animation-" + sensor.name + \
-                            " { animation-name: " + prefix + sensor.name + \
+                        anim += "\n.run-animation-" + sensor.name + "-bu-radar1" +\
+                            " { animation-name: " + prefix + sensor.name + "-bu-radar1" +\
+                                "; animation-duration: 1s; animation-iteration-count: infinite; }"
+                        anim += "\n.run-animation-" + sensor.name + "-bu-radar2" +\
+                            " { animation-name: " + prefix + sensor.name + "-bu-radar2" +\
                                 "; animation-duration: 1s; animation-iteration-count: infinite; }"
                         iconsts["animation"] = anim
+                        iconsts["multipart"] = True
                         self.sending({"subject": self.type,
                                     "content_type": "event",
                                     "content": {"event": "status",
@@ -494,8 +498,8 @@ class WeMoBridge(bl.BuddyBridge):
                                                 "icon status":
                                                     {"bu-radar1": {"fill": "black", "opacity":"1"},
                                                     "bu-radar2": {"fill": cssColour(), "opacity":"0"},
-                                                    "bu-not-present": {
-                                                "opacity": 0}},
+                                                    "bu-not-present": {"opacity": 0},
+                                                    "multipart":True},
                                                     "value": {}}})
                 break
 
@@ -672,7 +676,7 @@ if __name__ == "__main__":
     loop.call_soon(
         bridgectl.configrequest,
         {"about": {"WeMoBuddy": aboutstr},
-         "display": {config["subtype"]: iconstr}})
+         "display": {config["type"]:{config["subtype"]: iconstr}}})
 
     try:
         loop.run_until_complete(connFuture)

@@ -1,19 +1,19 @@
 /*!
  * AutoBuddy JavaScript Library v0.1
- * 
+ *
 
  * Copyright 2015 François Wautier
  * Released under the MIT license
  *
  * Date: 2015-08-16
- *       2016-12-05   Updated to reflect the changes in message structure. 
+ *       2016-12-05   Updated to reflect the changes in message structure.
  *       2017-01      Updated to use Buddyguilib and added "icon status" support
  *       2017-02      Lots of changes. Support for configuration added. Cleaned naming
  *       2017-07      Support for graphs added.
- ^                    
+ ^
 */
 
-var colourSchemes = [340,300,270,220] //hue 
+var colourSchemes = [340,300,270,220] //hue
 //var maxchild = 12;
 var childstep = 8;
 var zoneById={};
@@ -42,7 +42,7 @@ String.prototype.repeat = function(count) {
 
 function generate_bg_class() {
     var cssstr = "<style>\n.bu-layer-colour-0-0 { border-bottom-color: hsl(11,80%,60%); border-right-color: hsl(11,80%,60%);}\n";
-    
+
     for (var i=0; i < colourSchemes.length; i++) {
         var hue=colourSchemes[i];
         var sat=80;
@@ -97,20 +97,20 @@ function get_cookie(key) {
     var keyValue = document.cookie.match('(^|;) ?' + key + '=([^;]*)(;|$)');
     return keyValue ? keyValue[2] : null;
 }
- 
+
 function logout() {
     document.cookie = "buddyuser=; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     document.cookie = "buddypass=; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
     location.reload()
 }
- 
+
 function show_about () {
     var msg="<ul class=\"nav nav-tabs\">"
     var tabmsg = "<div id=\"about-tab-content\" class=\"tab-content\">";
     var active = " active";
     var haslic = false;
     var keylist = [];
-    
+
     $.each(abouttext, function(key,val) {
         if (key=="License") {
             haslic=true;
@@ -134,7 +134,7 @@ function show_about () {
         active="";
     })
     msg+="</ul>"
-                        
+
     bootbox.dialog({
         title: "<img src=\"/images/AutoBuddy-logo.svg\" width=\"30\" height=\"30\"/> About AutoBuddy <span class=\"pull-right bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</span>",
         message:msg+tabmsg,
@@ -157,7 +157,7 @@ function change_password () {
     msg+="<div class=\"form-group\"><label for=\"npasswd\">New Password</label><input class=\"form-control\" type=\"password\" name=\"mewPassword\" id=\"npasswd\" />"
     msg+="<label for=\"vpasswd\">Verify</label><input class=\"form-control\" type=\"password\" name=\"verPassword\" id=\"vpasswd\" /></div>"
     msg+="</form>"
-                        
+
     bootbox.dialog({
         title: "Change Password",
         message:msg,
@@ -192,7 +192,7 @@ function change_password () {
                         $("#npasswd").closest(".form-group").append($("<p/>", {class: "help-block", html:"Passwords do not match"}));
                         $("#npasswd").closest(".form-group").addClass("has-warning");
                         goon=false;
-                    } else { 
+                    } else {
                         if ( $("#npasswd").val().length < 8) {
                             if ( $("#npasswd").siblings(".help-block").length != 0 ) {
                                 $("#npasswd").siblings(".help-block").remove();
@@ -205,11 +205,11 @@ function change_password () {
                             $("#npasswd").siblings(".help-block").remove();
                         }
                     }
-                    
+
                     if (goon) {
                         var token = buddy.send_request("change password","control.users", buddy.subject,{"user":buddy.user,"password":buddy.pass,"new password":$("#npasswd").val()},["Password could not be changed",{"new password":$("#npasswd").val()}])
                         buddy.tokento[token]=setTimeout($.proxy(buddy.err_handle_property, buddy, token, "Password Change"), buddy.timeout);
-                        
+
                     } else {
                         return false;
                     }
@@ -218,10 +218,10 @@ function change_password () {
         }
     });
 }
- 
- 
+
+
 function manage_users () {
-    
+
     var msg="<form class=\"form-mng-user\">"
     msg+="<div class=\"form-group\"><label for=\"ig-username\">User Name</label><div class = \"input-group\" id=\"ig-username\"><input class=\"form-control\" type=\"text\" name=\"User\" id=\"username\" />";
     msg+="<div id=\"bu-mng-user\" class = \"input-group-btn\"><button type = \"button\" class = \"btn btn-default dropdown-toggle\" data-toggle = \"dropdown\">";
@@ -241,7 +241,7 @@ function manage_users () {
     msg += "</select>"
     msg +="</div>";
     msg +="</form>"
-                        
+
     bootbox.dialog({
         title: "Manage Users",
         message:msg,
@@ -273,7 +273,7 @@ function manage_users () {
                             $("#upasswd").closest(".form-group").append($("<p/>", {class: "help-block", html:"Passwords do not match"}));
                             $("#upasswd").closest(".form-group").addClass("has-warning");
                             goon=false;
-                        } else { 
+                        } else {
                             if ( $("#upasswd").val().length < 8 ) {
                                 if ( $("#upasswd").siblings(".help-block").length != 0 ) {
                                     $("#upasswd").siblings(".help-block").remove();
@@ -299,7 +299,7 @@ function manage_users () {
                                 $("#upasswd").siblings(".help-block").remove();
                             }
                     }
-                    
+
                     if (goon) {
                         var myval={"user":$("#username").val().trim(), "zone":$("#bu-nu-location").val().trim()}
                         if ( $("#upasswd").val()) {
@@ -318,7 +318,7 @@ function manage_users () {
                 className: "btn-danger",
                 callback: function () {
                     var goon=true;
-                    
+
                     if ( $("#username").val() === undefined || $("#username").val().trim() == "" ) {
                         $("#username").closest(".form-group").append($("<p/>", {class: "help-block", html:"No Username"}));
                         $("#username").closest(".form-group").addClass("has-warning");
@@ -368,8 +368,8 @@ function devcompare(a,b) {
         return 1;
     }
     return 0
-    
-        
+
+
 }
 
 function bu_parse_xml(txt) {
@@ -377,7 +377,7 @@ function bu_parse_xml(txt) {
     var myexpand={};
     var exidx=1
     //TODO  Add label, postfix and prefix transform for l10n
-    
+
     $.each(thisdoc.find("[expand]"), function(key,eval) {
         var myex=$(eval).attr("expand")
         var mykey="bu-expansion-"+exidx;
@@ -415,14 +415,14 @@ function bu_parse_xml(txt) {
                         thisexpand+="<itemgroup value=\""+ctype+"\" />";
                         if (subtoo) {
                             thisexpand+="<item value=\""+ctype+"\" />";
-                        } 
+                        }
                     }
                     if (val[1]!=cstype) {
                         cstype=val[1];
                         thisexpand+="<itemgroup value=\"  "+cstype+"\" />";
                         if (subtoo) {
                             thisexpand+="<item value=\""+ctype+"."+cstype+"\" label=\"  "+cstype+"\" />";
-                        } 
+                        }
                     }
                     thisexpand+="<item value=\""+ctype+"."+val[3]+"\" label=\"    "+val[2]+"\" />";
                 })
@@ -430,11 +430,11 @@ function bu_parse_xml(txt) {
                 if (dtype != undefined && dstype != undefined && myexlist[3] != undefined && buddy.configs[dtype][dstype]!= undefined) {
                     //maybe we could check it is defined by a "listmaker" control?
                     //extracr a value based on dot separated keys
-                    extractval= function (dict,key) { 
-                        var x= dict; 
+                    extractval= function (dict,key) {
+                        var x= dict;
                         $.each( key.split("."), function (idx,k) {
                             x=x[k.trim()]
-                        }); 
+                        });
                         return x;
                     }
                     if (myexlist[4] != undefined && myexlist[5] != undefined) {
@@ -469,7 +469,7 @@ function bu_parse_xml(txt) {
                 })
                 if (options == undefined || !options.includes("simplelist")) {
                     mylist.sort(devcompare);
-                } 
+                }
                 var ctype=undefined;
                 var cstype=undefined;
                 var cnlist=[];
@@ -557,7 +557,7 @@ function module_config() {
     });
     $(".bu-mod-config-button").on("click", module_config_bis);
 }
-    
+
 function module_config_bis(e) {
     bootbox.hideAll();
     var elt = e.target.id.split("-").slice(-1)[0];
@@ -621,7 +621,7 @@ function display_graphs() {
         buddy.graphs[dtype]=ordered;
     });
     $.each(buddy.graphs, function ( dtype, sub ) {
-        
+
         $.each(sub, function ( dstype, glist ) {
             $.each(glist.sort(),function ( idx, lbl ) {
                 msg+="<button type = \"button\" class = \"btn btn-default bu-disp-graph-button\"  id=\"bu-disp-graph-"+dtype+"."+dstype+"."+lbl+"\">"+dstype+" "+lbl+"</button>";
@@ -638,7 +638,7 @@ function display_graphs() {
     });
     $(".bu-disp-graph-button").on("click", display_graphs_bis);
 }
-    
+
 function display_graphs_bis(e) {
     bootbox.hideAll();
     var msg = "<div id=\"bu-graph-display\" style=\"width: 100%; height:100%\"></div>";
@@ -651,7 +651,7 @@ function display_graphs_bis(e) {
     bootbox.alert({
         title: "Graph "+lbl,
         message:msg,
-        callback: function(){ 
+        callback: function(){
             buddy.currentgraph = undefined;
             buddy.displaydata = undefined;
         }
@@ -689,7 +689,7 @@ function module_export_config_bis(e) {
     $.each(buddy.configs[elt], function(key,val) {
         exportval[elt][key]=val[1];
     });
-    
+
     blob = new Blob([JSON.stringify(exportval)], {type: "text/plain"}),
     url = window.URL.createObjectURL(blob);
     var anchor=$("<a/>").attr('href',url).attr("style","display: none").attr("download",fn);
@@ -757,7 +757,7 @@ function module_import_config_bis() {
             } else if ( wasimp == "" ) {
                 bootbox.alert("Well... nothing was imported. Could be that the relevant buddies are not connected.");
             } else {
-                
+
                 bootbox.alert("Well... we imported this: "+wasimp+", but we failed to import this: "+notimp);
             }
         }
@@ -798,7 +798,7 @@ function module_command() {
         }
     });
     $(".bu-mod-cmd-button").on("click", module_command_bis);
-}   
+}
 function module_command_bis(e) {
     bootbox.hideAll();
     var elt = e.target.id.split("-").slice(-1)[0];
@@ -820,23 +820,23 @@ function explore_events() {
 // ES6 Alert. Using backquote for multi-lines
 // Lifted from FontAwesome
 // var notPresentIcon=`
-//      <path class="bu-not-present" fill="#a94442" 
+//      <path class="bu-not-present" fill="#a94442"
 //            d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
-//               0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
+//               0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
 //               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>`;
 var defaultIcon=`
     <svg  class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
-        <path  class="bu-fill"  stroke="black" stroke-width=1 d="M1152 896q0-106-75-181t-181-75-181 75-75 181 75 181 181 75 181-75 75-181zm512-109v222q0 
-              12-8 23t-20 13l-185 28q-19 54-39 91 35 50 107 138 10 12 10 25t-9 23q-27 37-99 108t-94 71q-12 
-              0-26-9l-138-108q-44 23-91 38-16 136-29 186-7 28-36 28h-222q-14 0-24.5-8.5t-11.5-21.5l-28-184q-49-16-90-37l-141 
-              107q-10 9-25 9-14 0-25-11-126-114-165-168-7-10-7-23 0-12 8-23 15-21 51-66.5t54-70.5q-27-50-41-99l-183-27q-13-2-21-12.5t-8-23.5v-222q0-12 
-              8-23t19-13l186-28q14-46 39-92-40-57-107-138-10-12-10-24 0-10 9-23 26-36 98.5-107.5t94.5-71.5q13 0 26 
-              10l138 107q44-23 91-38 16-136 29-186 7-28 36-28h222q14 0 24.5 8.5t11.5 21.5l28 184q49 16 90 37l142-107q9-9 
+        <path  class="bu-fill"  stroke="black" stroke-width=1 d="M1152 896q0-106-75-181t-181-75-181 75-75 181 75 181 181 75 181-75 75-181zm512-109v222q0
+              12-8 23t-20 13l-185 28q-19 54-39 91 35 50 107 138 10 12 10 25t-9 23q-27 37-99 108t-94 71q-12
+              0-26-9l-138-108q-44 23-91 38-16 136-29 186-7 28-36 28h-222q-14 0-24.5-8.5t-11.5-21.5l-28-184q-49-16-90-37l-141
+              107q-10 9-25 9-14 0-25-11-126-114-165-168-7-10-7-23 0-12 8-23 15-21 51-66.5t54-70.5q-27-50-41-99l-183-27q-13-2-21-12.5t-8-23.5v-222q0-12
+              8-23t19-13l186-28q14-46 39-92-40-57-107-138-10-12-10-24 0-10 9-23 26-36 98.5-107.5t94.5-71.5q13 0 26
+              10l138 107q44-23 91-38 16-136 29-186 7-28 36-28h222q14 0 24.5 8.5t11.5 21.5l28 184q49 16 90 37l142-107q9-9
               24-9 13 0 25 10 129 119 165 170 7 8 7 22 0 12-8 23-15 21-51 66.5t-54 70.5q26 50 41 98l183 28q13 2 21 12.5t8 23.5z"/>
-              
-        <path class="bu-not-present" fill="#a94442" 
+
+        <path class="bu-not-present" fill="#a94442"
            d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
-              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5 
+              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
               163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
     </svg>`;
 
@@ -860,15 +860,17 @@ var BuddyDevice = Class.extend({
         this.last_cmd;
         this.cmd_panel;
     },
-    
+
     add_device_div: function() {
-        var cdiv=$("<div>", {id: this.name, class: "zonedroppable bu-device "+"bu-"+this.type+" bu-"+this.subtype, 
+        var cdiv=$("<div>", {id: this.name, class: "zonedroppable bu-device "+"bu-"+this.type+" bu-"+this.subtype,
                             "data-toggle":"tooltip","data-original-title":this.nickname});
         var devicon=false;
-        if ( this.subtype in buddyIcons ) {
+        if ( this.type in buddyIcons && this.subtype in buddyIcons[this.type] ) {
+            devicon=buddyIcons[this.type][this.subtype];
+        } else if (this.subtype in buddyIcons) {
             devicon=buddyIcons[this.subtype];
-        } else if ( this.type in buddyIcons ) {
-            devicon=buddyIcons[this.type];
+        } else if ( this.type in buddyIcons && "default" in  buddyIcons[this.type]) {
+            devicon=buddyIcons[this.type]["default"];
         } else {
             devicon= defaultIcon;
         }
@@ -888,7 +890,7 @@ var BuddyDevice = Class.extend({
         cdiv.click(this.device_click);
         return cdiv
     },
-    
+
     set_parent: function(parent) {
         if ( this.parent ) {
             var devicename=this.name;
@@ -912,20 +914,23 @@ var BuddyDevice = Class.extend({
             this.parent=parent;
         }
     },
-    
+
     match_status: function() {
         var self = this;
-//         $("#"+this.name).removeClass("run-animation");
         if ("animation" in this.iconstatus ) {
             $("#"+this.name+"_anim").remove();
             $("head").append("<style type=\"text/css\" id=\""+ this.name+"_anim\" >"+this.iconstatus.animation+"</style>")
         }
         $.each(this.iconstatus, function (eclass,val) {
-            if ( eclass != "animation" ) {
+            if ( eclass != "animation" && eclass != "multipart") {
                 //var mylelt=$(document.getElementById( self.name ).getElementsByClassName(eclass)[0]);
+                var animclass = "run-animation-"+self.name;
+                if ( self.iconstatus.multipart ) {
+                    animclass += "-"+eclass;
+                }
                 $.each($("#"+self.name+" ."+eclass ), function(idx,anelt) {
                     var mylelt = $(anelt);
-                    mylelt.removeClass("run-animation-"+self.name);
+                    mylelt.removeClass(animclass);
                     mylelt.attr("style","");
                     $.each(val, function (attr,aval) {
                         try {
@@ -936,7 +941,7 @@ var BuddyDevice = Class.extend({
                     })
                     if ("animation" in self.iconstatus ) {
                         void mylelt.offsetWidth
-                        mylelt.addClass("run-animation-"+self.name)
+                        mylelt.addClass(animclass)
                     }
                 })
             }
@@ -945,7 +950,7 @@ var BuddyDevice = Class.extend({
 //             $("#"+this.name).addClass("run-animation")
 //         }
     },
-    
+
     device_dbl_click: function() {
         if (buddy.editmode) {
             /*change name panel*/
@@ -962,10 +967,10 @@ var BuddyDevice = Class.extend({
                     }
                 }
             });
-        } 
+        }
         return false;
     },
-    
+
     device_click: function(e) {
         if (! buddy.editmode && deviceById[this.id].presence) {
             /*Create a modal with commands rendered*/
@@ -1020,7 +1025,7 @@ var BuddyDevice = Class.extend({
         }
         return false;
     },
-    
+
     exec_rtcommand: function(event) {
         var allelt = event.target.id.split("__");
         if (! allelt || allelt.length <2) {
@@ -1037,10 +1042,10 @@ var BuddyDevice = Class.extend({
         return false;
     },
 
-        
+
     refresh: function (width) {
-        /* 
-        * Resizing the icon on change, max is 60x60, minimum number of devs 
+        /*
+        * Resizing the icon on change, max is 60x60, minimum number of devs
         */
         if (width>60) {
             width=60;
@@ -1065,7 +1070,7 @@ var BuddyZone = Class.extend({
         this.devices=[];
         this.div = false;
     },
-         
+
     set_parent: function (up) {
         if (this.parent != up ) {
             var sdiv = false;
@@ -1075,29 +1080,29 @@ var BuddyZone = Class.extend({
             this.parent = up;
             up.append_zone_div(this,sdiv);
         }
-            
+
     },
-     
+
     get_parent: function ()  {
          return this.parent;
     },
-     
+
     get_path: function () {
          if (this.parent == false ) {
              return "."+this.name
          }
-         
+
          return this.parent.get_path() + "." + this.name;
     },
-          
+
     get_depth: function () {
          if (this.parent == false ) {
              return 0;
          }
-         
+
          return this.parent.get_depth() + 1;
     },
- 
+
     get_options: function() {
         var mydepth=this.get_depth();
         res="<option value=\""+this.name+"\">";
@@ -1110,7 +1115,7 @@ var BuddyZone = Class.extend({
         })
         return res;
     },
-    
+
     append_zone_div: function  (child,adiv) {
         this.children.push(child);
         var cdiv;
@@ -1123,7 +1128,7 @@ var BuddyZone = Class.extend({
         $("#"+this.name).append(cdiv);
         this.refresh();
     },
-    
+
     add_zone_div: function(child) {
         var cdiv=$("<div>", {id: child.name, class: "bu-zone zonedroppable"});
         var ldiv =$("<p>", {class: "bu-zonelabel label"}).html(buddy.user_config["zprefix"]+ " " + child.nickname);
@@ -1150,7 +1155,7 @@ var BuddyZone = Class.extend({
         cdiv.dblclick(this.zone_dbl_click);
         return cdiv
     },
-     
+
     remove_zone_div: function (child) {
         $child=$("#"+child.name);
         var sdiv = $child.detach();
@@ -1160,7 +1165,7 @@ var BuddyZone = Class.extend({
         this.refresh()
         return sdiv
    },
-     
+
     destroy_zone: function () {
         $.each(this.children,function(key,val) {
             val.destroy_zone()
@@ -1168,20 +1173,20 @@ var BuddyZone = Class.extend({
         delete zoneById[this.name];
         if ( buddy.debug ) { console.log("Did delete "+this.name); }
    },
-        
+
     refresh: function () {
-        /* 
+        /*
             * Resizing the div on change
             */
         var pwidth = $('#'+this.name).innerWidth();
         var delta = 1;
         var pheight = $('#'+this.name).innerHeight()-5 ;
-       
+
         var pendingdev=[];
         $.each(this.devices,function(key,val) {
             pendingdev.push($("#"+val.name).detach());
         })
-        
+
         var ar = pwidth / pheight ;
         var nbchildren = $('#'+this.name).children("div").length;
         var nbrow = 1;
@@ -1221,11 +1226,11 @@ var BuddyZone = Class.extend({
         for (var i=0; i < this.children.length; i++) {
             this.children[i].refresh();
         };
-        
+
         for (var i=0; i < pendingdev.length; i++) {
             $("#"+this.name).append(pendingdev[i]);
         };
-        
+
         var cdiff= (nbcol*nbrow) - this.children.length;
         var awidth = (pwidth/nbcol)*cdiff;
         var aheight = pheight/nbrow;
@@ -1248,12 +1253,12 @@ var BuddyZone = Class.extend({
             val.refresh(iwidth);
         })
     },
-     
+
     anchor: function (elt) {
          /*
           * Used to anchor the top zone to the domain/
           */
-        
+
         var cdiv=$("<div>", {id: this.name, class: "bu-topzone zonedroppable"});
         $("#"+elt).append(cdiv);
         this.div=true;
@@ -1271,9 +1276,9 @@ var BuddyZone = Class.extend({
         $("#"+this.name).append($("<p>", {class: "bu-zonelabel label"}).html(buddy.user_config["zprefix"]+" "+this.nickname));
         this.refresh()
     },
-     
+
     reanchor: function(elt) {
-        if (buddy.currenttop != this.name) { 
+        if (buddy.currenttop != this.name) {
             $(".bu-topzone").remove();
             this.anchor(elt);
             this.rebuild_children()
@@ -1289,19 +1294,19 @@ var BuddyZone = Class.extend({
             this.refresh();
         }
      },
-     
+
     rebuild_children: function () {
         for (var i=0; i < this.children.length; i++) {
             $("#"+this.name).append(this.add_zone_div(this.children[i]));
             this.children[i].rebuild_children();
         }
-    
+
         for (var i=0; i < this.devices.length; i++) {
             $("#"+this.name).append(this.devices[i].add_device_div());
             this.devices[i].match_status();
         }
      },
-     
+
     build_children: function (children) {
         var self=this;
         $.each(children,function(key,val) {
@@ -1320,7 +1325,7 @@ var BuddyZone = Class.extend({
             nz.build_children(val["sub_zone"]);
         })
     },
-  
+
     revert_devices: function() {
         $.each(this.children,function(key,val) {
            val.revert_devices();
@@ -1333,7 +1338,7 @@ var BuddyZone = Class.extend({
             deviceById[name].set_parent(zoneById["zone-BuddyRoot"])
         })
     },
-    
+
     zone_dbl_click: function() {
         if (buddy.editmode) {
             /*change name panel*/
@@ -1357,7 +1362,7 @@ var BuddyZone = Class.extend({
             return false
         }
     },
-    
+
     zone_click: function() {
         if (! buddy.editmode) {
             /*Create amodakl with an on/off switch*/
@@ -1382,12 +1387,12 @@ var BuddyZone = Class.extend({
             $("#"+oname+"-power").on("switchChange.bootstrapSwitch",function (ev,state) {
                 buddy.send_command("power",oname,otype,{"power":(state && "on") || "off"},$("#"+oname+"-propagate").is(':checked'))
             })
-        } 
+        }
         return false
     }
 
  })
- 
+
 var BuddyMsg = Class.extend({
      init: function (subject,type) {
          this.subject = subject;
@@ -1395,12 +1400,12 @@ var BuddyMsg = Class.extend({
          this.content = {} ;
          this.content.token=Math.random().toString(36).substr(2) + Math.random().toString(36).substr(2);
      },
-     
+
      json: function () {
          return JSON.stringify(this);
      }
 })
- 
+
 var BuddyApp = Class.extend({
     init: function(subject,ws) {
         this.tokens = [];
@@ -1430,7 +1435,7 @@ var BuddyApp = Class.extend({
         this.displaydata=undefined;
         this.displaydatacount=0;
         this.currentgraph=undefined;
-        
+
         this.socket.binaryType = "arraybuffer";
         this.socket.onopen = function() {
             if ( buddy.debug ) { console.log("Connected!"); }
@@ -1566,7 +1571,7 @@ var BuddyApp = Class.extend({
             bootbox.dialog({
                 title: "Connection Lost",
                 value: "OMG",
-                message:`<p>We are terribly sorry. The server has gone the way of the dodo. 
+                message:`<p>We are terribly sorry. The server has gone the way of the dodo.
                             You might want to try to reload a bit later. As of now this whole contraption is pretty much useless.</p>`,
                 buttons: {
                     close: {
@@ -1579,7 +1584,7 @@ var BuddyApp = Class.extend({
             });
         }
     },
-    
+
     handle_login: function (msg) {
         if ( msg.content.status == 'failed' ) {
             $(".form-signin :input").attr("disabled", false);
@@ -1622,10 +1627,10 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     not_handle_login: function (token) {
     },
-    
+
     handle_state: function (msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
@@ -1643,7 +1648,16 @@ var BuddyApp = Class.extend({
             }
             if ( "display" in msg.content["value"] ) {
                 $.each(msg.content["value"]["display"],function(key,text) {
-                    buddyIcons[key]=text
+                    if ($.isPlainObject(text)) {
+                        $.each(text, function(key2,text2) {
+                            if ( !( key in buddyIcons) ) {
+                                buddyIcons[key]={};
+                            }
+                            buddyIcons[key][key2]=text2;
+                        })
+                    } else {
+                        buddyIcons[key]=text;
+                    }
                 })
             }
             $.each(tzone["devices"],function(type,devices) {
@@ -1718,13 +1732,13 @@ var BuddyApp = Class.extend({
             })
             buddy.send_event("gui refresh","","refresh");
             $(".bu-zonelabel").click(zoneById[buddy.currenttop].zone_click);
-                
+
         }
     },
-    
+
     not_handle_state: function (token) {
     },
-     
+
     send_login: function (user,passwd) {
         var msg = new BuddyMsg("control.login","request");
         msg.content.request = "login";
@@ -1734,7 +1748,7 @@ var BuddyApp = Class.extend({
         this.tokens.push(msg.content.token);
         this.socket.send(msg.json());
     },
- 
+
     send_command: function (command,target, sendto, value,propagate,targetonly,options) {
         var msg = new BuddyMsg(sendto+"."+target,"command");
         msg.content.command = command;
@@ -1755,7 +1769,7 @@ var BuddyApp = Class.extend({
         //console.log("Sending"+msg.json());
         this.socket.send(msg.json());
     },
-    
+
     send_event: function (event,target, value) {
         var msg = new BuddyMsg(target,"event");
         msg.content.target = target;
@@ -1765,7 +1779,7 @@ var BuddyApp = Class.extend({
         }
         this.socket.send(msg.json());
     },
-    
+
     send_request: function (request,target, device, value, tovalue) {
         var msg = new BuddyMsg(target,"request");
         msg.content.target = device;
@@ -1780,7 +1794,7 @@ var BuddyApp = Class.extend({
         this.socket.send(msg.json());
         return msg.content.token
     },
-    
+
     build_login:  function () {
         $('#top-container').html($('<form/>', {action: '', class: "form-signin"}));
         var aelt =$('<h2/>',{ class: "form-signin-heading" });
@@ -1803,25 +1817,25 @@ var BuddyApp = Class.extend({
         $('.form-signin').append(aelt);
         $('.form-signin').append($("<button/>",{ class: "btn btn-lg btn-primary btn-block", type: "submit"}));
         $('.form-signin :button').html("Log in");
-        
+
         $("form").submit(function( event ) {
                 event.preventDefault();
-                buddy.send_login($("#inputName").val(),$("#inputPassword").val());  
+                buddy.send_login($("#inputName").val(),$("#inputPassword").val());
                 $(".form-signin :input").attr("disabled", true);
             });
-        
+
     },
-    
+
     build_panel: function() {
         $('#top-container').append($('<div/>', {class: "no-gutter col-xs-12 col-md-12", id: "bu-topzonec"}));
         var zinfo=""
         if (this.topzone) {
             zinfo={"zone":this.topzone}
         }
-            
+
         var token = this.send_request("system state","control", "gui",zinfo );
     },
-         
+
     add_zone: function (nickname,parent,name) {
         if ( buddy.debug ) { console.log("Adding "+nickname); }
         var nz= new BuddyZone(nickname,name);
@@ -1837,9 +1851,9 @@ var BuddyApp = Class.extend({
         zoneById[nz.name]=nz;
         return nz;
     },
-    
+
     drop_zone: function (event,ui,dropin) {
-        $(ui.draggable).css({left:'auto',top:"auto"}); 
+        $(ui.draggable).css({left:'auto',top:"auto"});
         if (ui.draggable[0].id == "bu-add_zone") {
             var pname = zoneById[dropin.id].name;
             var nzname="zone-"+Math.random().toString(36).substr(2);
@@ -1860,7 +1874,7 @@ var BuddyApp = Class.extend({
                     var token = this.send_request("device location", "control.zone", this.subject,{"name":name,"parent": pname},[ui.draggable[0].id,dropin.id]);
                     this.tokento[token]=setTimeout($.proxy(buddy.err_handle_device_location, buddy, token, deviceById), this.timeout);
                 }
-                
+
             } else {
                 //A zone
                 var opname = zoneById[ui.draggable[0].id].parent.name;
@@ -1871,16 +1885,16 @@ var BuddyApp = Class.extend({
                     this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_location, buddy, token, zoneById), this.timeout);
                 }
             }
-        } 
+        }
     },
-         
+
     handle_zone_naming: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
                 var nzname = "Zone "+zoneById[this.tokeninfo[msg.content.token][0]].nickname;
                 delete this.tokeninfo[msg.content.token];
-                
+
             } else {
                 var nzname = "Zone";
             }
@@ -1891,7 +1905,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-         
+
     hevent_zone_naming: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
@@ -1903,7 +1917,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     err_handle_zone_naming: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Zone "+zoneById[this.tokeninfo[token][0]].nickname;
@@ -1913,14 +1927,14 @@ var BuddyApp = Class.extend({
         }
         bootbox.alert(nzname+" could not be renamed.");
     },
-    
+
     handle_zone_location: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
                 var nzname = "Zone "+zoneById[this.tokeninfo[msg.content.token][0]].nickname;
                 delete this.tokeninfo[msg.content.token];
-                
+
             } else {
                 var nzname = "New Zone";
             }
@@ -1931,12 +1945,12 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_zone_location: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
             var zid=msg.content.target.split(".")[1];
-            
+
             if ( zid in zoneById) {
                 var pid = msg.content.value["parent"];
                 zoneById[zid].set_parent(zoneById[pid]);
@@ -1944,7 +1958,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     err_handle_zone_location: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Zone "+this.tokeninfo[token][0];
@@ -1954,14 +1968,14 @@ var BuddyApp = Class.extend({
         }
         bootbox.alert(nzname+" could not be moved.");
     },
-    
+
     handle_zone_creation: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
                 var nzname = "Zone "+this.tokeninfo[msg.content.token][0];
                 delete this.tokeninfo[msg.content.token];
-                
+
             } else {
                 var nzname = "New Zone";
             }
@@ -1972,7 +1986,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_zone_creation: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
@@ -1984,7 +1998,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-       
+
     err_handle_zone_creation: function (token) {
         if ( this.tokeninfo[token]) {
             var nzname = "New Zone in "+this.tokeninfo[token][0];
@@ -1994,7 +2008,7 @@ var BuddyApp = Class.extend({
         }
         bootbox.alert(nzname+" could not be created.");
     },
-    
+
     drop_delete_zone_dev: function (event,ui,dropin) {
         $(ui.draggable).addClass('drag-revert');
         if ( $(ui.draggable[0]).hasClass("bu-zone" )) {
@@ -2003,16 +2017,16 @@ var BuddyApp = Class.extend({
         } else if ( $(ui.draggable[0]).hasClass("bu-device" )) {
             $(ui.draggable).hide();
             this.delete_device(deviceById[ui.draggable[0].id]);
-           
+
         }
     },
-    
+
     delete_zone: function(name) {
         if ( buddy.debug ) { console.log("Deleting "+name); }
         var token = this.send_request("zone deletion", "control.zone", this.subject, {"name":name},name);
         this.tokento[token]=setTimeout($.proxy(buddy.err_handle_zone_deletion, buddy, token, zoneById), this.timeout);
     },
-     
+
     handle_zone_deletion: function(msg) {
         var thisapp = this;
         if ( msg.content.status == 'failed' ) {
@@ -2034,7 +2048,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_zone_deletion: function(msg) {
         var type=msg.content.target.split(".")[0];
         if (type == "zone") {
@@ -2047,7 +2061,7 @@ var BuddyApp = Class.extend({
                             return false;
                     }
                 });
-                
+
                 $.each(zoneById[zonename].parent.children,function(key,val) {
                     if (val.name == zonename) {
                             zoneById[zonename].parent.children.splice(key,1);;
@@ -2059,7 +2073,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-       
+
     err_handle_zone_deletion: function (token, zoneById) {
         if ( this.tokeninfo[token]) {
             var thisapp=this;
@@ -2072,7 +2086,7 @@ var BuddyApp = Class.extend({
             delete this.tokeninfo[token];
         };
     },
-    
+
     edit_mode: function(mode) {
          if (mode) {
              $('#bu-topzone').droppable("enable");
@@ -2097,14 +2111,14 @@ var BuddyApp = Class.extend({
          };
          this.editmode=mode;
      },
-    
+
     delete_device: function(device) {
         if ( buddy.debug ) { console.log("Deleting "+device.name); }
         var token = device.name
         this.send_command("deletion",device.name,device.type,device.name);
         this.tokento[token]=setTimeout($.proxy(buddy.err_handle_device_deletion, buddy, token, deviceById), this.timeout);
     },
-    
+
     hevent_device_deletion: function(msg) {
         var type=msg.content.target.split(".")[0];
         var devid=msg.content.target.split(".")[1];
@@ -2117,7 +2131,7 @@ var BuddyApp = Class.extend({
         }
         return false;
     },
-       
+
     err_handle_device_deletion: function (token, deviceById) {
         if ( this.tokento[token]) {
             var thisapp=this;
@@ -2126,7 +2140,7 @@ var BuddyApp = Class.extend({
         };
         return false;
     },
-       
+
 
     hevent_device_status: function(msg) {
         var type=msg.content.target.split(".")[0];
@@ -2144,7 +2158,7 @@ var BuddyApp = Class.extend({
             //deviceById[device].match_status();
         }
     },
-    
+
     hevent_device_presence: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
@@ -2162,7 +2176,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_device_new: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
@@ -2171,7 +2185,7 @@ var BuddyApp = Class.extend({
             if ( ( type != msg.content.value["type"] ) || (device != msg.content.value["name"] )) {
                  if ( buddy.debug ) { console.log("Warning: message not consistent "+type," != "+msg.content.value["type"]+" or "+device+" != "+msg.content.value["name"] )}
             } else {
-                
+
                 if (zoneById["zone-BuddyRoot"]) {
                     var adevice=new BuddyDevice(type,msg.content.value["subtype"],msg.content.value["nickname"],device);
                     adevice.set_parent(zoneById["zone-BuddyRoot"])
@@ -2181,14 +2195,14 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     handle_device_location: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
             if ( this.tokeninfo[msg.content.token]) {
                 var nzname = "Device "+deviceById[this.tokeninfo[msg.content.token][0]].nickname;
                 delete this.tokeninfo[msg.content.token];
-                
+
             } else {
                 var nzname = "Device";
             }
@@ -2199,7 +2213,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_device_location: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
@@ -2219,7 +2233,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     err_handle_device_location: function(token) {
         if ( this.tokeninfo[token]) {
             var nzname = "Device "+this.tokeninfo[token][0];
@@ -2229,7 +2243,7 @@ var BuddyApp = Class.extend({
         }
         bootbox.alert(nzname+" could not be moved.");
     },
-   
+
     handle_device_define: function(msg) {
         if ( msg.content.status == 'done' ) {
             var device=msg.content.value["name"];
@@ -2240,11 +2254,11 @@ var BuddyApp = Class.extend({
                 $('[data-toggle="tooltip"]').tooltip({placement : 'top'});
                 zoneById[msg.content.value["zone"]].refresh();
                 buddy.send_command("status",adevice.name,adevice.type,"");
-                
+
             }
         }
     },
-    
+
     hevent_device_nickname: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
@@ -2255,7 +2269,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_device_info: function(msg) {
         var type=msg.content.target.split(".")[0];
         var device=msg.content.target.split(".")[1];
@@ -2265,7 +2279,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     handle_property: function(msg) {
         if ( msg.content.status == 'failed' ) {
             /*Display something silly*/
@@ -2296,7 +2310,7 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     err_handle_property: function(token) {
         if ( this.tokeninfo[token] && this.tokeninfo[token][0]) {
             var infoname = this.tokeninfo[token][0];
@@ -2314,7 +2328,7 @@ var BuddyApp = Class.extend({
             })
         }
     },
-    
+
     handle_data_request: function(msg) {
         if ( buddy.displaydata == undefined ) {
             //firstdata check the headres
@@ -2323,7 +2337,7 @@ var BuddyApp = Class.extend({
                 return;
             }
             buddy.displaydata = msg.content["value"];
-            var labels = buddy.displaydata[0] 
+            var labels = buddy.displaydata[0]
             $.each( labels, function (idx, data) {
                 if ( data in deviceById ) {
                     labels[idx]=deviceById[data].nickname;
@@ -2391,11 +2405,11 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_gui_alert: function(msg) {
         $("<span>").text(msg["content"]["value"]).appendTo('#bu-navbar-info').delay(7000).queue(function() {$(this).remove();});
     },
-    
+
     hevent_graph_updt: function(msg) {
         if (msg.content["target"]) {
             var etype = msg.content["target"].split(".")[0];
@@ -2409,7 +2423,7 @@ var BuddyApp = Class.extend({
             buddy.graphs[etype][estype]=msg.content["value"];
         }
     },
-    
+
     hevent_graph_live_updt: function(msg) {
         if (buddy.currentgraph && buddy.currentgraph.graphname == msg.content["name"]) {
             if (msg.content["target"]) {
@@ -2422,11 +2436,11 @@ var BuddyApp = Class.extend({
             }
         }
     },
-    
+
     hevent_graph_needed: function(msg) {
         if (buddy.currentgraph &&  buddy.currentgraph.graphname) {
             buddy.send_event("graph needed","logger",buddy.currentgraph.graphname );
         }
     }
-    
+
 })
