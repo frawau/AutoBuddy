@@ -354,7 +354,7 @@ def lifx_process(self, msg):
                             if self.conn.hbtimer < alen:
                                 self.conn.hbtimer=alen+5
                 else:
-                    iconsts = {"bu-fill": {"fill": "transparent"}}
+                    iconsts = {"bu-fill": {"fill": "transparent"},"bu-not-present": {"opacity": 0}}
 
                 mypartial = partial(
                     self.controller.sending, {"subject": self.controller.type,
@@ -574,7 +574,8 @@ def lifx_process(self, msg):
                                                          "." +
                                                          self.name,
                                                          "value": "offline",
-                                                         "icon status": {"bu-fill": {"fill": "transparent"}}}})
+                                                         "icon status": {"bu-fill": {"fill": "transparent"},
+                                                                         "bu-not-present": {"opacity": 1}}}})
 
             elif msg["content"]["command"] == "nickname":
                 # print msg
@@ -659,7 +660,7 @@ def sendStatus(self, lifx=None, resp=None):
             exc_info=(type(e),
                       e,
                       e.__traceback__))
-            
+
 def sendInfo(self, lifx=None, resp=None):
     # Can be used in callback
     try:

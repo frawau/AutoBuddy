@@ -32,6 +32,7 @@ import ssl
 import logging
 import subprocess
 import ipaddress
+import netifaces
 import datetime as dt
 import asyncio as aio
 import colorsys
@@ -310,6 +311,7 @@ class PresenceBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
+                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
                 self.sending({"subject": "control" + "." + self.target,
                               "content_type": "request",
                               "content": {"request": "functions",
@@ -415,15 +417,17 @@ class PresenceBridge(bl.BuddyBridge):
         # Give time for things to settle
         await aio.sleep(2)
         # Here we actually start the probe
+        lop = []
         while True:
             # Till the end of time
-            lop = []
             for x in self.mac_score:
                 self.mac_score[x] -= 1
 
+            requesters = []
             timetowait = 5
+            nbtries = 2
             # Launch ARP
-            for dev, net in self.config["networks"].values():
+            for net, dev in self.config["networks"].items():
                 if self.log:
                     self.log.debug("Probing {} on {}".format(net, dev))
                 sock = aping.create_raw_socket(dev)
@@ -433,7 +437,7 @@ class PresenceBridge(bl.BuddyBridge):
                 arpctrl.process = self.process_mac
                 arpctrl.skip_list = list(self.untracked_mac.values())
                 lop.append(conn)
-                arpctrl.request(net)
+                requesters.append(partial(arpctrl.request,net))
 
             # Start BT
             if "btdev" in self.config and self.config["btdev"] is not None:
@@ -445,13 +449,18 @@ class PresenceBridge(bl.BuddyBridge):
                 conn, btctrl = await self.loop.create_task(fac)
                 btctrl.process = self.process_btmac
                 lop.append(conn)
-                btctrl.request(self.bt_macs)
+                requesters.append(partial(btctrl.request,self.bt_macs))
 
-           
-            await aio.sleep(timetowait)  # Time for the devices to reply
-
-            for x in lop:
-                x.close()  # No need to keep listening
+            await aio.sleep(1) #Let things settle
+            for x in range(nbtries):
+                for req in requesters:
+                    req()
+                await aio.sleep(timetowait)  # Time for the devices to reply
+            if self.log:
+                self.log.debug("Closing")
+            for c in lop:
+                c.close()  # No need to keep listening
+            lop = []
             #
             # Debug only
             # self.sending({"subject":"presence.debug",
@@ -470,9 +479,8 @@ class PresenceBridge(bl.BuddyBridge):
 
     def process_mac(self, data):
         # this runs when an ARP reply is received
-        # if self.log:
-            # self.log.debug("ARP Response from {} at
-            # {}\n\n".format(data["mac"],data["ip"]))
+        if self.log:
+            self.log.debug("ARP Response from {}".format(data))
 
         self.sending({"subject": "lan.mac",
                       "content_type": "event",
@@ -491,9 +499,8 @@ class PresenceBridge(bl.BuddyBridge):
 
     def process_btmac(self, btdata):
         # this runs when an name reply is received
-        # if self.log:
-            # self.log.debug("BT response from {} against
-            # {}\n\n".format(btdata,self.tracked_mac))
+        if self.log:
+            self.log.debug("BT response from {} ".format(btdata))
         self.sending({"subject": "bluetooth.mac",
                       "content_type": "event",
                       "content": {"event": "mac presence",
@@ -690,95 +697,24 @@ def configure():
     presencecfg = {"debug": opts.debug}
     try:
     # if True:
-        if opts.configonly:
-            try:
-                cfgdata = json.load(opts.config)
-                opts.config.close()
-            except:
-                cfgdata = {}
-        else:
+        try:
             cfgdata = json.load(opts.config)
             opts.config.close()
+        except:
+            cfgdata = {}
+            presencelog.warning("Config file could not be opened.")
 
         # Definition
-        if opts.type != cfgdefault["type"]:
-            presencecfg["type"] = opts.type
-        elif "type" in cfgdata:
-            presencecfg["type"] = cfgdata["type"]
-        else:
-            presencecfg["type"] = opts.type
-        if opts.debug:
-            presencelog.debug("The type is %s." % presencecfg["type"])
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                presencecfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                presencecfg[attr] = cfgdata[attr]
+            else:
+                presencecfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                presencelog.debug("The %s is %s." % (attr,presencecfg[attr]))
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            presencecfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            presencecfg["subtype"] = cfgdata["subtype"]
-        else:
-            presencecfg["subtype"] = opts.subtype
-        if opts.debug:
-            presencelog.debug("The subtype is %s." % presencecfg["subtype"])
-
-        # Controller
-        if opts.host != cfgdefault["host"]:
-            presencecfg["host"] = opts.host
-        elif "host" in cfgdata:
-            presencecfg["host"] = cfgdata["host"]
-        else:
-            presencecfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            presencelog.debug("The host is %s" % presencecfg["host"])
-
-        if opts.port != cfgdefault["port"]:
-            presencecfg["port"] = opts.port
-        elif "port" in cfgdata:
-            presencecfg["port"] = cfgdata["port"]
-        else:
-            presencecfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            presencelog.debug("The port is %s" % (presencecfg["port"]))
-
-        # Bluetooth
-        if opts.btdev != cfgdefault["btdev"]:
-            presencecfg["btdev"] = opts.btdev
-        elif "btdev" in cfgdata:
-            presencecfg["btdev"] = cfgdata["btdev"]
-        else:
-            presencecfg["btdev"] = cfgdefault["btdev"]
-        if opts.debug:
-            presencelog.debug(
-                "The Bluetooth device is %s" %
-                (presencecfg["btdev"]))
-
-        if opts.lan != cfgdefault["lan"]:
-            presencecfg["lan"] = opts.lan
-        elif "lan" in cfgdata:
-            presencecfg["lan"] = cfgdata["lan"]
-        else:
-            presencecfg["lan"] = cfgdefault["lan"]
-        if opts.debug:
-            presencelog.debug("Thelan option is %s" % (presencecfg["lan"]))
-
-        # Authentication and encryption
-        if opts.credential != cfgdefault["credential"]:
-            presencecfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            presencecfg["credential"] = cfgdata["credential"]
-        else:
-            presencecfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            presencelog.debug(
-                "The credential is %s" %
-                presencecfg["credential"])
-
-        if opts.ssl != cfgdefault["ssl"]:
-            presencecfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            presencecfg["ssl"] = cfgdata["ssl"]
-        else:
-            presencecfg["ssl"] = cfgdefault["ssl"]
         if presencecfg["ssl"] and not (os.path.isfile(presencecfg["ssl"] + "/" + CERTFILE)):
             presencelog.critical("Encryption: Could not find {} .".format(
                 presencecfg["ssl"] + "/" + CERTFILE))
@@ -824,20 +760,16 @@ if __name__ == "__main__":
     if config["debug"]:
         loop.set_debug(True)
 
-    # Let's find out what network and interface we have Linux
+    # Let's find out what network and interface we have.
     config["networks"] = {}
     if config["lan"]:
-        p1 = subprocess.getoutput(
-            "ip route | sed '/via/d' | sed '/dev/!d' | sed '/src/!d'")
-        if config["debug"]:
-            log.debug("Received from the shell: {}".format(p1))
-        for aroute in p1.split("\n"):
-            allofit = [z for z in [y.strip()
-                                   for y in aroute.split(" ")] if z != ""]
-            netadd = ipaddress.IPv4Address(allofit[allofit.index("src") + 1])
-            network = ipaddress.IPv4Network(allofit[0])
-            dev = allofit[allofit.index("dev") + 1]
-            config["networks"][netadd] = [dev, network]
+        for iface in netifaces.interfaces():
+            addr = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in addr:
+                for a in addr[netifaces.AF_INET]:
+                    my_ip=ipaddress.ip_interface(a["addr"]+"/"+a["netmask"])
+                    if not my_ip.ip.is_loopback:
+                        config["networks"][my_ip.network] = iface
 
     if config["ssl"]:
         sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
