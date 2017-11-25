@@ -228,17 +228,17 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns speech_recognition\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
         remindmeattheend+="\nIf using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
             subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio"])
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -252,14 +252,14 @@ else:
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following command should be run:\n")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
     else:
         print("\n\n\n\nNow we shall install/update the packages we need.")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -548,6 +548,8 @@ doblescan = False
 dologger = False
 dothingsboard = False
 doi2c = False
+dowemoswitch = False
+dowemomotion = False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -674,6 +676,17 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
                 os.system('clear')
                 print ("\nInput must be an integer!")
 
+print("\n\nWeMoSwitchBuddy let you control and track WeMo Switches.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dowemoswitch=True
+
+print("\n\nWeMoMotionBuddy let you receive motion notifications from WeMo Motion Detectors.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dowemomotion=True
 
 #Let's summarize
 print("\nYou have decided:")
@@ -1212,6 +1225,7 @@ if dothingsboard:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ThingsBoardBuddy "+fn
 
+#I2CSensor
 mycfg={}
 mycfg["host"]= brokerlocation
 mycfg["type"] = "sensor"
@@ -1246,6 +1260,71 @@ if doi2c:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n I2CBuddy "+fn
 
+#WeMoSwitchBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "switch"
+mycfg["subtype"] = "wemo"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/wemoswitch.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/WeMoBuddy/WeMoSwitchBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 30
+"""
+mycmd+=BUDDYLOCATION+"/WeMoBuddy/WeMoSwitchBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-wemoswitch"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doblescan:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n WeMoSwitchBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n WeMoSwitchBuddy "+fn
+
+#WeMoMotionBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "sensor"
+mycfg["subtype"] = "wemo"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/wemomotion.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/WeMoBuddy/WeMoMotionBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 30
+"""
+mycmd+=BUDDYLOCATION+"/WeMoBuddy/WeMoMotionBuddy -c "+fn
+mycmd+="\n    sleep 2\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-wemomotion"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doblescan:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
 
 
 fn=BUDDYLOCATION+"/.start-autobuddy"
