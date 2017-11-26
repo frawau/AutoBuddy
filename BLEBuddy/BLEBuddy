@@ -422,7 +422,7 @@ class BLESensorBridge(bl.BuddyBridge):
                     for device in self.devices:
                         device.filters = {}
                         for filter in self.blesensor_config["filter"]["filter"]:
-                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.anme:
+                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.name:
                                 measurement = filter["measurement"]["bu-cvalue"]
                                 if measurement not in device.filters:
                                     device.filters[measurement]=[]
