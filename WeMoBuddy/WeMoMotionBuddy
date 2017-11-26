@@ -503,7 +503,7 @@ class WeMoBridge(bl.BuddyBridge):
                 break
 
 aboutstr = """<p>WeMoBuddy is a set of bridges talking to <a href="http://www.wemo.com/">Belkin's WeMo device</a>. WeMo devices will be automatically
-detected. The icon used is based on one made by Freepik from www.flaticon.com </p>
+detected. The icon used for switches is based on one made by Freepik from www.flaticon.com </p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
@@ -529,6 +529,14 @@ A 175 175 0 0 1 310 425
 L 310 395
 A 145 145 0 0 0 310 105
 Z" fill="transparent"/>
+</g>
+<g transform="translate(-22, -24)">
+<g transform="scale(0.3,0.3)">
+<path class="bu-not-present" fill="#a94442"
+        d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
+            0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
+            163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
+</g>
 </g>
 </svg>
 """

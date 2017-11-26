@@ -311,7 +311,6 @@ class PresenceBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
-                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
                 self.sending({"subject": "control" + "." + self.target,
                               "content_type": "request",
                               "content": {"request": "functions",

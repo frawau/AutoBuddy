@@ -55,7 +55,7 @@ blesensor_function = """
 
 blesensor_config = """
 <buddyui version="0.1">
-    <configuration  name="blesensor">
+<configuration  name="{subtype}">
         <controlgroup type="list" name="throttle" label="Timing">
             <control type="spinner" name="info" label="Updating GUI info">
                 <start>15</start>
@@ -64,26 +64,12 @@ blesensor_config = """
                 <postfix>secs</postfix>
                 <default>90</default>
             </control>
-            <control type="spinner" name="temperature" label="Temp Sensing interval">
+            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
                 <postfix>secs</postfix>
-                <default>60</default>
-            </control>
-            <control type="spinner" name="pressure" label="Pressure Sensing interval">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>60</default>
-            </control>
-            <control type="spinner" name="humidity" label="Humidity Sensing interval">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>60</default>
+                <default>0</default>
             </control>
             <control type="spinner" name="battery" label="Battery Sensing interval">
                 <start>0</start>
@@ -92,19 +78,19 @@ blesensor_config = """
                 <postfix>secs</postfix>
                 <default>3600</default>
             </control>
-            <control type="spinner" name="luminosity" label="Luminosity Sensing interval">
+            <control type="spinner" name="humidity" label="Humidity Sensing interval">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
                 <postfix>secs</postfix>
                 <default>60</default>
             </control>
-            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
+            <control type="spinner" name="luminosity" label="Luminosity Sensing interval">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
                 <postfix>secs</postfix>
-                <default>0</default>
+                <default>60</default>
             </control>
             <control type="spinner" name="particulate" label="Particule Counter">
                 <start>0</start>
@@ -113,6 +99,69 @@ blesensor_config = """
                 <postfix>secs</postfix>
                 <default>0</default>
             </control>
+            <control type="spinner" name="power" label="Power">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+            <control type="spinner" name="pressure" label="Pressure Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="temperature" label="Temp Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list" name="filter" label="Filter">
+            <controlgroup type="listmaker"  name="filter" label="Value Filter">
+                <control type="text" name="name" length="32"/>
+                <control name="sensor" expand="device::{type}::{subtype}" label="Sensor" type="text" length="16" />
+                <controlgroup type="choice"  name="measurement" label="Measurement">
+                    <item value="accelerometer" label="Acceleration"/>
+                    <item value="battery" label="Battery"/>
+                    <item value="humidity" label="Humidity"/>
+                    <item value="particulate" label="Particule"/>
+                    <item value="power" label="Power"/>
+                    <item value="pressure" label="Pressure"/>
+                </controlgroup>
+                <controlgroup type="choice"  name="compare" label=" ">
+                    <item value="eq" label="==" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="ne" label="!=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="gt" label="&gt;" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="ge" label="&gt;=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="lt" label="&lt;" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="le" label="&lt;=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="in" label="in" >
+                    <control type="text" itype="number" name="compval" label="Value from" length="32"/>
+                        <control type="text" itype="number" name="compval2" label="To" length="32"/>
+                    </item>
+                    <item value="not in" label="not in" >
+                    <control type="text" itype="number" name="compval" label="Value from" length="32"/>
+                        <control type="text" itype="number" name="compval2" label="To" length="32"/>
+                    </item>
+                </controlgroup>
+            </controlgroup>
         </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
@@ -121,9 +170,14 @@ blesensor_config_default = {"throttle":{"info": 90,
                                         "humidity": 60,
                                         "pressure": 60,
                                         "accelerometer":0,
+                                        "particulate": 60,
                                         "luminosity":60,
-                                        "battery": 3600},
-                            "runplugin":{}, "calibrate":{},"probe":60}
+                                        "battery": 3600,
+                                        "power":0},
+                            "runplugin":{},
+                            "filter":{},
+                            "calibrate":{},
+                            "probe":60}
 ble_plugins={}
 dir_path = os.path.join(os.path.dirname(__file__),'plugins')
 # import parent module / namespace
@@ -179,9 +233,35 @@ def blesensor_process(self, msg):
                                 "target": bridgectl.type,
                                 "value": self.name}})
 
-
+def blesensor_filter(self,measurement,val):
+    result=True
+    if measurement in self.filters:
+        if measurement == "accelerometer":
+            val = val["vector"]
+        for afilter in self.filters[measurement]:
+            try:
+                if afilter["op"] == "eq":
+                    result &= afilter["compval"] == val
+                if afilter["op"] == "ne":
+                    result &= afilter["compval"] != val
+                if afilter["op"] == "in":
+                    result &= afilter["compval"] <= val and afilter["compval2"] >= val
+                if afilter["op"] == "not in":
+                    result &= afilter["compval"] > val or afilter["compval2"] < val
+                if afilter["op"] == "gt":
+                    result &= afilter["compval"] < val
+                if afilter["op"] == "ge":
+                    result &= afilter["compval"] <= val
+                if afilter["op"] == "lt":
+                    result &= afilter["compval"] > val
+                if afilter["op"] == "le":
+                    result &= afilter["compval"] >= val
+            except Exception as e:
+                pass
+    return result
 
 bl.sensor._process = blesensor_process
+bl.sensor.filter_value = blesensor_filter
 
 # Utility
 def name_to_mac(name):
@@ -279,6 +359,24 @@ class BLESensorBridge(bl.BuddyBridge):
                                           "target": self.target,
                                           "value": self.blesensor_config}})
                 self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
+                if "filter" in self.blesensor_config and "filter" in self.blesensor_config["filter"]:
+                    for device in self.devices:
+                        device.filters = {}
+                        for filter in self.blesensor_config["filter"]["filter"]:
+                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.name:
+                                measurement = filter["measurement"]["bu-cvalue"]
+                                if measurement not in device.filters:
+                                    device.filters[measurement]=[]
+                                thisfilter = {}
+                                for k,v in filter["compare"].items():
+                                    if k == "bu-cvalue":
+                                        thisfilter["op"] = v
+                                    else:
+                                        try:
+                                            thisfilter[k] = float(v)
+                                        except:
+                                            thisfilter[k] = v
+                                device.filters[measurement].append(thisfilter)
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -319,6 +417,27 @@ class BLESensorBridge(bl.BuddyBridge):
                         if aplug in self.blesensor_config["calibrate"]:
                             ble_plugins[aplug].calibration = self.blesensor_config["calibrate"][aplug]
                         ble_plugins[aplug].throttle = self.blesensor_config["throttle"]
+
+                if "filter" in self.blesensor_config and "filter" in self.blesensor_config["filter"]:
+                    for device in self.devices:
+                        device.filters = {}
+                        for filter in self.blesensor_config["filter"]["filter"]:
+                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.anme:
+                                measurement = filter["measurement"]["bu-cvalue"]
+                                if measurement not in device.filters:
+                                    device.filters[measurement]=[]
+                                thisfilter = {}
+                                for k,v in filter["compare"].items():
+                                    if k == "bu-cvalue":
+                                        thisfilter["op"] = v
+                                    else:
+                                        try:
+                                            thisfilter[k] = float(v)
+                                        except:
+                                            thisfilter[k] = v
+                                device.filters[measurement].append(thisfilter)
+
+
 
 
         elif self.state == "active":
@@ -409,6 +528,8 @@ class BLESensorBridge(bl.BuddyBridge):
                                         "value": "online",
                                         "icon status": {"bu-not-present": {"opacity": 0}}}})
     def build(self):
+        global blesensor_config
+        blesensor_config = blesensor_config.format(type=self.type,subtype=self.subtype)
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",
                       "content": {"request": "functions",
@@ -460,7 +581,8 @@ class BLESensorBridge(bl.BuddyBridge):
                         thisresult={}
                         for x in plug.measurements:
                             if x in result:
-                                thisresult[x]=result[x]
+                                if sensor.filter_value(x,result[x]):
+                                    thisresult[x]=result[x]
                                 sensor.infoval[x]=(result[x],plug.measurements[x])
                         if thisresult:
                             self.sending({"subject": self.type,
