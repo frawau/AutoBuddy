@@ -2043,7 +2043,7 @@ class Rule():
                         mycmd[-1][nval]=acmd["method"][nval]
                 mycmd[-1]["delay"]=acmd["delay"]
                 self.action.append(mycmd)
-                
+
         if bridgectl.log:
             bridgectl.log.debug(
                 "Action defined {} defined {}".format(
@@ -2118,21 +2118,21 @@ class Rule():
         try:
             if v == "email":
                 msg = MIMEMultipart()
-                msg['From'] = bridgectl.config["sender"]
+                msg['From'] = bridgectl.config["email"]["sender"]
                 recipients = f["to"].split(",")
                 msg['To'] = f["to"]
                 msg['Subject'] = f["subject"]
                 msg["Date"] =dt.datetime.now().strftime("%a, %d %b %Y %H:%M:%S")+" "+time.strftime('%z')
                 msg.attach(MIMEText(f["message"]))
 
-                server = smtplib.SMTP(bridgectl.config["smtp"])
+                server = smtplib.SMTP(bridgectl.config["email"]["smtp"],port=int(bridgectl.config["email"]["port"]))
                 try:
                     server.starttls()
                 except:
                     pass
-                if bridgectl.config["user"]:
-                    server.login(bridgectl.config["user"],bridgectl.config["password"])
-                server.sendmail(bridgectl.config["sender"], recipients, msg.as_string())
+                if bridgectl.config["email"]["user"]:
+                    server.login(bridgectl.config["email"]["user"],bridgectl.config["email"]["password"])
+                server.sendmail(bridgectl.config["email"]["sender"], recipients, msg.as_string())
                 server.quit()
             elif v == "pushbullet":
                 params = {'type': 'note', 'title': f["subject"], 'body': f["message"]}
@@ -2162,7 +2162,7 @@ class Rule():
                             raise Exception("Slack responded with status {}".format(response.status))
             else:
                 raise Exception("Unknown notification method: {}".format(v))
-        
+
         except Exception as e:
             if bridgectl.log:
                 bridgectl.log.critical(
@@ -2176,6 +2176,11 @@ class Rule():
                                             "target": bridgectl.type +
                                             "rule",
                                             "value": "Error: Could not send {} notification: {}".format(v,e) }})
+            self.sending({"subject": self.target,
+                            "content_type": "event",
+                              "content": {"event": "gui alert",
+                                          "target": self.target,
+                                          "value": "Warning: {} notification could not be sent. Check the console.".format(v)}})
 
     def update(self, val):
         if val == self.vardef:
@@ -2198,10 +2203,6 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "smtp": "localhost",
-     "sender": "root",
-     "user": "",
-     "password": "",
      "restricted": "guibridge"}
 
 
@@ -2229,14 +2230,6 @@ def configure():
                         help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
                         help="Exit after the the configuration has been saved")
-    parser.add_argument("-m", "--smtp", default=cfgdefault["smtp"],
-                        help="SMTP server to use when sending email (default \"%s\")" % cfgdefault["smtp"])
-    parser.add_argument("-M", "--sender", default=cfgdefault["sender"],
-                        help="Sender for email (default \"%s\")" % cfgdefault["sender"])
-    parser.add_argument("-u", "--user", default=cfgdefault["user"],
-                        help="User if SMTP server needs login")
-    parser.add_argument("-P", "--password", default=cfgdefault["password"],
-                        help="Password if SMTP server needs login")
     parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
                         help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
 
@@ -2285,12 +2278,12 @@ def configure():
             if opts.debug:
                 actionlog.debug("The %s is %s." % (attr,actioncfg[attr]))
 
-            
+
         if actioncfg["ssl"] and not (os.path.isfile(actioncfg["ssl"] + "/" + CERTFILE)):
             actionlog.critical("Encryption: Could not find {} .".format(
                 actioncfg["ssl"] + "/" + CERTFILE))
             sys.exit()
-            
+
         if opts.debug:
             if actioncfg["ssl"]:
                 actionlog.debug(
@@ -2298,7 +2291,7 @@ def configure():
                     actioncfg["ssl"])
             else:
                 actionlog.debug("The connection is not encrypted")
-                
+
         if "buddykey" in cfgdata:
             actioncfg["buddykey"] = cfgdata["buddykey"]
 
@@ -2316,7 +2309,7 @@ def configure():
                 json.dump(actioncfg, cfile)
             os.chmod(opts.configonly, 384)  # 0600
             sys.exit()
-            
+
     except Exception as e:
         actionlog.error("Error: %r" % e)
         sys.exit(-2)
@@ -2368,6 +2361,22 @@ class Action(bl.BuddyBridge):
                         exc_info=(type(e),
                                   e,
                                   e.__traceback__))
+
+        #Do we need to  update tghe config?
+        if msg["content"]['event'] == 'config updated' and msg["content"]['target'] == 'System.configuration':
+
+            if "location" in msg["content"]["value"]:
+                self.config[
+                    "location"] = msg[
+                        "content"][
+                            "value"][
+                                "location"]
+            if "email" in msg["content"]["value"]:
+                self.config[
+                    "email"] = msg[
+                        "content"][
+                            "value"][
+                                "email"]
 
     def process_command(self, msg):
         """Here we process the commands.
@@ -2482,6 +2491,12 @@ class Action(bl.BuddyBridge):
                         "content"][
                             "system configuration"][
                                 "location"]
+            if "email" in msg["content"]["system configuration"]:
+                self.config[
+                    "email"] = msg[
+                        "content"][
+                            "system configuration"][
+                                "email"]
             self.config["database"] = msg["content"]["database"]
             self.state = "active"
             self.build()
