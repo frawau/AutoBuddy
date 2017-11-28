@@ -227,17 +227,17 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
-        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio")
+        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools")
         print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis python3-pyaudio"
+        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools"
         remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
         remindmeattheend+="\nIf using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio"])
+            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio","i2c-tools"])
             subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
             print("Allright, it looks like we are done.")
         except:
@@ -599,7 +599,10 @@ i2cname = bl.genid().replace("-","")[:12]
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doi2c=True
-
+    try:
+        subprocess.run(["raspi-config", "nonint", "do_i2c", "0"]) #0 because index of "yes" is 0
+    except:
+        pass
     print (" I need to know what is your I2C bus number. I tried to guess it.")
     print (" Please select the i2c bus number.")
 
@@ -682,6 +685,15 @@ if doi2c:
 else:
     print("\tnot to run I2CBuddy")
 
+if dowemoswitch:
+    print("\tto run WeMoSwitchBuddy")
+else:
+    print("\tnot to run WeMoSwitchBuddy")
+
+if dowemomotion:
+    print("\tto run WeMoMotionBuddy")
+else:
+    print("\tnot to run WeMoMotionBuddy")
 
 if doflic and dopresencebt:
     print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
@@ -1226,7 +1238,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
-if doblescan:
+if dowemoswitch:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n WeMoSwitchBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n WeMoSwitchBuddy "+fn
@@ -1259,7 +1271,7 @@ with open(fn,"w") as cfile:
     cfile.write(mycmd)
 os.chown(fn,currentowner.st_uid,currentowner.st_gid)
 os.chmod(fn,0o750)
-if doblescan:
+if dowemomotion:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
