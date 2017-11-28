@@ -64,26 +64,12 @@ i2csensor_config = """
                 <postfix>secs</postfix>
                 <default>90</default>
             </control>
-            <control type="spinner" name="temperature" label="Temp Sensing interval">
+            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
                 <postfix>secs</postfix>
-                <default>60</default>
-            </control>
-            <control type="spinner" name="pressure" label="Pressure Sensing interval">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>60</default>
-            </control>
-            <control type="spinner" name="humidity" label="Humidity Sensing interval">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>60</default>
+                <default>0</default>
             </control>
             <control type="spinner" name="battery" label="Battery Sensing interval">
                 <start>0</start>
@@ -92,19 +78,19 @@ i2csensor_config = """
                 <postfix>secs</postfix>
                 <default>3600</default>
             </control>
+            <control type="spinner" name="humidity" label="Humidity Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
             <control type="spinner" name="luminosity" label="Luminosity Sensing interval">
                 <start>0</start>
                 <end>600</end>
                 <increment>1</increment>
                 <postfix>secs</postfix>
-                <default>60</default>devices
-            </control>
-            <control type="spinner" name="accelerometer" label="Movement Sensing interval">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
+                <default>60</default>
             </control>
             <control type="spinner" name="particulate" label="Particule Counter">
                 <start>0</start>
@@ -113,6 +99,69 @@ i2csensor_config = """
                 <postfix>secs</postfix>
                 <default>0</default>
             </control>
+            <control type="spinner" name="power" label="Particule Counter">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+            <control type="spinner" name="pressure" label="Pressure Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+            <control type="spinner" name="temperature" label="Temp Sensing interval">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>60</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list" name="filter" label="Filter">
+            <controlgroup type="listmaker"  name="filter" label="Value Filter">
+                <control type="text" name="name" length="32"/>
+                <control name="sensor" expand="device::{type}::{subtype}" label="Sensor" type="text" length="16" />
+                <controlgroup type="choice"  name="measurement" label="Measurement">
+                    <item value="accelerometer" label="Acceleration"/>
+                    <item value="battery" label="Battery"/>
+                    <item value="humidity" label="Humidity"/>
+                    <item value="particulate" label="Particule"/>
+                    <item value="power" label="Power"/>
+                    <item value="pressure" label="Pressure"/>
+                </controlgroup>
+                <controlgroup type="choice"  name="compare" label=" ">
+                    <item value="eq" label="==" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="ne" label="!=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="gt" label="&gt;" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="ge" label="&gt;=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="lt" label="&lt;" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="le" label="&lt;=" >
+                        <control type="text" itype="number" name="compval" label="value to compare" length="32"/>
+                    </item>
+                    <item value="in" label="in" >
+                    <control type="text" itype="number" name="compval" label="Value from" length="32"/>
+                        <control type="text" itype="number" name="compval2" label="To" length="32"/>
+                    </item>
+                    <item value="not in" label="not in" >
+                    <control type="text" itype="number" name="compval" label="Value from" length="32"/>
+                        <control type="text" itype="number" name="compval2" label="To" length="32"/>
+                    </item>
+                </controlgroup>
+            </controlgroup>
         </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
@@ -123,8 +172,12 @@ i2csensor_config_default = {"throttle":{"info": 90,
                                         "accelerometer":1,
                                         "luminosity":60,
                                         "particulate":60,
-                                        "battery": 3600},
-                            "runplugin":{}, "calibrate":{}}
+                                        "battery": 3600,
+                                        "power":0},
+
+                            "runplugin":{},
+                            "filter": {},
+                            "calibrate":{}}
 
 def i2csensor_process(self, msg):
     global i2c_plugins
@@ -190,9 +243,36 @@ def sendInfo(self, lifx=None):
                       e,
                       e.__traceback__))
 
+def i2csensor_filter(self,measurement,val):
+    result=True
+    if measurement in self.filters:
+        if measurement == "accelerometer":
+            val = val["vector"]
+        for afilter in self.filters[measurement]:
+            try:
+                if afilter["op"] == "eq":
+                    result &= afilter["compval"] == val
+                if afilter["op"] == "ne":
+                    result &= afilter["compval"] != val
+                if afilter["op"] == "in":
+                    result &= afilter["compval"] <= val and afilter["compval2"] >= val
+                if afilter["op"] == "not in":
+                    result &= afilter["compval"] > val or afilter["compval2"] < val
+                if afilter["op"] == "gt":
+                    result &= afilter["compval"] < val
+                if afilter["op"] == "ge":
+                    result &= afilter["compval"] <= val
+                if afilter["op"] == "lt":
+                    result &= afilter["compval"] > val
+                if afilter["op"] == "le":
+                    result &= afilter["compval"] >= val
+            except Exception as e:
+                pass
+    return result
 
 
 bl.sensor._process = i2csensor_process
+bl.sensor.filter_value = i2csensor_filter
 
 
 
@@ -298,6 +378,24 @@ class I2CSensorBridge(bl.BuddyBridge):
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.i2csensor_config}})
+                if "filter" in self.i2csensor_config and "filter" in self.i2csensor_config["filter"]:
+                    for device in self.devices:
+                        device.filters = {}
+                        for filter in self.i2csensor_config["filter"]["filter"]:
+                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.name:
+                                measurement = filter["measurement"]["bu-cvalue"]
+                                if measurement not in device.filters:
+                                    device.filters[measurement]=[]
+                                thisfilter = {}
+                                for k,v in filter["compare"].items():
+                                    if k == "bu-cvalue":
+                                        thisfilter["op"] = v
+                                    else:
+                                        try:
+                                            thisfilter[k] = float(v)
+                                        except:
+                                            thisfilter[k] = v
+                                device.filters[measurement].append(thisfilter)
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -345,6 +443,25 @@ class I2CSensorBridge(bl.BuddyBridge):
                             self.i2c_probeclk = self.i2csensor_config["throttle"][meas]
                         else:
                             self.i2c_probeclk = gcd(self .i2c_probeclk,self.i2csensor_config["throttle"][meas])
+
+                if "filter" in self.i2csensor_config and "filter" in self.i2csensor_config["filter"]:
+                    for device in self.devices:
+                        device.filters = {}
+                        for filter in self.i2csensor_config["filter"]["filter"]:
+                            if filter["sensor"]["bu-cvalue"] == self.type+"."+device.name:
+                                measurement = filter["measurement"]["bu-cvalue"]
+                                if measurement not in device.filters:
+                                    device.filters[measurement]=[]
+                                thisfilter = {}
+                                for k,v in filter["compare"].items():
+                                    if k == "bu-cvalue":
+                                        thisfilter["op"] = v
+                                    else:
+                                        try:
+                                            thisfilter[k] = float(v)
+                                        except:
+                                            thisfilter[k] = v
+                                device.filters[measurement].append(thisfilter)
                 if self.log:
                     self.log.debug("Clock is now {}".format(self.i2c_probeclk))
 
@@ -437,6 +554,8 @@ class I2CSensorBridge(bl.BuddyBridge):
                                         "icon status": {"bu-not-present": {"opacity": 0}}}})
 
     def build(self):
+        global i2csensor_config
+        i2csensor_config = i2csensor_config.format(type=self.type,subtype=self.subtype)
         self.sending({"subject": "control" + "." + self.target,
                       "content_type": "request",
                       "content": {"request": "functions",
@@ -496,27 +615,28 @@ class I2CSensorBridge(bl.BuddyBridge):
                 if self.log:
                     self.log.debug("Getting value from {} ({})".format(plug.name,plug.is_running))
                 if plug.is_running:
-                    #try:
-                    if True:
-                        result = plug.Process(runtime=delta)
-                        if result:
-                            thisresult={}
-                            for x in plug.measurements:
-                                if x in result:
-                                    thisresult[x]=result[x]
-                                self.infoval[x]=(result[x],plug.measurements[x])
-                            if thisresult:
-                                for sensor in self.devices:
+                    for sensor in self.devices:
+                        #try:
+                        if True:
+                            result = plug.Process(runtime=delta)
+                            if result:
+                                thisresult={}
+                                for x in plug.measurements:
+                                    if x in result:
+                                        if sensor.filter_value(x,result[x]):
+                                            thisresult[x]=result[x]
+                                    self.infoval[x]=(result[x],plug.measurements[x])
+                                if thisresult:
                                     self.sending({"subject": self.type,
                                         "content_type": "event",
                                         "content": {"event": "measurement",
                                                     "target": self.type+"."+sensor.name,
                                                     "timestamp": str(dt.datetime.now().replace(microsecond=0)),
                                                     "value":thisresult}})
-                    #except Exception as e:
-                        #if self.log:
-                            #self.log.debug(
-                                #"Could not process packet with {}".format(plug.name,exc_info=(type(e),e,e.__traceback__)))
+                        #except Exception as e:
+                            #if self.log:
+                                #self.log.debug(
+                                    #"Could not process packet with {}".format(plug.name,exc_info=(type(e),e,e.__traceback__)))
             delta = dt.datetime.now() - delta
             delta = delta.seconds+round((delta.microseconds/1000)/1000.0,2)
 
