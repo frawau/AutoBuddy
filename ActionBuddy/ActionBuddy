@@ -720,6 +720,13 @@ action_rules = """
                 </controlgroup>
             </controlgroup>
         </controlgroup>
+    </configuration>
+</buddyui>
+"""
+
+action_config="""
+<buddyui version="0.1">
+    <configuration name="action">
         <controlgroup type="list"  name="email" label="Email Server">
             <control type="text" name="smtp" label="Mail Server" >
             <default>localhost</default>
@@ -736,6 +743,13 @@ action_rules = """
     </configuration>
 </buddyui>
 """
+action_config_default={"email":{
+    "smtp": "localhost",
+    "port":25,
+    "user":"",
+    "password":"",
+    "sender":"autobuddy@me.com"}}
+
 # mystuff=json.loads(urllib.request.urlopen("https://freegeoip.net/json/").read().decode())
 
 daysofweek = [
@@ -2131,21 +2145,21 @@ class Rule():
         try:
             if v == "email":
                 msg = MIMEMultipart()
-                msg['From'] = bridgectl.email["sender"]
+                msg['From'] = bridgectl.action_config["email"]["sender"]
                 recipients = f["to"].split(",")
                 msg['To'] = f["to"]
                 msg['Subject'] = f["subject"]
                 msg["Date"] =dt.datetime.now().strftime("%a, %d %b %Y %H:%M:%S")+" "+time.strftime('%z')
                 msg.attach(MIMEText(f["message"]))
 
-                server = smtplib.SMTP(bridgectl.email["smtp"],port=int(bridgectl.email["port"]))
+                server = smtplib.SMTP(bridgectl.action_config["email"]["smtp"],port=int(bridgectl.action_config["email"]["port"]))
                 try:
                     server.starttls()
                 except:
                     pass
-                if bridgectl.email["user"]:
-                    server.login(bridgectl.email["user"],bridgectl.email["password"])
-                server.sendmail(bridgectl.email["sender"], recipients, msg.as_string())
+                if bridgectl.action_config["email"]["user"]:
+                    server.login(bridgectl.action_config["email"]["user"],bridgectl.action_config["email"]["password"])
+                    server.sendmail(bridgectl.action_config["email"]["sender"], recipients, msg.as_string())
                 server.quit()
             elif v == "pushbullet":
                 params = {'type': 'note', 'title': f["subject"], 'body': f["message"]}
@@ -2339,10 +2353,10 @@ class Action(bl.BuddyBridge):
     def __init__(self, loop, future, config, log):
         super(Action, self).__init__(loop, future, config, log)
         self.rules = {}
-        self.email = {}
         self.stateVar = {}
         self.deviceVar = {}
         self.timer = None
+        self.action_config = action_config_default
 
     @property
     def target(self):
@@ -2376,7 +2390,7 @@ class Action(bl.BuddyBridge):
                                   e,
                                   e.__traceback__))
 
-        #Do we need to  update the config?
+        #Do we need to  update tghe config?
         if msg["content"]['event'] == 'config updated' and msg["content"]['target'] == 'System.configuration':
 
             if "location" in msg["content"]["value"]:
@@ -2385,6 +2399,12 @@ class Action(bl.BuddyBridge):
                         "content"][
                             "value"][
                                 "location"]
+            if "email" in msg["content"]["value"]:
+                self.config[
+                    "email"] = msg[
+                        "content"][
+                            "value"][
+                                "email"]
 
     def process_command(self, msg):
         """Here we process the commands.
@@ -2430,9 +2450,9 @@ class Action(bl.BuddyBridge):
                                 [x.vardef for x in self.stateVar.values()]))
 
             if msg["content"]["target"] == self.type + ".rules":
-                needupdate = False
                 if "rules" in msg["content"]["value"]:
                     curnames = list(self.rules.keys())
+                    needupdate = False
                     for vardef in msg["content"]["value"]["rules"]:
                         vname = self.type + ".rules." + vardef["name"]
                         if vname in curnames:
@@ -2450,21 +2470,28 @@ class Action(bl.BuddyBridge):
                         del(self.rules[name])
                         needupdate = True
 
-                if "email" in msg["content"]["value"]:
-                    if self.email != msg["content"]["value"]["email"]:
-                        self.email = msg["content"]["value"]["email"]
-                        needupdate = True
-                if needupdate:
-                    self.sending({"subject": "control." + self.type,
-                                    "content_type": "request",
-                                    "content": {"request": "save property",
-                                                "target": self.type,
-                                                "name": "rules",
-                                                #"token": self.target,
-                                                "value": bl.encrypt([x.vardef for x in self.rules.values()], self.config["buddykey"])}})
-                    if self.log:
-                        self.log.debug("The new property stored is {}".format(
-                            [x.vardef for x in self.rules.values()]))
+                    if needupdate:
+                        self.sending({"subject": "control." + self.type,
+                                      "content_type": "request",
+                                      "content": {"request": "save property",
+                                                  "target": self.type,
+                                                  "name": "rules",
+                                                  #"token": self.target,
+                                                  "value": bl.encrypt([x.vardef for x in self.rules.values()], self.config["buddykey"])}})
+                        if self.log:
+                            self.log.debug("The new property stored is {}".format(
+                                [x.vardef for x in self.rules.values()]))
+
+            if msg["content"]["target"] == self.type + "."+self.subtype:
+
+                for k, v in msg["content"]["value"].items():
+                    action_config_default[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(action_config_default, self.config["buddykey"])}})
 
             # Now value contains the definition of that state variable
             #   type is the type one of "state" or "time" because device state variable are
@@ -2497,12 +2524,23 @@ class Action(bl.BuddyBridge):
                         self.log.warning("Config is mangled")
                     else:
                         print("Config is mangled")
+
+
+                for x in storedconfig:
+                    self.action_config[x] = storedconfig[x]
+
             if "location" in msg["content"]["system configuration"]:
                 self.config[
                     "location"] = msg[
                         "content"][
                             "system configuration"][
                                 "location"]
+            self.sending({"subject": self.config["restricted"],
+                            "content_type": "restricted event",
+                            "content": {"event": "config updated",
+                                        "target": self.type+"."+self.subtype,
+                                        "value": action_config_default}})
+
             self.config["database"] = msg["content"]["database"]
             self.state = "active"
             self.build()
@@ -2514,6 +2552,20 @@ class Action(bl.BuddyBridge):
                     self.log.warning("Warning: Configuration was not saved.")
                 else:
                     print("Warning: Configuration was not saved.")
+            else:
+
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [action_config, action_config_default]}}})
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
+                              "content": {"event": "config updated",
+                                          "target": self.type+"."+self.subtype,
+                                          "value": action_config_default}})
 
         elif msg["content"]["response"] == "functions" and msg["subject"].startswith(self.type):
             if msg["content"]["status"] != "done":
@@ -2523,6 +2575,7 @@ class Action(bl.BuddyBridge):
                 else:
                     print(
                         "Warning: Configuration definition was not registered..")
+
         elif msg["content"]["response"] == "get property" and msg["subject"].startswith(self.type):
             if msg["content"]["status"] == "done":
                 for prop in ["state variable", "rules"]:
@@ -2559,20 +2612,20 @@ class Action(bl.BuddyBridge):
                                                   e.__traceback__))
                                     continue
 
-                            self.sending(
-                                {"subject": "control" + "." + self.type,
-                                    "content_type": "request",
-                                    "content": {"request": "functions",
-                                                "target": self.type,
-                                                "subtype": "state variable",
-                                                #"token": self.type+".state variable",
-                                                "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
-                            self.sending({"subject": self.config["restricted"],
-                                          "content_type": "restricted event",
-                                          "content": {"event": "config updated",
-                                                      "target": self.type +
-                                                      ".state variable",
-                                                      "value": {"state variable": [x.vardef for x in self.stateVar.values()]}}})
+                        self.sending(
+                            {"subject": "control" + "." + self.type,
+                                "content_type": "request",
+                                "content": {"request": "functions",
+                                            "target": self.type,
+                                            "subtype": "state variable",
+                                            #"token": self.type+".state variable",
+                                            "value": {"configs": [action_statevariable, {"state variable": [x.vardef for x in self.stateVar.values()]}]}}})
+                        self.sending({"subject": self.config["restricted"],
+                                        "content_type": "restricted event",
+                                        "content": {"event": "config updated",
+                                                    "target": self.type +
+                                                    ".state variable",
+                                                    "value": {"state variable": [x.vardef for x in self.stateVar.values()]}}})
 
                         if prop == "rules":
                             for avar in storedprop:
@@ -2593,21 +2646,20 @@ class Action(bl.BuddyBridge):
                                                   e,
                                                   e.__traceback__))
                                     continue
-                            self.sending(
-                                {"subject": "control" + "." + self.type,
-                                    "content_type": "request",
-                                    "content": {"request": "functions",
-                                                "target": self.type,
-                                                "subtype": "rules",
-                                                #"token": self.type+".rules",
-                                                "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
-                            self.sending({"subject": self.config["restricted"],
-                                          "content_type": "restricted event",
-                                          "content": {"event": "config updated",
-                                                      "target": self.type +
-                                                      ".rules",
-                                                      "value": {"rules": [x.vardef for x in self.rules.values()],
-                                                                "email": self.email}}})
+                        self.sending(
+                            {"subject": "control" + "." + self.type,
+                                "content_type": "request",
+                                "content": {"request": "functions",
+                                            "target": self.type,
+                                            "subtype": "rules",
+                                            #"token": self.type+".rules",
+                                            "value": {"configs": [action_rules, {"rules": [x.vardef for x in self.rules.values()]}]}}})
+                        self.sending({"subject": self.config["restricted"],
+                                        "content_type": "restricted event",
+                                        "content": {"event": "config updated",
+                                                    "target": self.type +
+                                                    ".rules",
+                                                    "value": {"rules": [x.vardef for x in self.rules.values()]}}})
             else:
                 if self.log:
                     self.log.warning("Property could not be retrieved")
@@ -2640,8 +2692,7 @@ class Action(bl.BuddyBridge):
                                   "content_type": "restricted event",
                                   "content": {"event": "config updated",
                                               "target": self.type + ".rules",
-                                              "value": {"rules": [x.vardef for x in self.rules.values()],
-                                                        "email":self.email}}})
+                                              "value": {"rules": [x.vardef for x in self.rules.values()]}}})
         else:
             if self.log:
                 self.log.warning(
@@ -2655,6 +2706,13 @@ class Action(bl.BuddyBridge):
                                                        msg["content"]))
 
     def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                        "content_type": "request",
+                        "content": {"request": "functions",
+                                    "target": self.type,
+                                    "subtype": self.subtype,
+                                    #"token": self.target,
+                                    "value": {"configs": [action_config, action_config_default]}}})
         newmsg = {
             "content_type": "request",
             "subject": "control." +
