@@ -1062,8 +1062,8 @@ class KodiBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [kodi_config, kodi_config_default]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": kodi_config_default}})
@@ -1100,8 +1100,8 @@ class KodiBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [kodi_config, kodi_config_default]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": kodi_config_default}})
@@ -1344,7 +1344,8 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "scanner": "scanner",
-     "ssl": ""}
+     "ssl": "",
+     "restricted": "guibridge"}
 
 
 def configure():
@@ -1366,6 +1367,8 @@ def configure():
                         help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-I", "--scanner", default=cfgdefault["scanner"],
                         help="The service <type>.<subtype> scanning for my services (default \"%s\")" % (cfgdefault["scanner"]))
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
@@ -1400,78 +1403,25 @@ def configure():
     kodicfg = {"debug": opts.debug}
     try:
     # if True:
-        if opts.configonly:
-            try:
-                cfgdata = json.load(opts.config)
-                opts.config.close()
-            except:
-                cfgdata = {}
-        else:
+        try:
             cfgdata = json.load(opts.config)
             opts.config.close()
-        if opts.type != cfgdefault["type"]:
-            kodicfg["type"] = opts.type
-        elif "type" in cfgdata:
-            kodicfg["type"] = cfgdata["type"]
-        else:
-            kodicfg["type"] = opts.type
-        if opts.debug:
-            mediaplayerlog.debug("The type is %s." % kodicfg["type"])
+        except:
+            cfgdata = {}
+            kodilog.warning("Config file could not be opened.")
 
-        if opts.subtype != cfgdefault["subtype"]:
-            kodicfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            kodicfg["subtype"] = cfgdata["subtype"]
-        else:
-            kodicfg["subtype"] = opts.subtype
-        if opts.debug:
-            mediaplayerlog.debug("The subtype is %s." % kodicfg["subtype"])
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                kodicfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                kodicfg[attr] = cfgdata[attr]
+            else:
+                kodicfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                kodilog.debug("The %s is %s." % (attr,kodicfg[attr]))
 
-        if opts.credential != cfgdefault["credential"]:
-            kodicfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            kodicfg["credential"] = cfgdata["credential"]
-        else:
-            kodicfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            mediaplayerlog.debug("The credential is %s" % kodicfg["credential"])
 
-        if opts.scanner != cfgdefault["scanner"]:
-            kodicfg["scanner"] = opts.scanner
-        elif "scanner" in cfgdata:
-            kodicfg["scanner"] = cfgdata["scanner"]
-        else:
-            kodicfg["scanner"] = cfgdefault["scanner"]
-        if opts.debug:
-            mediaplayerlog.debug("The scanner is %s" % kodicfg["scanner"])
-
-        if opts.port != cfgdefault["port"]:
-            kodicfg["port"] = opts.port
-        elif "port" in cfgdata:
-            kodicfg["port"] = cfgdata["port"]
-        else:
-            kodicfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            mediaplayerlog.debug("The port is %s" % (kodicfg["port"]))
-
-        if opts.host != cfgdefault["host"]:
-            kodicfg["host"] = opts.host
-        elif "host" in cfgdata:
-            kodicfg["host"] = cfgdata["host"]
-        else:
-            kodicfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            mediaplayerlog.debug("The host is %s" % kodicfg["host"])
-
-        if "buddykey" in cfgdata:
-            kodicfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.ssl != cfgdefault["ssl"]:
-            kodicfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            kodicfg["ssl"] = cfgdata["ssl"]
-        else:
-            kodicfg["ssl"] = cfgdefault["ssl"]
         if kodicfg["ssl"] and not (os.path.isfile(kodicfg["ssl"] + "/" + CERTFILE)):
             mediaplayerlog.critical("Encryption: Could not find {} .".format(
                 kodicfg["ssl"] + "/" + CERTFILE))

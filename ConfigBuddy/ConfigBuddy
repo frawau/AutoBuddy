@@ -776,11 +776,11 @@ if mainstation:
     mycfg={}
     mycfg["tls"]=certdir
     mycfg["ssl"]=certdir
+    mycfg["type"] = GUIBRIDGETYPE
     mycfg["buddykey"] = keygen()
     mycfg["application"] = BUDDYLOCATION+"/WebBuddy/buddyctrl.html"
     mycfg["host"] = "*"
     mycfg["port"] = 8090
-    mycfg["type"] = GUIBRIDGETYPE
     mycfg["broker"] = brokerlocation
     mycfg["credential"] = credential
     socketkey = mycfg["buddykey"]
@@ -815,8 +815,8 @@ if mainstation:
     mycfg["type"] = "action"
     mycfg["credential"] = credential
     mycfg["ssl"]=certdir
-    mycfg["buddykey"] = keygen()
     mycfg["restricted"] = GUIBRIDGETYPE
+    mycfg["buddykey"] = keygen()
     actionkey=mycfg["buddykey"]
     fn=BUDDYLOCATION+"/.buddyconfig/action.cfg"
     with open(fn,"w") as cfile:
@@ -848,6 +848,7 @@ mycfg["host"]= brokerlocation
 mycfg["type"] = "light"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 
 fn=BUDDYLOCATION+"/.buddyconfig/lifx.cfg"
@@ -883,6 +884,7 @@ mycfg["host"]= brokerlocation
 mycfg["type"] = "switch"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["flichost"] = "localhost"
 mycfg["flicpath"] = BUDDYLOCATION + "/FlicBuddy/flicd/"
@@ -922,6 +924,7 @@ mycfg["type"] = "mediaplayer"
 mycfg["subtype"] = "Kodi"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["scanner"]="scanner.ipservices"
 mycfg["buddykey"] = keygen()
 
@@ -959,6 +962,7 @@ mycfg["type"] = "scanner"
 mycfg["subtype"] = "ipservices"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 
 fn=BUDDYLOCATION+"/.buddyconfig/scanner.cfg"
@@ -1004,6 +1008,7 @@ elif not dopresence:
 
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 actionkey=mycfg["buddykey"]
 fn=BUDDYLOCATION+"/.buddyconfig/presence.cfg"
@@ -1042,6 +1047,7 @@ mycfg["localname"] = voicename
 
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/voice.cfg"
 with open(fn,"w") as cfile:
@@ -1081,6 +1087,7 @@ else:
 
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/blescan.cfg"
 with open(fn,"w") as cfile:
@@ -1115,6 +1122,7 @@ mycfg["subtype"] = "sqlite"
 mycfg["dbfile"] = BUDDYLOCATION+"/LoggerBuddy/logger.sqlite"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/logger.cfg"
 with open(fn,"w") as cfile:
@@ -1148,8 +1156,8 @@ mycfg["type"] = "logger"
 mycfg["subtype"] = "thingsboard"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
-mycfg["buddykey"] = keygen()
 mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/thingsboard.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
@@ -1182,6 +1190,7 @@ mycfg["type"] = "sensor"
 mycfg["subtype"] = i2csubtype
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["i2cbus"] = i2cbus
 mycfg["localname"] = i2cname
@@ -1217,6 +1226,7 @@ mycfg["type"] = "switch"
 mycfg["subtype"] = "wemo"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/wemoswitch.cfg"
 with open(fn,"w") as cfile:
@@ -1250,6 +1260,7 @@ mycfg["type"] = "sensor"
 mycfg["subtype"] = "wemo"
 mycfg["credential"] = credential
 mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 fn=BUDDYLOCATION+"/.buddyconfig/wemomotion.cfg"
 with open(fn,"w") as cfile:

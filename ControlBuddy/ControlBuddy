@@ -77,19 +77,6 @@ system_config = """
                 <increment>10</increment>
             </control>
         </controlgroup>
-        <controlgroup type="list"  name="email" label="Email Server">
-            <control type="text" name="smtp" label="Mail Server" >
-            <default>localhost</default>
-            </control>
-            <control type="text" itype="number" name="port" label="Port" >
-                <default>25</default>
-            </control>
-            <control type="text" name="sender" label="Sender" >
-                <default>autobuddy</default>
-            </control>
-            <control type="text" name="user" label="User" />
-            <control type="text" name="password" label="Password" />
-        </controlgroup>
     </configuration>
 </buddyui>
 """

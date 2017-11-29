@@ -771,8 +771,8 @@ class VoiceBridge(bl.BuddyBridge):
                                           "target": self.type,
                                           "subtype": self.subtype,
                                           "value": {"configs": [voice_config, self.voice_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                                            "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.voice_config}})
@@ -964,6 +964,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "restricted": "guibridge",
      "modeldir": "",
      "voicepath": "./",
      "mic": "default",
@@ -1003,6 +1004,8 @@ def configure():
                         help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",

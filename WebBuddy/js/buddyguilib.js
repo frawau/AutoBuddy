@@ -644,8 +644,10 @@ var listmakerCG = Class.extend({
             tabmsg += ">"
             var tabstr=undefined;
             var active=true;
+            var wastabbed = false;
             $.each(this.part.children(), function (jdx, actrl) {
                 if ($(actrl).is("[newtab=\"true\"]")) {
+                    wastabbed = true;
                     if ( active) {
                         active=false;
                         tabstr= tabmsg+"<ul class=\"nav nav-tabs\">";
@@ -721,7 +723,11 @@ var listmakerCG = Class.extend({
                 }
             })
             if ( !active ) {
-                tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
+                if ( wastabbed ) {
+                    tabmsg=tabstr+"</ul>"+tabmsg+"</div></div>";
+                } else{
+                    tabmsg=tabstr+"</ul>"+tabmsg+"</div>";
+                }
             }
             var addlbl="Commit";
             if (this.part.attr("alabel")) {

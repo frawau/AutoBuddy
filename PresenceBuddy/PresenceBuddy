@@ -318,8 +318,8 @@ class PresenceBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [presence_config, self.presence_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.presence_config}})
@@ -344,8 +344,8 @@ class PresenceBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [presence_config, self.presence_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.presence_config}})
@@ -628,6 +628,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "restricted": "guibridge",
      "btdev": None,
      "lan": True}
 
@@ -661,6 +662,8 @@ def configure():
                         help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
 

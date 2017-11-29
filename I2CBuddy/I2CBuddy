@@ -373,8 +373,8 @@ class I2CSensorBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [i2csensor_config, self.i2csensor_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.i2csensor_config}})
@@ -417,8 +417,8 @@ class I2CSensorBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [i2csensor_config, self.i2csensor_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.i2csensor_config}})
@@ -756,6 +756,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "restricted": "guibridge",
      "i2cbus": 0,
      "localname":""}
 

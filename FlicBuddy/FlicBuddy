@@ -318,8 +318,8 @@ class FlicBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [flic_config, flic_config_default]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": flic_config_default}})
@@ -488,8 +488,8 @@ class FlicBridge(bl.BuddyBridge):
                                   #"token": self.target,
                                   "value": {"functions": flic_commands, "module commands": flic_module_commands, "configs": [flic_config, flic_config_default]}}})
 
-        self.sending({"subject": self.target,
-                      "content_type": "event",
+        self.sending({"subject": self.config["restricted"],
+                      "content_type": "restricted event",
                       "content": {"event": "config updated",
                                   "target": self.target,
                                   "value": flic_config_default}})
@@ -610,6 +610,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "restricted": "guibridge",
      "flichost": "localhost",
      "flicport": 5551,
      "flicpath": "./flicd",
@@ -644,6 +645,8 @@ def configure():
                         help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
     parser.add_argument("-C", "--configonly", default="",
@@ -682,94 +685,19 @@ def configure():
         except:
             cfgdata = {}
             fliclog.warning("Config file could not be opened.")
-        if opts.type != cfgdefault["type"]:
-            fliccfg["type"] = opts.type
-        elif "type" in cfgdata:
-            fliccfg["type"] = cfgdata["type"]
-        else:
-            fliccfg["type"] = opts.type
-        if opts.debug:
-            fliclog.debug("The type is %s." % fliccfg["type"])
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            fliccfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            fliccfg["subtype"] = cfgdata["subtype"]
-        else:
-            fliccfg["subtype"] = opts.subtype
-        if opts.debug:
-            fliclog.debug("The subtype is %s." % fliccfg["subtype"])
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                fliccfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                fliccfg[attr] = cfgdata[attr]
+            else:
+                fliccfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                fliclog.debug("The %s is %s." % (attr,fliccfg[attr]))
 
-        if opts.credential != cfgdefault["credential"]:
-            fliccfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            fliccfg["credential"] = cfgdata["credential"]
-        else:
-            fliccfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            fliclog.debug("The credential is %s" % fliccfg["credential"])
 
-        if opts.port != cfgdefault["port"]:
-            fliccfg["port"] = opts.port
-        elif "port" in cfgdata:
-            fliccfg["port"] = cfgdata["port"]
-        else:
-            fliccfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            fliclog.debug("The port is %s" % (fliccfg["port"]))
-
-        if opts.flicport != cfgdefault["flicport"]:
-            fliccfg["flicport"] = opts.flicport
-        elif "filcport" in cfgdata:
-            fliccfg["flicport"] = cfgdata["flicport"]
-        else:
-            fliccfg["flicport"] = cfgdefault["flicport"]
-        if opts.debug:
-            fliclog.debug("The flicd port is %s" % (fliccfg["flicport"]))
-
-        if opts.host != cfgdefault["host"]:
-            fliccfg["host"] = opts.host
-        elif "host" in cfgdata:
-            fliccfg["host"] = cfgdata["host"]
-        else:
-            fliccfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            fliclog.debug("The host is %s" % fliccfg["host"])
-
-        if opts.flichost != cfgdefault["flichost"]:
-            fliccfg["flichost"] = opts.flichost
-        elif "flichost" in cfgdata:
-            fliccfg["flichost"] = cfgdata["flichost"]
-        else:
-            fliccfg["flichost"] = cfgdefault["flichost"]
-        if opts.debug:
-            fliclog.debug("The flicd host is %s" % fliccfg["flichost"])
-
-        if "buddykey" in cfgdata:
-            fliccfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.flicpath != cfgdefault["flicpath"]:
-            fliccfg["flicpath"] = opts.flicpath
-        elif "flicpath" in cfgdata:
-            fliccfg["flicpath"] = cfgdata["flicpath"]
-        else:
-            fliccfg["flicpath"] = cfgdefault["flicpath"]
-
-        if opts.btiface != cfgdefault["btiface"]:
-            fliccfg["btiface"] = opts.btiface
-        elif "btiface" in cfgdata:
-            fliccfg["btiface"] = cfgdata["btiface"]
-        else:
-            fliccfg["btiface"] = cfgdefault["btiface"]
-
-        if opts.ssl != cfgdefault["ssl"]:
-            fliccfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            fliccfg["ssl"] = cfgdata["ssl"]
-        else:
-            fliccfg["ssl"] = cfgdefault["ssl"]
         if fliccfg["ssl"] and not (os.path.isfile(fliccfg["ssl"] + "/" + CERTFILE)):
             fliclog.critical("Encryption: Could not find {} .".format(
                 fliccfg["ssl"] + "/" + CERTFILE))

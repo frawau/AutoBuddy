@@ -353,8 +353,8 @@ class BLESensorBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [blesensor_config, self.blesensor_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.blesensor_config}})
@@ -398,8 +398,8 @@ class BLESensorBridge(bl.BuddyBridge):
                                           "subtype": self.subtype,
                                           #"token": self.target,
                                           "value": {"configs": [blesensor_config, self.blesensor_config]}}})
-                self.sending({"subject": self.target,
-                              "content_type": "event",
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
                               "content": {"event": "config updated",
                                           "target": self.target,
                                           "value": self.blesensor_config}})
@@ -766,6 +766,7 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
+     "restricted": "guibridge",
      "btdev": 0}
 
 
@@ -793,6 +794,8 @@ def configure():
                         help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
 
@@ -828,86 +831,25 @@ def configure():
     blesensorcfg = {"debug": opts.debug}
     try:
     # if True:
-        if opts.configonly:
-            try:
-                cfgdata = json.load(opts.config)
-                opts.config.close()
-            except:
-                cfgdata = {}
-        else:
+        try:
             cfgdata = json.load(opts.config)
             opts.config.close()
+        except:
+            cfgdata = {}
+            blesensorlog.warning("Config file could not be opened.")
 
         # Definition
-        if opts.type != cfgdefault["type"]:
-            blesensorcfg["type"] = opts.type
-        elif "type" in cfgdata:
-            blesensorcfg["type"] = cfgdata["type"]
-        else:
-            blesensorcfg["type"] = opts.type
-        if opts.debug:
-            blesensorlog.debug("The type is %s." % blesensorcfg["type"])
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                blesensorcfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                blesensorcfg[attr] = cfgdata[attr]
+            else:
+                blesensorcfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                blesensorlog.debug("The %s is %s." % (attr,blesensorcfg[attr]))
 
-        if opts.subtype != cfgdefault["subtype"]:
-            if "-" in opts.subtype:
-                raise Exception("Subtype may not contain a dash (\"-\")")
-            blesensorcfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            blesensorcfg["subtype"] = cfgdata["subtype"]
-        else:
-            blesensorcfg["subtype"] = opts.subtype
-        if opts.debug:
-            blesensorlog.debug("The subtype is %s." % blesensorcfg["subtype"])
 
-        # Controller
-        if opts.host != cfgdefault["host"]:
-            blesensorcfg["host"] = opts.host
-        elif "host" in cfgdata:
-            blesensorcfg["host"] = cfgdata["host"]
-        else:
-            blesensorcfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            blesensorlog.debug("The host is %s" % blesensorcfg["host"])
-
-        if opts.port != cfgdefault["port"]:
-            blesensorcfg["port"] = opts.port
-        elif "port" in cfgdata:
-            blesensorcfg["port"] = cfgdata["port"]
-        else:
-            blesensorcfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            blesensorlog.debug("The port is %s" % (blesensorcfg["port"]))
-
-        # Bluetooth
-        if opts.btdev != cfgdefault["btdev"]:
-            blesensorcfg["btdev"] = opts.btdev
-        elif "btdev" in cfgdata:
-            blesensorcfg["btdev"] = cfgdata["btdev"]
-        else:
-            blesensorcfg["btdev"] = cfgdefault["btdev"]
-        if opts.debug:
-            blesensorlog.debug(
-                "The Bluetooth device is %s" %
-                (blesensorcfg["btdev"]))
-
-        # Authentication and encryption
-        if opts.credential != cfgdefault["credential"]:
-            blesensorcfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            blesensorcfg["credential"] = cfgdata["credential"]
-        else:
-            blesensorcfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            blesensorlog.debug(
-                "The credential is %s" %
-                blesensorcfg["credential"])
-
-        if opts.ssl != cfgdefault["ssl"]:
-            blesensorcfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            blesensorcfg["ssl"] = cfgdata["ssl"]
-        else:
-            blesensorcfg["ssl"] = cfgdefault["ssl"]
         if blesensorcfg["ssl"] and not (os.path.isfile(blesensorcfg["ssl"] + "/" + CERTFILE)):
             blesensorlog.critical("Encryption: Could not find {} .".format(
                 blesensorcfg["ssl"] + "/" + CERTFILE))

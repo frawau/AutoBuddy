@@ -3,7 +3,7 @@
 #
 # Copyright (c) 2015 François Wautier
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
@@ -13,11 +13,11 @@
 # The above copyright notice and this permission notice shall be included in all copies
 # or substantial portions of the Software.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ###############################################################################
 # initialy lifted from Autobahn and twisted matrix
@@ -43,11 +43,11 @@ __version__="0.10"
     #def __init__(self,name=None):
         #self.name=name
         #self.authtoken=None
-        
-        
+
+
 #Generating evaluable expressions from hveiga @ stackoverflow
 def expr(depth):
-    if depth==1 or random.random()<1.0/(2**depth-1): 
+    if depth==1 or random.random()<1.0/(2**depth-1):
         return str(int(random.random() * 1000) )
     return '(' + expr(depth-1) + random.choice(['+','-','*','/']) + expr(depth-1) + ')'
 
@@ -57,7 +57,7 @@ def makeName(ws,length=16):
         for i in range(length):
             name += random.choice('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
         ws.name=name
-        
+
 async def websocket_handler(request):
 
     ws = web.WebSocketResponse()
@@ -70,7 +70,7 @@ async def websocket_handler(request):
             sysctl.msgfromWS(msg.json(),ws)
         except:
             pass
-        
+
         if msg.type == aiohttp.WSMsgType.error:
             sysctl.log.debug('ws connection closed with exception %s' %
                   ws.exception())
@@ -84,9 +84,9 @@ async def websocket_handler(request):
 
 class GuiWSBridge(bl.BuddyBridge):
     """
-    This is the bridge application. It will connect to the controller and will 
+    This is the bridge application. It will connect to the controller and will
     have WebSocket connections registered with it.
-    """    
+    """
     def __init__(self, loop,future,config,log):
         super(GuiWSBridge, self).__init__(loop,future,config,log)
         self.users={}
@@ -95,7 +95,7 @@ class GuiWSBridge(bl.BuddyBridge):
         self.tasks = []
         self.allowedsocket = set()
         self.adminsocket = set()
-    
+
     #A bit different ....overiding
     def connection_made(self,transport):
         self.transport=transport
@@ -107,11 +107,11 @@ class GuiWSBridge(bl.BuddyBridge):
         else:
             self.getUsers()
             self.getUserConf()
-     
+
 
     def sendMessage(self, payload):
         self.sending(payload)
-         
+
     def MsgProcess(self,msg):
         #Here all messages processed are coming from the controller
         if self.log:
@@ -146,7 +146,7 @@ class GuiWSBridge(bl.BuddyBridge):
                                 client.send_json(cleanmsg)
                 except:
                     pass
-   
+
     def msgfromWS(self,msg,orig):
         try:
         #if True:
@@ -166,8 +166,8 @@ class GuiWSBridge(bl.BuddyBridge):
                         self.adminsocket.add(orig.name)
                         newmsg["content"]["value"]["list of users"] = dict([(x,y[1]) for x,y in self.users.items()])
                     if msg["content"]["user"] in self.user_config:
-                        newmsg["content"]["value"]["user config"] = self.user_config[msg["content"]["user"]] 
-                        
+                        newmsg["content"]["value"]["user config"] = self.user_config[msg["content"]["user"]]
+
                 else:
                     newmsg={"content_type":"response","subject":msg["content"]["target"],"content":{}}
                     newmsg["content"]["response"]="login"
@@ -215,8 +215,8 @@ class GuiWSBridge(bl.BuddyBridge):
 
         except:
             self.log.warning ("Something's wrong! Probably a badly formated message",exc_info=(type(e), e, e.__traceback__))
-        
-  
+
+
     def processMessage(self,msg):
         if msg["content_type"] == "response":
             if msg["content"]["token"] in self.requestids:
@@ -228,7 +228,7 @@ class GuiWSBridge(bl.BuddyBridge):
                     if msg["content"]["status"]=="done":
                         for x,val in msg["content"]["value"].items():
                             theval=bl.decrypt(val,self.config["buddykey"])
-                            cattr=getattr(self,x) 
+                            cattr=getattr(self,x)
                             for y,v in theval.items():
                                 cattr[y]=v
                             setattr(self,x,cattr)
@@ -242,11 +242,11 @@ class GuiWSBridge(bl.BuddyBridge):
                             client.send_json(msg)
                 except:
                     pass
-                        
+
     def register(self,gui):
         gui.log=self.log
         self.devices.append(gui)
-        
+
     def unregister(self,gui):
         try:
             self.devices.remove(gui)
@@ -261,7 +261,7 @@ class GuiWSBridge(bl.BuddyBridge):
         except:
             pass
 
- 
+
 
     def saveUsers(self,token=None):
         msg={"content_type":"request","subject":"control.gui","content":{}}
@@ -286,7 +286,7 @@ class GuiWSBridge(bl.BuddyBridge):
         self.config["save user"]=False
         self.sendMessage(msg)
 
-   
+
     def saveUserConf(self,token=None):
         msg={"content_type":"request","subject":"control.gui","content":{}}
         msg["content"]["request"]="save property"
@@ -307,13 +307,19 @@ class GuiWSBridge(bl.BuddyBridge):
         newmsg["content"]["name"]="user_config"
         msg = newmsg
         self.sendMessage(msg)
-   
-cfgdefault={"broker":"localhost","tls":False,"type":"gui","credential":"",
-            "application":"./html/buddyctrl.html","brokerport":8745,"host":"localhost","port":8080,"ssl":""}
+
+cfgdefault={"broker":"localhost",
+            "tls":False,
+            "type":"gui",
+            "credential":"",
+            "application":"./html/buddyctrl.html","brokerport":8745,
+            "host":"localhost",
+            "port":8080,
+            "ssl":""}
 def configure():
     absolute=["tls","application"]
     parser = argparse.ArgumentParser(description="Autobuddy Websocket bridge.")
-    #                            version="%prog " + __version__ + "/" + bl.__version__) 
+    #                            version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-a", "--application", default=cfgdefault['application'],
                     help="The application to serve. (default \"%s\""%cfgdefault["application"])
     parser.add_argument("-b", "--broker", default=cfgdefault['broker'],
@@ -334,7 +340,7 @@ def configure():
                     help="List of subject content to echo to websocket. (default \"%s\""%cfgdefault["type"])
     parser.add_argument("-S", "--ssl", default="",
                     help="The directory where the file %s can be found."%(CERTFILE))
-    parser.add_argument("-T", "--tls", default=cfgdefault["tls"], 
+    parser.add_argument("-T", "--tls", default=cfgdefault["tls"],
                     help="Use TLS with key (server.key) and certificat (server.crt) files in directory (default \"%s\")"%cfgdefault["tls"])
     parser.add_argument("-u", "--user",
                     help="Create an admin user")
@@ -342,14 +348,14 @@ def configure():
                     help="Log warning messages (default to False)")
     parser.add_argument("-V", "--credential", default='',
                     help="The credential used to verify authorization.")
-        
+
     try:
         opts=parser.parse_args()
     except Exception as e:
         print("Error: ",e)
         parser.print_help()
         sys.exit(-2)
-        
+
     if opts.debug:
 
         logging.basicConfig(
@@ -381,10 +387,10 @@ def configure():
             if opts.configonly:
                 guiwslog.warning ("configuration file %s does not exist or contains garbage."%opts.config)
                 cfgdata={}
-            
-            
-        guiwscfg["save user"]=False    
-            
+
+
+        guiwscfg["save user"]=False
+
         for cfg in cfgdefault:
             if getattr(opts,cfg,False) and  getattr(opts,cfg) != cfgdefault[cfg]:
                 guiwscfg[cfg] = getattr(opts,cfg)
@@ -395,18 +401,18 @@ def configure():
             if cfg in absolute:
                 guiwscfg[cfg] = os.path.abspath(guiwscfg[cfg])
             if opts.debug:
-                guiwslog.debug("%s is %s"%(cfg,guiwscfg[cfg]))    
-        
+                guiwslog.debug("%s is %s"%(cfg,guiwscfg[cfg]))
+
         guiwscfg["subtype"]="gui"
-        
+
         if guiwscfg["ssl"] and not ( os.path.isfile(guiwscfg["ssl"]+"/"+CERTFILE)):
             guiwslog.critical("Encryption: Could not find {} .".format(
                 guiwscfg["ssl"]+"/"+CERTFILE))
             sys.exit()
-        
+
         if "buddykey" in cfgdata:
             guiwscfg["buddykey"] = cfgdata["buddykey"]
-            
+
         if opts.configonly:
             newconfig={}
             for cfg in cfgdefault:
@@ -416,15 +422,15 @@ def configure():
                 newconfig["buddykey"] = guiwscfg["buddykey"]
             else:
                 if opts.debug:
-                    guiwslog.debug("Generating random key")   
+                    guiwslog.debug("Generating random key")
                 newconfig["buddykey"] = bl.keygen()
-                
+
             with open(opts.configonly,"w") as cfile:
                 json.dump(newconfig,cfile)
             os.chmod(opts.configonly,384) # 0600
             print ("Config was saved")
             sys.exit(1)
-            
+
         if opts.user:
             from getpass import getpass
             nbtry=3
@@ -445,7 +451,7 @@ def configure():
     except Exception as e:
         guiwslog.critical("{}".format(e))
         sys.exit(-2)
-   
+
 def serve_files(request):
     fname=request.match_info['fname']
     try:
@@ -475,12 +481,12 @@ async def on_shutdown(app):
     for ws in sysctl.devices:
         await ws.close(code=WSCloseCode.GOING_AWAY,
                        message='Server shutdown')
-     
+
 if __name__ == '__main__':
 
     mypath=os.path.dirname(os.path.abspath(__file__))+"/"
     guiwslog, guiwscfg = configure()
-  
+
     if "tls" in guiwscfg and guiwscfg["tls"]:
         #ssl_context = ssl.create_default_context(capath=guiwscfg["tls"])
         ssl_context=ssl.SSLContext(protocol=ssl.PROTOCOL_TLS)
@@ -489,18 +495,18 @@ if __name__ == '__main__':
     else:
         ssl_contextFactory = None
         sockprot="ws"
-        
+
     if  guiwscfg["ssl"]:
         b_ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
             cafile=guiwscfg["ssl"]+'/'+CERTFILE)
         b_ssl_context.check_hostname = False
     else:
         b_ssl_context=None
-        
+
     loop = aio.get_event_loop()
     if guiwscfg["debug"]:
         loop.set_debug(True)
-        
+
     connFuture=aio.Future()
     fac=loop.create_connection(functools.partial(GuiWSBridge,loop,connFuture,guiwscfg,guiwslog),guiwscfg["broker"], guiwscfg["brokerport"],ssl=b_ssl_context)
     #Creating an app
@@ -513,10 +519,10 @@ if __name__ == '__main__':
     buddyapp.router.add_get('/{fname:.*}', serve_files)
     buddyapp.on_shutdown.append(on_shutdown)
 
-    conn,sysctl = loop.run_until_complete(fac)   
-    whandler = buddyapp.make_handler(logger=guiwslog)     
+    conn,sysctl = loop.run_until_complete(fac)
+    whandler = buddyapp.make_handler(logger=guiwslog)
     wapp=loop.create_server(whandler,host=guiwscfg["host"],port=guiwscfg["port"],ssl=ssl_context)
-    wserv = loop.run_until_complete(wapp)  
+    wserv = loop.run_until_complete(wapp)
     #web.run_app(buddyapp,host=guiwscfg["host"],port=guiwscfg["port"],ssl_context=ssl_context)
 
     try:
