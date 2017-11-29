@@ -600,7 +600,6 @@ def configure():
     wemolog = logging.getLogger('')
     wemocfg = {"debug": opts.debug}
     try:
-    # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
@@ -619,10 +618,14 @@ def configure():
             if opts.debug:
                 wemolog.debug("The %s is %s." % (attr,wemocfg[attr]))
 
+
         if wemocfg["ssl"] and not (os.path.isfile(wemocfg["ssl"] + "/" + CERTFILE)):
             wemolog.critical("Encryption: Could not find {} .".format(
                 wemocfg["ssl"] + "/" + CERTFILE))
             sys.exit()
+
+        if "buddykey" in cfgdata:
+            wemocfg["buddykey"] = cfgdata["buddykey"]
 
         if opts.debug:
             if wemocfg["ssl"]:

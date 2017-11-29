@@ -1079,7 +1079,8 @@ cfgdefault = {
      "port": 8745,
      "credential": "",
      "ssl": "",
-     "restricted": "guibridge"}
+     "restricted": "guibridge",
+     "ipv6prefix" : False}
 
 
 def configure():
@@ -1136,79 +1137,25 @@ def configure():
     lightlog = logging.getLogger('')
     lifxcfg = {"debug": opts.debug}
     try:
-    # if True:
-        if opts.configonly:
-            try:
-                cfgdata = json.load(opts.config)
-                opts.config.close()
-            except:
-                cfgdata = {}
-        else:
+        try:
             cfgdata = json.load(opts.config)
             opts.config.close()
-        if opts.type != cfgdefault["type"]:
-            lifxcfg["type"] = opts.type
-        elif "type" in cfgdata:
-            lifxcfg["type"] = cfgdata["type"]
-        else:
-            lifxcfg["type"] = opts.type
-        if opts.debug:
-            lightlog.debug("The type is %s." % lifxcfg["type"])
+        except:
+            cfgdata = {}
+            lightlog.warning("Config file could not be opened.")
 
-        if opts.subtype != cfgdefault["subtype"]:
-            lifxcfg["subtype"] = opts.subtype
-        elif "subtype" in cfgdata:
-            lifxcfg["subtype"] = cfgdata["subtype"]
-        else:
-            lifxcfg["subtype"] = opts.subtype
-        if opts.debug:
-            lightlog.debug("The subtype is %s." % lifxcfg["subtype"])
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                lifxcfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                lifxcfg[attr] = cfgdata[attr]
+            else:
+                lifxcfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                lightlog.debug("The %s is %s." % (attr,lifxcfg[attr]))
 
-        if opts.credential != cfgdefault["credential"]:
-            lifxcfg["credential"] = opts.credential
-        elif "credential" in cfgdata:
-            lifxcfg["credential"] = cfgdata["credential"]
-        else:
-            lifxcfg["credential"] = cfgdefault["credential"]
-        if opts.debug:
-            lightlog.debug("The credential is %s" % lifxcfg["credential"])
 
-        if opts.ipv6prefix:
-            lifxcfg["ipv6prefix"] = opts.ipv6prefix
-        elif "ipv6prefix" in cfgdata:
-            lifxcfg["ipv6prefix"] = cfgdata["ipv6prefix"]
-        else:
-            lifxcfg["ipv6prefix"] = opts.ipv6prefix
-        if opts.debug:
-            lightlog.debug("The IPv6 prefix is %s" % lifxcfg["ipv6prefix"])
-
-        if opts.port != cfgdefault["port"]:
-            lifxcfg["port"] = opts.port
-        elif "port" in cfgdata:
-            lifxcfg["port"] = cfgdata["port"]
-        else:
-            lifxcfg["port"] = cfgdefault["port"]
-        if opts.debug:
-            lightlog.debug("The port is %s" % (lifxcfg["port"]))
-
-        if opts.host != cfgdefault["host"]:
-            lifxcfg["host"] = opts.host
-        elif "host" in cfgdata:
-            lifxcfg["host"] = cfgdata["host"]
-        else:
-            lifxcfg["host"] = cfgdefault["host"]
-        if opts.debug:
-            lightlog.debug("The host is %s" % lifxcfg["host"])
-
-        if "buddykey" in cfgdata:
-            lifxcfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.ssl != cfgdefault["ssl"]:
-            lifxcfg["ssl"] = opts.ssl
-        elif "ssl" in cfgdata:
-            lifxcfg["ssl"] = cfgdata["ssl"]
-        else:
-            lifxcfg["ssl"] = cfgdefault["ssl"]
         if lifxcfg["ssl"] and not (os.path.isfile(lifxcfg["ssl"] + "/" + CERTFILE)):
             lightlog.critical("Encryption: Could not find {} .".format(
                 lifxcfg["ssl"] + "/" + CERTFILE))
@@ -1220,6 +1167,9 @@ def configure():
                     lifxcfg["ssl"])
             else:
                 lightlog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            lifxcfg["buddykey"] = cfgdata["buddykey"]
 
         if opts.configonly:
 

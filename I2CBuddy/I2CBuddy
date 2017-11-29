@@ -788,6 +788,8 @@ def configure():
                         help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="Log warning messages")
 

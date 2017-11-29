@@ -590,6 +590,9 @@ def configure():
             else:
                 wemolog.debug("The connection is not encrypted")
 
+        if "buddykey" in cfgdata:
+            wemocfg["buddykey"] = cfgdata["buddykey"]
+
         if opts.configonly:
 
             if "buddykey" not in wemocfg:
