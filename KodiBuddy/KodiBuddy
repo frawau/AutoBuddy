@@ -1434,6 +1434,9 @@ def configure():
             else:
                 mediaplayerlog.debug("The connection is not encrypted")
 
+        if "buddykey" in cfgdata:
+            kodicfg["buddykey"] = cfgdata["buddykey"]
+
         if opts.configonly:
 
             if "buddykey" not in kodicfg:

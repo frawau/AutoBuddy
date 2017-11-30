@@ -132,6 +132,7 @@ blesensor_config = """
                     <item value="particulate" label="Particule"/>
                     <item value="power" label="Power"/>
                     <item value="pressure" label="Pressure"/>
+                    <item value="temperature" label="Temperature"/>
                 </controlgroup>
                 <controlgroup type="choice"  name="compare" label=" ">
                     <item value="eq" label="==" >
