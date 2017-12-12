@@ -228,17 +228,17 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
         remindmeattheend+="\nIf using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
             subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio","i2c-tools"])
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -252,14 +252,14 @@ else:
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following command should be run:\n")
-        print("\tsudo pip3 install --upgrade aiolifx aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
     else:
         print("\n\n\n\nNow we shall install/update the packages we need.")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -479,6 +479,7 @@ else:
     print ("\n\nIMPORTANT: You will need to copy the SSL certificate from the main device to {}".format(BUDDYLOCATION+"/.tls\n\n"))
 
 dolifx = False
+doyeelight = False
 doflic = False
 dovoice = False
 dopresence = False
@@ -499,6 +500,13 @@ print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dolifx=True
+
+print("\n\nXiaomiBuddy allows you to control your Xiaomi Yeelight LED bulbs.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doyeelight=True
+
 
 print("\n\nPresenceBuddy allows you to detect people's presence by monitoring their devices")
 print("(like smartphone) over LAN and/or over Bluetooth.")
@@ -639,6 +647,11 @@ if dolifx:
     print("\tto run LifxBuddy")
 else:
     print("\tnot to run LifxBuddy")
+
+if doyeelight:
+    print("\tto run XiaomiBuddy")
+else:
+    print("\tnot to run XiaomiBuddy")
 
 if dopresence and (dopresencebt or dopresencelan):
     if dopresencebt and dopresencelan:
@@ -875,6 +888,42 @@ if dolifx:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n LifxBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n LifxBuddy "+fn
+
+
+#XiaomiBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "light"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+
+fn=BUDDYLOCATION+"/.buddyconfig/yeelight.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/XiaomiBuddy/XiaomiBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 20
+"""
+mycmd+=BUDDYLOCATION+"/XiaomiBuddy/XiaomiBuddy -c "+fn
+mycmd+="\nsleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/20-yeelight"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doyeelight:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n XiaomiBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n XiaomiBuddy "+fn
+
 
 print ("Patience!")
 

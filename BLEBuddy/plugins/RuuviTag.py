@@ -24,7 +24,7 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ##
 
-import aioblescan as able
+from aioblescan.plugins import EddyStone
 from struct import unpack
 from base64 import b64decode
 from math import sqrt
@@ -83,7 +83,7 @@ class RuuviTag(object):
         thisrun=dt.datetime.now()
         hasinfo=False
         result={}
-        url=able.EddyStone(packet)
+        url=EddyStone().decode(packet)
         if url is None:
             url=packet.retrieve("Payload for mfg_specific_data")
             if url:
