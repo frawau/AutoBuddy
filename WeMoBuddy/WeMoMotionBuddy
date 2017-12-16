@@ -121,8 +121,30 @@ def got_wemo(device):
     device.register_callback("statechange", bridgectl.status_changed)
 
 
+async def heartbeat(self, duration=5):
+    while True:
+        await aio.sleep(120)
+        #print("Heartbeat")
+        try:  # Could happen that conn is None... Maybe a race condition with unregister
+        #if True:
+            future = self.conn.basicevent.GetIconURL()
+            await aio.sleep(2)
+            try:
+                x=future.result()
+                del(future)
+            except:
+                try:
+                    bridgectl.unregister(self.conn)
+                    del(future)
+                except:
+                    pass
+                return
+        except:
+            pass
+
 # Hop we go....
 bl.sensor._process = wemo_process
+bl.sensor.heartbeat = heartbeat
 
 
 class WeMoBridge(bl.BuddyBridge):
@@ -406,6 +428,7 @@ class WeMoBridge(bl.BuddyBridge):
                                               ispresent and "online" or "offline",
                                               "icon status": {"bu-not-present": {"opacity": (not ispresent and 1) or 0}}}})
                 notseen = False
+                wemo.hb=aio.ensure_future(wemo.heartbeat())
                 break
         if notseen:
             self.pending.append(awemo)
@@ -501,6 +524,14 @@ class WeMoBridge(bl.BuddyBridge):
                                                     "multipart":True},
                                                     "value": {}}})
                 break
+
+
+    def close(self):
+        for wemo in self.devices:
+            try:
+                wemo.hb.cancel()
+            except:
+                pass
 
 aboutstr = """<p>WeMoBuddy is a set of bridges talking to <a href="http://www.wemo.com/">Belkin's WeMo device</a>. WeMo devices will be automatically
 detected. The icon used for switches is based on one made by Freepik from www.flaticon.com </p>
@@ -695,6 +726,7 @@ if __name__ == "__main__":
     finally:
 
         bridgectl.wemo_env.stop()
+        bridgectl.close()
         conn.close()
         loop.run_until_complete(aio.sleep(1))
         loop.close()
