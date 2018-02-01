@@ -71,7 +71,7 @@ xiaomi_functions = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup type="list" name="colour" label="Colour" rteffect="1" onlyif="power::on">
+        <controlgroup type="list" name="colour" label="Colour" rteffect="1" onlyif="power::power::on">
             <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
                 <control type="slider" name="hue" label="Hue" rteffect="1">
                     <start>0</start>
@@ -97,7 +97,7 @@ xiaomi_functions = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="power::on">
+        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="power::power::on">
             <control type="slider" name="brightness" label="Brightness" rteffect="1">
                 <start>0</start>
                 <end>100</end>
@@ -116,7 +116,7 @@ xiaomi_functions = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup  type="grouplist" name="animate" label="Animation" rteffect="0">
+        <controlgroup  type="grouplist" name="animate" label="Animation" rteffect="0" onlyif="power::power::on">
             <control type="spinner" name="repeat" label="Repeat" rteffect="1">
                 <start>0</start>
                 <default>1</default>
