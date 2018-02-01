@@ -107,7 +107,7 @@ def wemo_process(self, msg):
                 "content_type": "request",
                 "content": {"request": "deletion",
                             "target": self.controller.type,
-                            "value": self.name}})
+                            "value": self.buddyname}})
 
     elif msg["content"]["command"] == "power":
         dosend = False
@@ -138,7 +138,7 @@ def got_wemo(device):
 async def heartbeat(self, duration=5):
     while True:
         await aio.sleep(120)
-        print("Heartbeat")
+        #print("Heartbeat")
         try:  # Could happen that conn is None... Maybe a race condition with unregister
         #if True:
             future = self.conn.basicevent.GetIconURL()

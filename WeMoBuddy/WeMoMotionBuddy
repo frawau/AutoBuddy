@@ -108,7 +108,7 @@ def wemo_process(self, msg):
                 "content_type": "request",
                 "content": {"request": "deletion",
                             "target": self.controller.type,
-                            "value": self.name}})
+                            "value": self.buddyname}})
 
 
     return None
