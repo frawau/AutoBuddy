@@ -514,9 +514,9 @@ def xiaomi_process(self, msg):
                 self.conn.start_flow(repeat*len(actions),ending,myflow,callb=lambda x: mypartial())
 
             elif msg["content"]["command"] == "status":
-                current = self.conn and self.conn.power
+                #current = self.conn and self.conn.power
                 self.conn.infosent = False
-                if current:
+                if self.conn:
                     # Not gone the way of the dodo
                     try:
                         self.sendStatus()
@@ -525,7 +525,9 @@ def xiaomi_process(self, msg):
                                     "content_type": "event",
                                     "content":{"event":"presence",
                                                 "target": self.controller.type + "." + self.name,
-                                                "value":"offline"}})
+                                                "value":"offline",
+                                                "icon status": {"bu-fill": {"fill": "transparent"},
+                                                                "bu-not-present": {"opacity": 1}}}})
                 else:
                     self.controller.sending({"subject": self.controller.type,
                                              "content_type": "event",
