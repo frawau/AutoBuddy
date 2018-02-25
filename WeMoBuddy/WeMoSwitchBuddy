@@ -101,14 +101,6 @@ def wemo_process(self, msg):
                                              "value": {}}})
         # except: #Most probably is known but we lost pairing
             # pass
-    elif msg["content"]["command"] == "deletion":
-        self.controller.sending(
-            {"subject": "control" + "." + self.controller.type,
-                "content_type": "request",
-                "content": {"request": "deletion",
-                            "target": self.controller.type,
-                            "value": self.buddyname}})
-
     elif msg["content"]["command"] == "power":
         dosend = False
         if msg["content"]["value"] ["power"]=="on" and self.state != 1:
@@ -183,6 +175,14 @@ class WeMoBridge(bl.BuddyBridge):
                               "content": {"request": "save configuration",
                                           "target": self.type,
                                           "value": bl.encrypt(wemo_config_default, self.config["buddykey"])}})
+        elif msg["content"]["command"] == "deletion":
+            self.sending(
+                {"subject": "control" + "." + self.type,
+                    "content_type": "request",
+                    "content": {"request": "deletion",
+                                "target": self.type,
+                                "value":  msg["content"]["value"]}})
+
         else:
             for awemo in self.devices:
                 awemo.process(msg)
@@ -362,16 +362,16 @@ class WeMoBridge(bl.BuddyBridge):
                     for switch in self.devices:
                         if switch.name == msg["subject"].split(".")[-1]:
                             self.wemo_env.device_gone(switch.conn)
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "deletion",
-                                                      "target": self.type +
-                                                      "." +
-                                                      switch.name,
-                                                      "value": switch.name}})
                             doremove = True
                             break
                         sidx += 1
+                    self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "deletion",
+                                                "target": self.type +
+                                                "." +
+                                                msg["subject"].split(".")[-1],
+                                                "value": msg["subject"].split(".")[-1]}})
 
                     if doremove:
                         del self.devices[sidx]
