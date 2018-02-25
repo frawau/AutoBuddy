@@ -360,7 +360,7 @@ class WeMoBridge(bl.BuddyBridge):
                                     "content": {"event": "deletion",
                                                 "target": self.type +
                                                 "." +
-                                                msg["subject"].split(".")[-1],,
+                                                msg["subject"].split(".")[-1],
                                                 "value": msg["subject"].split(".")[-1],}})
 
                     if doremove:
