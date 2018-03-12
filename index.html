@@ -207,9 +207,23 @@
           <h2>WeMoBuddy</h2>
           <p>WeMoBuddy is a set of bridges to access <a href="http://www.belkin.com/us/c/home-automation/">Belkin's WeMo products</a>. At this time switches (WeMoSwitchBuddy)
           and motion sensors (WeMoMotionBuddy) are supported.These bridges use the library aioouimeaux. </p>
+
           <h2>XiaomiBuddy</h2>
           <p>XiaomiBuddy is a bridge application that provides control to <a href="https://www.yeelight.com/en_US/product/wifi-led-c">Xiaomi Yeelight lightbulbs</a>. It uses
           <a href="https://github.com/frawau/aioziaomi">aioxiaomi</a> to communicate with the lightbulbs.</p>
+
+          <h2>MQTTBuddy</h2>
+          <p>MQTTBuddy is an MQTT broker wrapped into AutoBuddy. The only purpose is to be able to control
+          and configure authentication to the MQTT broker from within AutoBuddy.</p>
+          <p>MQTTBuddy uses
+          <a href="https://github.com/beerfactory/hbmqtt">hbmqtt</a> which contains a full implementation of the broker. MQTTBuddy
+          has the necessary plumbing to manage an authentication plugin for hbmqtt.</p>
+
+          <h2>SonoffBuddy</h2>
+          <p>SonoffBuddy is a bridge for <a href="https://www.itead.cc/">Sonoff switches</a> (and clones) running the <a href="https://github.com/arendst/Sonoff-Tasmota">Sonoff-Tasmota</a> firmware. SonoffBuddy communicates with the devices over MQTT. Each switch in a device is
+          represented by one device in AutoBuddy. Each switch can be independently configured as a hardware ( i.e. relay changes with button push)
+          or a software ( i.e. relay not changing state) switch.</p>
+
           <h2>ConfigBuddy</h2>
           <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
 
@@ -244,6 +258,11 @@
           <p>Description of the messages and their function is somewhat documented on
           <a href="https://docs.google.com/document/d/12_5Gr2zif0sSP3OtA12iZu0asv9sjVAy4ApaRnveBOw/edit?usp=sharing">Google Drive</a>. It is currently woefully outdated.</p>
           <h1>Status</h1>
+          <h3>Mid March 2018</h3>
+          <p>Added MQTTBuddy and SonoffBuddy. I only have one device but should have more soon.</p>
+          <h3>December 2017</h3>
+          <p>Added support for Yeelight LED lightbulbs.</p>
+          <p>Added support for WeMo switches and motoion sensors. They do not work well.</p>
           <h3>End of October 2017</h3>
           <p>Added support for multiple speech-to-text engines in VoiceBuddy</p>
           <h3>October 2017</h3>
