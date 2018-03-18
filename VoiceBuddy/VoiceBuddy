@@ -398,7 +398,7 @@ async def build_corpus(txt, path, future):
             isdone = nbtry == 0
             await aio.sleep(1)
         finally:
-            session.close()
+            await session.close()
 
     if wasproblem:
         future.set_exception(wasproblem)

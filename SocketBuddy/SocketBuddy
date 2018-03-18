@@ -140,10 +140,10 @@ class GuiWSBridge(bl.BuddyBridge):
                 try:
                     if client.name in self.allowedsocket:
                         if client.name in self.adminsocket:
-                            client.send_json(msg)
+                            aio.ensure_future(client.send_json(msg))
                         else:
                             if cleanmsg:
-                                client.send_json(cleanmsg)
+                                aio.ensure_future(client.send_json(cleanmsg))
                 except:
                     pass
 
@@ -173,7 +173,7 @@ class GuiWSBridge(bl.BuddyBridge):
                     newmsg["content"]["response"]="login"
                     newmsg["content"]["status"]= "failed"
                     newmsg["content"]["token"]= msg["content"]["token"]
-                orig.send_json(newmsg)
+                aio.ensure_future(orig.send_json(newmsg))
             elif msg["content_type"] == "request" and msg["content"]["request"]=="change password":
                 #print "Msg is",msg
                 if msg["content"]["value"]["user"] in self.users and \
@@ -239,7 +239,7 @@ class GuiWSBridge(bl.BuddyBridge):
                 try:
                     if client.name in self.allowedsocket:
                         if client.name in self.adminsocket:
-                            client.send_json(msg)
+                            aio.ensure_future(client.send_json(msg))
                 except:
                     pass
 

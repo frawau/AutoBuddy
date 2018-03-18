@@ -228,7 +228,7 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools")
-        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition hbmqtt SpeechRecognition\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux hbmqtt SpeechRecognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools"
         remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
