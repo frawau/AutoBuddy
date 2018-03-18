@@ -576,7 +576,7 @@ class KodiConnection(object):
             self.seq+=1
             myid=self.seq
         if self.transport:
-            self.transport.send_json({"jsonrpc": "2.0", "method": method, "params": param, "id": myid})
+            aio.ensure_future(self.transport.send_json({"jsonrpc": "2.0", "method": method, "params": param, "id": myid}))
 
     def set_power(self,val):
         if val == "on":
