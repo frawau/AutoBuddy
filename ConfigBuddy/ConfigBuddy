@@ -228,7 +228,7 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
         print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools")
-        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition\n")
+        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux speech_recognition hbmqtt SpeechRecognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
         remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools"
         remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
@@ -238,7 +238,7 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
         choice = input(" Press '<enter>' to proceed")
         try:
             subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio","i2c-tools"])
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux","hbmqtt", "SpeechRecognition"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
@@ -493,6 +493,8 @@ dothingsboard = False
 doi2c = False
 dowemoswitch = False
 dowemomotion = False
+domqtt = False
+dosonoff = False
 
 print("Finaly, we need to know which optional modules you want to run.")
 print("\n\nLifxBuddy allows you to control your Lifx LED bulbs.")
@@ -641,6 +643,18 @@ choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dowemomotion=True
 
+
+print("\n\nSonoffBuddy allows you to receive power events from your Sonoff switches running the Tasmota firmware.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dosonoff = True
+    domqtt = True
+    print("Since you will be using SonoffBuddy, tou will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
+    print("You will also need to configure a user and password for MQTTBudyy and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
+
 #Let's summarize
 print("\nYou have decided:")
 if dolifx:
@@ -707,6 +721,11 @@ if dowemomotion:
     print("\tto run WeMoMotionBuddy")
 else:
     print("\tnot to run WeMoMotionBuddy")
+
+if dosonoff:
+    print("\tto run SonoffBuddy")
+else:
+    print("\tnot to run SonoffBuddy")
 
 if doflic and dopresencebt:
     print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
@@ -1335,6 +1354,80 @@ if dowemomotion:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n WeMoMotionBuddy "+fn
+
+
+#SonoffBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "switch"
+mycfg["subtype"] = "sonoff"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+mycfg["mqttprefix"] = "autobuddy"
+mycfg["mqtthost"] = "localhost"
+mycfg["mqttport"] = 1883
+fn=BUDDYLOCATION+"/.buddyconfig/sonoff.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/SonoffBuddy/SonoffBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 25
+"""
+mycmd+=BUDDYLOCATION+"/SonoffBuddy/SonoffBuddy -c "+fn
+mycmd+="\n    sleep 6\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-sonoff"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dosonoff:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n SonoffBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n SonoffBuddy "+fn
+
+
+#MQTTBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "service"
+mycfg["subtype"] = "mqtt"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+mycfg["iface"] = ""
+fn=BUDDYLOCATION+"/.buddyconfig/mqtt.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/MQTTBuddy/MQTTBuddy.py",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 10
+"""
+mycmd+=BUDDYLOCATION+"/MQTTBuddy/MQTTBuddy.py -c "+fn
+mycmd+="\n    sleep 10\ndone\n"
+fn=BUDDYLOCATION+"/.run/15-mqtt"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if domqtt:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n MQTTBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n MQTTBuddy "+fn
 
 
 fn=BUDDYLOCATION+"/.start-autobuddy"

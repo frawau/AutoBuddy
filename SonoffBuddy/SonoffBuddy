@@ -143,7 +143,7 @@ def sonoff_process(self, msg, type="autobuddy"):
                             "content_type": "event",
                             "content": {"event": "power",
                                         "target": msg["subject"],
-                                        "value": {"power":msg["content"]["value"]}}})
+                                        "value": msg["content"]["value"]}})
         return None
     else:
         if msg["name"] != self.name.split("_")[0]:
@@ -761,7 +761,7 @@ def configure():
     parser.add_argument("-n", "--mqtthost", default=cfgdefault["mqtthost"],
                         help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqtthost"])
     parser.add_argument("-f", "--mqttprefix", default=cfgdefault["mqttprefix"],
-                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqtthost"])
+                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqttprefix"])
     parser.add_argument("-c", "--config", default="/etc/autobuddy/sonoff.cfg", type=argparse.FileType('r'),
                         help="Config file to use (default \"/etc/autobuddy/sonoff.cfg\")")
     parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
