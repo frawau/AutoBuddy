@@ -81,8 +81,12 @@ if opts.decoder != "sphinx":
         sr.default_language_model_file = os.path.join(opts.corpus, "autobuddy.lm")
         sr.default_phoneme_dictionary_file = os.path.join(opts.corpus, "autobuddy.dic")
 
-    if opts.model:
-        sr.default_acoustic_parameters_directory = opts.model
+        if opts.model:
+            sr.default_acoustic_parameters_directory = opts.model
+        else:
+            parser.error("Error: When specifying \"corpus\" you must also specify \"model\"")
+            sys.exit(-1)
+
 
 if opts.debug:
     dfile=open("/tmp/decoder.log","w")
@@ -111,13 +115,13 @@ with m as source:
         if  mode == "keyword":
             config = {}
             if opts.corpus:
-                config["language_model_file"] = os.path.join(opts.corpus, "autobuddy.lm")
-                config["phoneme_dictionary_file"] = os.path.join(opts.corpus, "autobuddy.dic")
-
-            if opts.model:
-                config["acoustic_parameters_directory"] = opts.model
+                par_language=(opts.model,
+                              os.path.join(opts.corpus, "autobuddy.lm"),
+                              os.path.join(opts.corpus, "autobuddy.dic"))
+            else:
+                par_language=TRIGLANG
             try:
-                line = r.recognize_sphinx(audio, language=TRIGLANG,config=config)
+                line = r.recognize_sphinx(audio, language=par_language)
             except:
                 line=""
             if opts.debug:
@@ -149,12 +153,13 @@ with m as source:
                 else:
                     config = {}
                     if opts.corpus:
-                        config["language_model_file"] = os.path.join(opts.corpus, "autobuddy.lm")
-                        config["phoneme_dictionary_file"] = os.path.join(opts.corpus, "autobuddy.dic")
+                        par_language=(opts.model,
+                                      os.path.join(opts.corpus, "autobuddy.lm"),
+                                      os.path.join(opts.corpus, "autobuddy.dic"))
+                    else:
+                        par_language=opts.language
 
-                    if opts.model:
-                        config["acoustic_parameters_directory"] = opts.model
-                    line = r.recognize_sphinx(audio, language=opts.language, config=config)
+                    line = r.recognize_sphinx(audio, language=par_language)
             except:
                 if opts.debug:
                     dfile.write("Evil man!\n")

@@ -1498,7 +1498,7 @@ if __name__ == "__main__":
                 x.conn.goon=0
                 #try:
                 if x.conn.task:
-                    x.conn.session.close()
+                    loop.run_until_complete(x.conn.session.close())
                     x.conn.task.cancel()
                 #except:
                     #pass
