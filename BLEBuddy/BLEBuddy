@@ -133,6 +133,8 @@ blesensor_config = """
                     <item value="power" label="Power"/>
                     <item value="pressure" label="Pressure"/>
                     <item value="temperature" label="Temperature"/>
+                    <item value="co2" label="CO₂"/>
+                    <item value="decibel" label="Decibel"/>
                 </controlgroup>
                 <controlgroup type="choice"  name="compare" label=" ">
                     <item value="eq" label="==" >
@@ -164,6 +166,29 @@ blesensor_config = """
                 </controlgroup>
             </controlgroup>
         </controlgroup>
+        <controlgroup type="list" name="adjust" label="Correction">
+            <controlgroup type="listmaker"  name="adjust" label="Value Correction">
+                <control type="text" name="name" length="32"/>
+                <control name="sensor" expand="device::{type}::{subtype}" label="Sensor" type="text" length="32" />
+                <controlgroup type="choice"  name="measurement" label="Measurement">
+                    <item value="battery" label="Battery"/>
+                    <item value="humidity" label="Humidity"/>
+                    <item value="particulate" label="Particule"/>
+                    <item value="power" label="Power"/>
+                    <item value="pressure" label="Pressure"/>
+                    <item value="temperature" label="Temperature"/>
+                    <item value="co2" label="CO₂"/>
+                    <item value="decibel" label="Decibel"/>
+                </controlgroup>
+                <control type="spinner" name="value" label="Offset Value">
+                    <decimals>2</decimals>
+                    <start>-10000</start>
+                    <end>10000</end>
+                    <increment>0.01</increment>
+                    <default>0.00</default>
+                </control>
+            </controlgroup>
+        </controlgroup>
         <controlgroup type="list"  name="runplugin" label="Plugins">
 """
 blesensor_config_default = {"throttle":{"info": 90,
@@ -174,9 +199,12 @@ blesensor_config_default = {"throttle":{"info": 90,
                                         "particulate": 60,
                                         "luminosity":60,
                                         "battery": 3600,
-                                        "power":0},
+                                        "power": 0,
+                                        "co2": 0,
+                                        "decibel": 30},
                             "runplugin":{},
-                            "filter":{},
+                            "filter":{"filter":{}},
+                            "adjust":{"adjust":{}},
                             "calibrate":{},
                             "probe":60}
 ble_plugins={}
@@ -261,8 +289,18 @@ def blesensor_filter(self,measurement,val):
                 pass
     return result
 
+def blesensor_adjust(self,measurement,val):
+    result=val
+    if measurement in self.adjust:
+        try:
+            result+= self.adjust[measurement]
+        except Exception as e:
+            pass
+    return result
+
 bl.sensor._process = blesensor_process
 bl.sensor.filter_value = blesensor_filter
+bl.sensor.adjust_value = blesensor_adjust
 
 # Utility
 def name_to_mac(name):
@@ -378,6 +416,12 @@ class BLESensorBridge(bl.BuddyBridge):
                                         except:
                                             thisfilter[k] = v
                                 device.filters[measurement].append(thisfilter)
+                        device.adjust = {}
+                        for adjustment in self.blesensor_config["adjust"]["adjust"]:
+                            if adjustment["sensor"]["bu-cvalue"] == self.type+"."+device.name:
+                                measurement = adjustment["measurement"]["bu-cvalue"]
+                                device.adjust[measurement]=adjustment["value"]
+
 
         elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
             if self.state == "active" and msg["content"]["status"] != "done":
@@ -437,6 +481,13 @@ class BLESensorBridge(bl.BuddyBridge):
                                         except:
                                             thisfilter[k] = v
                                 device.filters[measurement].append(thisfilter)
+
+                        device.adjust = {}
+                        for adjustment in self.blesensor_config["adjust"]["adjust"]:
+                            if adjustment["sensor"]["bu-cvalue"] == self.type+"."+device.name:
+                                measurement = adjustment["measurement"]["bu-cvalue"]
+                                device.adjust[measurement]=adjustment["value"]
+
 
 
 
@@ -582,6 +633,7 @@ class BLESensorBridge(bl.BuddyBridge):
                         thisresult={}
                         for x in plug.measurements:
                             if x in result:
+                                result[x]=sensor.adjust_value(x,result[x])
                                 if sensor.filter_value(x,result[x]):
                                     thisresult[x]=result[x]
                                 sensor.infoval[x]=(result[x],plug.measurements[x])
