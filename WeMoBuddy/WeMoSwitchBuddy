@@ -88,19 +88,19 @@ def wemo_process(self, msg):
                             "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
     elif msg["content"]["command"] == "status":
         # Not gone the way of the dodo
-        # try:
-        self.controller.sending({"subject": self.controller.type,
-                                 "content_type": "event",
-                                 "content": {"event": "status",
-                                             "target": self.controller.type +
-                                             "." +
-                                             self.name,
-                                             "icon status":
-                                                 {"bu-fill": {"fill": (self.state and cssColour()) or "transparent"}, "bu-not-present": {
-                                              "opacity": 0}},
-                                             "value": {}}})
-        # except: #Most probably is known but we lost pairing
-            # pass
+        try:
+            self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                    {"bu-fill": {"fill": (self.state and cssColour()) or "transparent"}, "bu-not-present": {
+                                                "opacity": 0}},
+                                                "value": {}}})
+        except: #Most probably is known but we lost pairing
+            pass
     elif msg["content"]["command"] == "power":
         dosend = False
         if msg["content"]["value"] ["power"]=="on" and self.state != 1:

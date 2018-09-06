@@ -126,12 +126,21 @@ def sonoff_process(self, msg, type="autobuddy"):
             # except: #Most probably is known but we lost pairing
                 # pass
         elif msg["content"]["command"] == "deletion":
-            self.controller.sending(
-                {"subject": "control" + "." + self.controller.type,
-                    "content_type": "request",
-                    "content": {"request": "deletion",
-                                "target": self.controller.type,
-                                "value": self.name}})
+            try:
+                self.controller.sending(
+                    {"subject": "control" + "." + self.controller.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": self.controller.type,
+                                    "value": self.name}})
+            except:
+                #Deleting non active devices
+                bridgectl.sending(
+                    {"subject": "control" + "." + bridgectl.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": bridgectl.type,
+                                    "value": self.name}})
 
         elif msg["content"]["command"] == "power":
             self.power = msg["content"]["value"]["power"].lower() == "on"
@@ -430,7 +439,7 @@ class SonoffBridge(bl.BuddyBridge):
                         switch.power=True
                         switch.software_switch = False
                         for x in self.sonoff_config["relay"]:
-                            if b.name == x["entity"] and x["relay"]["bu-cvalue"]=="no":
+                            if b == x["entity"] and x["relay"]["bu-cvalue"]=="no":
                                 switch.software_switch=True
                                 break
                         self.devices.append(switch)
@@ -625,7 +634,7 @@ class SonoffBridge(bl.BuddyBridge):
                     if key == "POWER":
                         post="_1"
                     else:
-                        post="_"+"".join(filter(str.isdigit,dev))
+                        post="_"+"".join(filter(str.isdigit,key))
                     self.register(dev+post)
         else:
             if cmd.startswith("POWER") and INFIX not in dev and ttype == "cmnd":
