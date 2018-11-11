@@ -31,7 +31,9 @@ import os
 import ssl
 import buddylib as bl
 import asyncio as aio
+import datetime as dt
 from aioouimeaux.wemo import WeMo
+from aioouimeaux.device.insight import Insight
 from functools import partial
 
 SUBTYPE = "wemo"
@@ -86,6 +88,7 @@ def wemo_process(self, msg):
                             "target": self.controller.type + "." + self.name,
                             #"token": self.controller.target,
                             "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+
     elif msg["content"]["command"] == "status":
         # Not gone the way of the dodo
         try:
@@ -99,25 +102,30 @@ def wemo_process(self, msg):
                                                     {"bu-fill": {"fill": (self.state and cssColour()) or "transparent"}, "bu-not-present": {
                                                 "opacity": 0}},
                                                 "value": {}}})
-        except: #Most probably is known but we lost pairing
+        except: #Most probably is known but we lost pairing. Unregister will occur via heartbeat
             pass
+
     elif msg["content"]["command"] == "power":
         dosend = False
-        if msg["content"]["value"] ["power"]=="on" and self.state != 1:
-            self.conn.on()
-            dosend = True
-        elif msg["content"]["value"] ["power"]=="off" and self.state == 1:
-            self.conn.off()
-            dosend = True
-        if dosend:
-            self.controller.sending(
-                            {"subject": self.controller.type,
-                                "content_type": "event",
-                                "content": {"event": "power",
-                                            "target": self.controller.type +
-                                            "." +
-                                            self.name,
-                                            "value": msg["content"]["value"]}})
+        #print("\n\nCommand {} for {} with state {}".format(msg["content"]["value"],self.name,self.state))
+        if self.conn:
+            if msg["content"]["value"] ["power"]=="on" and self.state != 1:
+                self.conn.on()
+                dosend = True
+            elif msg["content"]["value"] ["power"]=="off" and self.state == 1:
+                self.conn.off()
+                dosend = True
+            if dosend:
+                self.controller.sending(
+                                {"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "power",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "value": msg["content"]["value"]}})
+        else:
+            logging.debug("Info: No connection for {}".format(self.name))
     return None
 
 
@@ -127,30 +135,58 @@ def got_wemo(device):
     bridgectl.register(device)
     device.register_callback("statechange", bridgectl.status_changed)
 
-async def heartbeat(self, duration=5):
+async def heartbeat(self, duration=10):
     while True:
-        await aio.sleep(120)
-        #print("Heartbeat")
-        try:  # Could happen that conn is None... Maybe a race condition with unregister
+        await aio.sleep(duration)
+        #logging.debug("Heartbeat for {}".format(self.name))
         #if True:
-            future = self.conn.basicevent.GetIconURL()
-            await aio.sleep(2)
-            try:
-                x=future.result()
-                del(future)
-            except:
-                try:
-                    bridgectl.unregister(self.conn)
-                    del(future)
-                except:
-                    pass
-                return
+        try:
+            xx = await aio.wait_for(self.conn.basicevent.GetHomeId(),timeout=duration/2)
         except:
-            pass
+            logging.debug("Heartbeat timeout for {}".format(self.name))
+            try:
+                bridgectl.unregister(self.conn)
+            except:
+                pass
+            return
+
+async def powerinfo(self, duration=10):
+    if self.conn.__class__ != Insight:
+        await aio.sleep(0)
+        self.hb=aio.ensure_future(self.heartbeat(duration))
+        return
+    while True:
+        #logging.debug("Measurements for {}".format(self.name))
+        try:
+            await  aio.wait_for(self.conn._insight_params(),timeout=duration/2)
+            try:
+                self.controller.sending({"subject": self.type,
+                    "content_type": "event",
+                    "content": {"event": "measurement",
+                                "target":  self.controller.type +
+                                            "." +
+                                            self.name,
+                                "timestamp": str(dt.datetime.now().replace(microsecond=0)),
+                                "value":{"power":self.conn.measurements}}})
+
+            except:
+                pass
+        except:
+            logging.debug("Measurements timeout for {}".format(self.name))
+            try:
+                bridgectl.unregister(self.conn)
+            except:
+                pass
+            return
+        await aio.sleep(duration)
+
+
 
 # Hop we go....
 bl.switch._process = wemo_process
 bl.switch.heartbeat = heartbeat
+bl.switch.powerinfo = powerinfo
+
 
 class WeMoBridge(bl.BuddyBridge):
 
@@ -410,14 +446,21 @@ class WeMoBridge(bl.BuddyBridge):
     def register(self, awemo):
         awemo.buddyname = self.subtype + "-" + awemo.serialnumber
         notseen = True
-        try:
-            sess = bl.getSession(self.config["database"])
-            switch = sess.query(bl.switch).filter_by(name=awemo.buddyname).one()
-            switch.present = False
-            switch.state = 0
-            self.devices.append(switch)
-        except:
-            pass
+        for wemo in self.devices:
+            if awemo.buddyname == wemo.name:
+                notseen = False
+                break
+
+        if notseen:
+            #This should be removed.This should happen at start up
+            try:
+                sess = bl.getSession(self.config["database"])
+                switch = sess.query(bl.switch).filter_by(name=awemo.buddyname).one()
+                switch.present = False
+                switch.state = 0
+                self.devices.append(switch)
+            except:
+                pass
 
         for wemo in self.devices:
             ispresent = False
@@ -438,7 +481,9 @@ class WeMoBridge(bl.BuddyBridge):
                                               ispresent and "online" or "offline",
                                               "icon status": {"bu-not-present": {"opacity": (not ispresent and 1) or 0}}}})
                 notseen = False
-                wemo.hb=aio.ensure_future(wemo.heartbeat())
+                awemo.get_state()
+                #wemo.hb=aio.ensure_future(wemo.heartbeat())
+                wemo.hb=aio.ensure_future(wemo.powerinfo())
                 break
         if notseen:
             self.pending.append(awemo)
@@ -455,27 +500,33 @@ class WeMoBridge(bl.BuddyBridge):
             self.pending.remove(awemo)
         else:
             for switch in self.devices:
-                try:
-                    if switch.name == awemo.buddyname:
+                if switch.name == awemo.buddyname:
+                    try:
                         self.wemo_env.device_gone(switch.conn)
-                        switch.conn = None
-                        switch.present = False
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  switch.name,
-                                                  "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
-                except:
-                    pass
+                    except Exception as e:
+                        print("Ooops: Could not unregister {}. Error was {}".format(switch.name,e))
+                        pass
+                    try:
+                        if switch.hb:
+                            switch.hb.cancel()
+                    except:
+                        print("OOps cannot cancel")
+                    switch.conn = None
+                    switch.present = False
+                    self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                switch.name,
+                                                "value": "offline",
+                                                "icon status": {"bu-not-present": {"opacity": 1}}}})
 
     def status_changed(self,device):
         for switch in self.devices:
             if switch.name == device.buddyname:
-                if switch.state != device.get_state():
-                    switch.state = device.get_state()
+                if switch.state != ((device.get_state() and 1) or 0):
+                    switch.state = (device.get_state() and 1) or 0 #Let's make sure On is 1
                     self.sending({"subject": self.type,
                                 "content_type": "event",
                                 "content": {"event": "status",
@@ -492,6 +543,10 @@ class WeMoBridge(bl.BuddyBridge):
         for wemo in self.devices:
             try:
                 wemo.hb.cancel()
+            except:
+                pass
+            try:
+                wemo.pi.cancel()
             except:
                 pass
 

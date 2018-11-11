@@ -113,27 +113,21 @@ def got_wemo(device):
     bridgectl.register(device)
     device.register_callback("statechange", bridgectl.status_changed)
 
-
-async def heartbeat(self, duration=5):
+async def heartbeat(self, duration=10):
     while True:
-        await aio.sleep(120)
-        #print("Heartbeat")
-        try:  # Could happen that conn is None... Maybe a race condition with unregister
+        await aio.sleep(duration)
+        #logging.debug("Heartbeat for {}".format(self.name))
         #if True:
-            future = self.conn.basicevent.GetIconURL()
-            await aio.sleep(2)
-            try:
-                x=future.result()
-                del(future)
-            except:
-                try:
-                    bridgectl.unregister(self.conn)
-                    del(future)
-                except:
-                    pass
-                return
+        try:
+            xx = await aio.wait_for(self.conn.basicevent.GetHomeId(),timeout=duration/2)
         except:
-            pass
+            logging.debug("Heartbeat timeout for {}".format(self.name))
+            try:
+                bridgectl.unregister(self.conn)
+            except:
+                pass
+            return
+
 
 # Hop we go....
 bl.sensor._process = wemo_process
@@ -400,14 +394,21 @@ class WeMoBridge(bl.BuddyBridge):
     def register(self, awemo):
         awemo.buddyname = self.subtype + "-" + awemo.serialnumber
         notseen = True
-        try:
-            sess = bl.getSession(self.config["database"])
-            sensor = sess.query(bl.sensor).filter_by(name=awemo.buddyname).one()
-            sensor.present = False
-            sensor.state = 0
-            self.devices.append(sensor)
-        except:
-            pass
+        for wemo in self.devices:
+            if awemo.buddyname == wemo.name:
+                notseen = False
+                break
+
+        if notseen:
+            #This should be removed.This should happen at start up
+            try:
+                sess = bl.getSession(self.config["database"])
+                sensor = sess.query(bl.sensor).filter_by(name=awemo.buddyname).one()
+                sensor.present = False
+                sensor.state = 0
+                self.devices.append(sensor)
+            except:
+                pass
 
         for wemo in self.devices:
             ispresent = False
@@ -444,21 +445,29 @@ class WeMoBridge(bl.BuddyBridge):
         if awemo in self.pending:
             self.pending.remove(awemo)
         else:
-            for sensor in self.devices:
-                try:
-                    if sensor.name == awemo.buddyname:
-                        sensor.conn = None
-                        sensor.present = False
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  sensor.name,
-                                                  "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
-                except:
-                    pass
+            for sensore in self.devices:
+                if sensore.name == awemo.buddyname:
+                    try:
+                        self.wemo_env.device_gone(sensore.conn)
+                    except Exception as e:
+                        logging.debug("Ooops: Could not unregister {}. Error was {}".format(sensore.name,e))
+                        pass
+                    try:
+                        if sensore.hb:
+                            sensore.hb.cancel()
+                    except:
+                        logging.debug("OOps cannot cancel")
+                    sensore.conn = None
+                    sensore.present = False
+                    self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                sensore.name,
+                                                "value": "offline",
+                                                "icon status": {"bu-not-present": {"opacity": 1}}}})
+
 
     def status_changed(self,device):
         for sensor in self.devices:
@@ -534,7 +543,7 @@ class WeMoBridge(bl.BuddyBridge):
                 pass
 
 aboutstr = """<p>WeMoBuddy is a set of bridges talking to <a href="http://www.wemo.com/">Belkin's WeMo device</a>. WeMo devices will be automatically
-detected. The icon used for switches is based on one made by Freepik from www.flaticon.com </p>
+detected.</p>
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
