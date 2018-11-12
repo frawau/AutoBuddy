@@ -397,7 +397,8 @@ class WeMoBridge(bl.BuddyBridge):
                     doremove = False
                     for switch in self.devices:
                         if switch.name == msg["subject"].split(".")[-1]:
-                            self.wemo_env.device_gone(switch.conn)
+                            if switch.conn: #Only remove if we have a connection
+                                self.wemo_env.device_gone(switch.conn)
                             doremove = True
                             break
                         sidx += 1
@@ -501,16 +502,14 @@ class WeMoBridge(bl.BuddyBridge):
         else:
             for switch in self.devices:
                 if switch.name == awemo.buddyname:
-                    try:
+                    if switch.conn:
                         self.wemo_env.device_gone(switch.conn)
-                    except Exception as e:
-                        print("Ooops: Could not unregister {}. Error was {}".format(switch.name,e))
-                        pass
+
                     try:
                         if switch.hb:
                             switch.hb.cancel()
                     except:
-                        print("OOps cannot cancel")
+                        self.log.debug("OOps cannot cancel")
                     switch.conn = None
                     switch.present = False
                     self.sending({"subject": self.type,

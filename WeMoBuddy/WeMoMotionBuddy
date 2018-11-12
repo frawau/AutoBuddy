@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application is simply a bridge application for WeMo sensores
+# This application is simply a bridge application for WeMo sensors
 #
 # Copyright (c) 2017 François Wautier
 #
@@ -345,7 +345,8 @@ class WeMoBridge(bl.BuddyBridge):
                     doremove = False
                     for sensor in self.devices:
                         if sensor.name == msg["subject"].split(".")[-1]:
-                            self.wemo_env.device_gone(sensor.conn)
+                            if sensor.conn:
+                                self.wemo_env.device_gone(sensor.conn)
                             doremove = True
                             break
                         sidx += 1
@@ -445,26 +446,23 @@ class WeMoBridge(bl.BuddyBridge):
         if awemo in self.pending:
             self.pending.remove(awemo)
         else:
-            for sensore in self.devices:
-                if sensore.name == awemo.buddyname:
+            for sensor in self.devices:
+                if sensor.name == awemo.buddyname:
+                    if sensor.conn:
+                        self.wemo_env.device_gone(sensor.conn)
                     try:
-                        self.wemo_env.device_gone(sensore.conn)
-                    except Exception as e:
-                        logging.debug("Ooops: Could not unregister {}. Error was {}".format(sensore.name,e))
-                        pass
-                    try:
-                        if sensore.hb:
-                            sensore.hb.cancel()
+                        if sensor.hb:
+                            sensor.hb.cancel()
                     except:
                         logging.debug("OOps cannot cancel")
-                    sensore.conn = None
-                    sensore.present = False
+                    sensor.conn = None
+                    sensor.present = False
                     self.sending({"subject": self.type,
                                     "content_type": "event",
                                     "content": {"event": "presence",
                                                 "target": self.type +
                                                 "." +
-                                                sensore.name,
+                                                sensor.name,
                                                 "value": "offline",
                                                 "icon status": {"bu-not-present": {"opacity": 1}}}})
 
