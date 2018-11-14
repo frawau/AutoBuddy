@@ -360,6 +360,8 @@ class WeMoBridge(bl.BuddyBridge):
                                                   "icon status": {"bu-fill": {"fill": cssColour()}, "bu-not-present": {"opacity": 0}}}})
 
                         notseen = False
+                        b.get_state()
+                        switch.hb=aio.ensure_future(switch.powerinfo())
                         break
                     bidx += 1
                 if notseen:
