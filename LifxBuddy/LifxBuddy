@@ -964,9 +964,9 @@ class LifxBridge(bl.BuddyBridge):
                                       "value": "offline",
                                       "icon status": {"bu-fill": {"fill": "transparent"}, "bu-not-present": {"opacity": 1}}}})
 
-        coro = self.loop.create_datagram_endpoint(
-            partial(aiolifx.LifxDiscovery, self.loop, parent=self, ipv6prefix=self.config["ipv6prefix"], discovery_interval=self.lifx_config["refresh"]), local_addr=('0.0.0.0', UDP_BROADCAST_PORT))
-        self.probelights = self.loop.create_task(coro)
+
+        self.probelights = aiolifx.LifxDiscovery(self.loop, self)
+        self.probelights.start()
 
     # This is a call back, so we need the right signature
     def newbulb(self, alight, xx):
@@ -1229,6 +1229,6 @@ if __name__ == "__main__":
     finally:
         for x in bridgectl.lifxhb.values():
             x.cancel()
-        bridgectl.probelights.cancel()
+        bridgectl.probelights.cleanup()
         conn.close()
         loop.close()
