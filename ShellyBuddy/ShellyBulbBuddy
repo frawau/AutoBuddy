@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application is simply a bridge application for Shelly switches
+# This application is simply a bridge application for Shelly lightes
 #
 # Copyright (c) 2018 François Wautier
 #
@@ -27,6 +27,8 @@ import sys
 import traceback
 import json
 import logging
+import colorsys
+import math
 import os
 import ssl
 #import colorsys
@@ -40,7 +42,7 @@ CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
 
-DEVLIST = ["shelly1", "shelly2", "shelly4pro"]
+DEVLIST = ["shellybulb"]
 
 def intround(x):
     return int(round(x))
@@ -49,11 +51,63 @@ def intround(x):
 
 shelly_commands = """
 <buddyui version="0.1">
-    <command  name="shelly">
+    <command name="shelly">
         <controlgroup type="list" name="power" label="Power" rteffect="1">
             <control type="switch" name="power" label="Power" rteffect="1">
                 <value label="On">on</value>
                 <value label="Off">off</value>
+            </control>
+            <control type="spinner" name="duration" label="Duration"  >
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup type="list" name="colour" label="Colour" rteffect="1">
+            <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
+                <control type="slider" name="hue" label="Hue" rteffect="1">
+                    <start>0</start>
+                    <end>360</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="saturation" label="Saturation" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+                <control type="slider" name="value" label="Brightness" rteffect="1">
+                    <start>0</start>
+                    <end>100</end>
+                    <increment>1</increment>
+                </control>
+            </controlgroup>
+            <control type="spinner" name="duration" label="Duration"  >
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="list" name="white" label="White" rteffect="1">
+            <control type="slider" name="value" label="Brightness" rteffect="1">
+                <start>0</start>
+                <end>100</end>
+                <increment>1</increment>
+            </control>
+            <control type="slider" name="temperature" label="Kelvin" rteffect="1">
+                <start>3000</start>
+                <end>6500</end>
+                <increment>100</increment>
+            </control>
+            <control  type="spinner" name="duration" label="Duration">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
             </control>
         </controlgroup>
     </command>
@@ -67,34 +121,88 @@ shelly_config = """
             <control name="user" label="User" type="text" length="32" />
             <control name="password" label="Password" type="text" length="32" />
         </controlgroup>
-        <controlgroup type="listmaker"  name="relay" label="Relay Use">
-            <control name="label" label="Label" type="text" length="16" />
-            <control name="entity" expand="device::switch::shelly" label="Shelly Switch" type="text" length="16" />
-
-            <controlgroup type="choice" name="relay" label="Use Relay?">
-                <item value="yes" label="Yes use the relay." />
-                <item value="no" label="Do not use the relay." >
-                    <control type="switch" name="state" label="Relay State" rteffect="1">
-                        <value label="On">on</value>
-                        <value label="Off">off</value>
-                    </control>
-                </item>
-            </controlgroup>
-        </controlgroup>
     </configuration>
 </buddyui>
 """
 shelly_config_default = {"credential":{"user":"","password":""},"relay":[]}
 
+def convert_K_to_RGB(colour_temperature):
+    """
+    Converts from K to RGB, algorithm courtesy of
+    http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
+    Taken from petrklus on github
+    """
+    # range check
+    if colour_temperature < 1000:
+        colour_temperature = 1000
+    elif colour_temperature > 40000:
+        colour_temperature = 40000
 
+    tmp_internal = colour_temperature / 100.0
 
-def cssColour(hue=214, sat=176, val=167):
-    return "#cc33ff"
-    #return'#%02x%02x%02x' % tuple([int((x * 255) + 0.5) for x in colorsys.hsv_to_rgb(shelly_config_default["colour"]["hue"] / 360.0,
-                                                                                     #shelly_config_default[
-                                                                                     #"colour"][
-        #"saturation"] / 100.0,
-        #shelly_config_default["colour"]["value"] / 100.0)])
+    # red
+    if tmp_internal <= 66:
+        red = 255
+    else:
+        tmp_red = 329.698727446 * math.pow(tmp_internal - 60, -0.1332047592)
+        if tmp_red < 0:
+            red = 0
+        elif tmp_red > 255:
+            red = 255
+        else:
+            red = int(tmp_red + 0.5)
+
+    # green
+    if tmp_internal <= 66:
+        tmp_green = 99.4708025861 * math.log(tmp_internal) - 161.1195681661
+        if tmp_green < 0:
+            green = 0
+        elif tmp_green > 255:
+            green = 255
+        else:
+            green = int(tmp_green + 0.5)
+    else:
+        tmp_green = 288.1221695283 * math.pow(tmp_internal - 60, -0.0755148492)
+        if tmp_green < 0:
+            green = 0
+        elif tmp_green > 255:
+            green = 255
+        else:
+            green = int(tmp_green + 0.5)
+
+    # blue
+    if tmp_internal >= 66:
+        blue = 255
+    elif tmp_internal <= 19:
+        blue = 0
+    else:
+        tmp_blue = 138.5177312231 * \
+            math.log(tmp_internal - 10) - 305.0447927307
+        if tmp_blue < 0:
+            blue = 0
+        elif tmp_blue > 255:
+            blue = 255
+        else:
+            blue = int(tmp_blue + 0.5)
+    return (red, green, blue)
+
+def cssColour(self, col=None):
+    try:
+        if self.power:
+            if self.mode == "color":
+                alpha = int(round(15+self.gain*0.85))
+                iconsts = 'rgba(%d,%d,%d,%d)' % (self.red,self.green,self.blue,alpha)
+            else:
+                alpha = int(round(15+self.brightness*0.85))
+                iconsts ='rgba(%d,%d,%d,' % convert_K_to_RGB(self.temp)
+                iconsts += '%d)' % alpha
+        else:
+            iconsts = "transparent"
+        return iconsts
+    except Exception as e:
+        print("Exception: {}".format(e))
+        return "transparent"
+
 
 
 def shelly_process(self, msg, type="autobuddy"):
@@ -121,7 +229,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "." +
                                                 self.name,
                                                 "icon status":
-                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
                                                 "opacity": 0}},
                                                 "value": {"power":{"power":self.power and "on" or "off"}}}})
             # except: #Most probably is known but we lost pairing
@@ -145,13 +253,43 @@ def shelly_process(self, msg, type="autobuddy"):
 
         elif msg["content"]["command"] == "power":
             self.power = msg["content"]["value"]["power"].lower() == "on"
-            #if self.software_switch:
             aio.ensure_future((bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name.split("_")[0] + "/relay/" + self.name.split("_")[-1] + "/command",
+                bridgectl.config['mqttprefix'] + self.name + "/color/0/command",
                 self.power and b"on" or b"off")))
             bridgectl.sending({"subject": msg["subject"],
                             "content_type": "event",
                             "content": {"event": "power",
+                                        "target": msg["subject"],
+                                        "value": msg["content"]["value"]}})
+        elif msg["content"]["command"] == "white":
+
+            aio.ensure_future(bridgectl.mqtt_client.publish(
+                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                json.dumps({"mode":"white","temp":msg["content"]["value"]["temperature"],
+                            "brightness":msg["content"]["value"]["value"]}).encode()))
+            bridgectl.sending({"subject": msg["subject"],
+                            "content_type": "event",
+                            "content": {"event": "white",
+                                        "target": msg["subject"],
+                                        "value": msg["content"]["value"]}})
+        elif msg["content"]["command"] == "colour":
+            colour =[ x for x in  map(lambda x: int(round(x*255.0)),
+                         colorsys.hsv_to_rgb(msg["content"]["value"]["hue"]/360.0,
+                                             msg["content"]["value"]["saturation"]/100.0,
+                                             msg["content"]["value"]["value"]/100.0))]
+
+            mqttmsg = {"mode":"color","white":0}
+            mqttmsg["red"] = colour[0]
+            mqttmsg["green"] = colour[1]
+            mqttmsg["blue"] = colour[2]
+            mqttmsg["gain"] = msg["content"]["value"]["value"]
+            aio.ensure_future(bridgectl.mqtt_client.publish(
+                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                json.dumps(mqttmsg).encode()))
+            print("\n\nSendiing event {}".format(msg["content"]["value"]))
+            bridgectl.sending({"subject": msg["subject"],
+                            "content_type": "event",
+                            "content": {"event": "colour",
                                         "target": msg["subject"],
                                         "value": msg["content"]["value"]}})
         return None
@@ -168,52 +306,40 @@ def shelly_process(self, msg, type="autobuddy"):
                                     "value":"online",
                                     "icon status": {"bu-not-present": {"opacity": 0}}}})
 
-        if msg["subject"] == "relay":
-            #We don't really care about the relay. It is manage by the hardware
-            if not self.software_switch:
+        if msg["subject"] == "color":
+            if msg["value"] in ["on","off"]:
+                #We don't really care about the relay. It is manage by the hardware
                 self.power = msg["value"] == "on"
-                bridgectl.sending({"subject": bridgectl.type,
-                                "content_type": "event",
-                                "content": {"event": "status",
-                                            "target": bridgectl.type +
-                                            "." +
-                                            self.name,
-                                            "icon status":
-                                            {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                            "opacity": 0}},
-                                            "value": {"power": {"power": self.power and "on" or "off"}}}})
 
-        elif msg["subject"] == "longpush":
-            #We don't really care about the relay. It is manage by the hardware
-            lp = msg["value"] == 1
-            if self.longpush != lp:
-                self.longpush = lp
-                if self.longpush:
-                    bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "click",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "value": "long"}})
 
-        elif msg["subject"] == "input":
-            if self.software_switch:
-                #Toggle the relay
-                aio.ensure_future((bridgectl.mqtt_client.publish(
-                    bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
-                    self.power and b"off" or b"on")))
+            elif isinstance(msg["value"],dict) and "ison" in msg["value"]:
+                self.power = msg["value"]["ison"]
+                self.mode = msg["value"]["mode"]
+                self.red = msg["value"]["red"]
+                self.green = msg["value"]["green"]
+                self.blue = msg["value"]["blue"]
+                self.gain = msg["value"]["gain"]
+                self.temp = msg["value"]["temp"]
+                self.brightness = msg["value"]["brightness"]
 
-                    #bridgectl.sending({"subject": bridgectl.type,
-                                    #"content_type": "event",
-                                    #"content": {"event": "status",
-                                                #"target": bridgectl.type +
-                                                #"." +
-                                                #self.name,
-                                                #"icon status":
-                                                #{"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                                #"opacity": 0}},
-                                                #"value": {"power":{"power":self.power and "on" or "off"}}}})
+            hue, sat, val = colorsys.rgb_to_hsv(self.red/255.0,
+                                                self.green/255.0,
+                                                self.blue/255.0)
+            hue = int(round(hue*360))
+            sat = int(round(sat*100))
+            val = self.gain
+            bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "status",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "icon status":
+                                        {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
+                                        "opacity": 0}},
+                                        "value": {"power": {"power": self.power and "on" or "off"},
+                                                  "colour":{"hue": hue, "saturation": sat, "value": val},
+                                                  "white":{"temperature":self.temp, "value":self.brightness}}}})
         #except Exception as e:
             #try:
                 #bridgectl.log.warning(
@@ -230,7 +356,8 @@ def shelly_process(self, msg, type="autobuddy"):
 
 
 # Hop we go....
-bl.switch._process = shelly_process
+bl.light._process = shelly_process
+bl.light.cssColour = cssColour
 
 
 class ShellyBridge(bl.BuddyBridge):
@@ -257,7 +384,7 @@ class ShellyBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          "config name":config["subtype"]+"-switch",
+                                          "config name":config["subtype"]+"-light",
                                           "value": bl.encrypt(shelly_config_default, self.config["buddykey"])}})
 
 
@@ -330,25 +457,7 @@ class ShellyBridge(bl.BuddyBridge):
                                           "target": self.target,
                                           "value": shelly_config_default}})
                 # Now update all the shelly present
-                lorelay = {}
-                for x in self.shelly_config["relay"]:
-                    lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
                 for shelly in self.devices:
-                    if shelly.name in lorelay:
-                        shelly.software_switch = lorelay[shelly.name]["soft"]
-                        if shelly.software_switch:
-                            #here we want detached switch and default to on or off
-                            data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
-                        else:
-                            data = {'btn_type': 'edge', "default_state": 'last'}
-                    else:
-                        data = {'btn_type': 'edge', "default_state": 'last'}
-                        shelly.software_switch = False
-
-                    aio.ensure_future((self.mqtt_client.publish(
-                            self.config['mqttprefix']+ shelly.name.split("_")[0]+"/settings/relay/"+shelly.name.split("_")[-1],
-                                json.dumps(data).encode())))
-
                     if shelly.present:
                         self.sending({"subject": self.type,
                                       "content_type": "event",
@@ -357,7 +466,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "." +
                                                   shelly.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":(shelly.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 0}}}})
+                                                  "icon status": {"bu-fill": {"fill":light.cssColour()}, "bu-not-present": {"opacity": 0}}}})
 
         elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             if msg["content"]["configuration"]:
@@ -383,13 +492,13 @@ class ShellyBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.subtype,
-                                          "config name":config["subtype"]+"-switch",
+                                          "config name":config["subtype"]+"-light",
                                           #"token": self.target,
                                           "value": bl.encrypt(shelly_config_default, self.config["buddykey"])}})
         elif self.state == "active":
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
                 sess = bl.getSession(self.config["database"])
-                switch = sess.query(bl.switch).filter_by(
+                light = sess.query(bl.light).filter_by(
                     name=msg["subject"].split(".")[-1]).one()
 
                 self.sending({"subject": self.type,
@@ -397,43 +506,37 @@ class ShellyBridge(bl.BuddyBridge):
                               "content": {"event": "new device",
                                           "target": self.type +
                                           "." +
-                                          switch.name,
+                                          light.name,
                                           "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": switch.name, "nickname": switch.nickname}}})
+                                                    "name": light.name, "nickname": light.nickname}}})
                 notseen = True
                 for b in self.pending:
-                    if b == switch.name:
-                        switch.present = True
-                        switch.conn = b
-                        switch.controller = self
-                        switch.info = {}
-                        switch.power = True
-                        switch.software_switch = False
-                        switch.longpush = False
-                        for x in self.shelly_config["relay"]:
-                            if b == x["entity"] and x["relay"]["bu-cvalue"]=="no":
-                                switch.software_switch=True
-                                break
-                        self.devices.append(switch)
+                    if b == light.name:
+                        light.present = True
+                        light.conn = b
+                        light.controller = self
+                        light.info={}
+                        light.power=False
+                        light.mode = "white"
+                        light.temperature = 3500
+                        light.brightness = 20
+                        light.red = 10
+                        light.green = 10
+                        light.blue = 10
+                        light.gain = 20
+                        self.devices.append(light)
                         self.pending.remove(b)
                         self.sending({"subject": self.type,
                                       "content_type": "event",
                                       "content": {"event": "presence",
                                                   "target": self.type +
                                                   "." +
-                                                  switch.name,
+                                                  light.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 0}}}})
-
-                        if switch.software_switch:
-                            #here we want detached switch and default to on or off
-                            data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
-                        else:
-                            data = {'btn_type': 'edge', "default_state": 'last'}
+                                                  "icon status": {"bu-fill": {"fill":light.cssColour()}, "bu-not-present": {"opacity": 0}}}})
 
                         aio.ensure_future((self.mqtt_client.publish(
-                                self.config['mqttprefix']+ switch.name.split("_")[0]+"/settings/relay/"+switch.name.split("_")[-1],
-                                    json.dumps(data).encode())))
+                                self.config['mqttprefix']+ light.name +"/color/0/status/")))
                         notseen = False
                         break
                 if notseen:
@@ -442,25 +545,25 @@ class ShellyBridge(bl.BuddyBridge):
                                   "content": {"event": "presence",
                                               "target": self.type +
                                               "." +
-                                              switch.name,
+                                              light.name,
                                               "value": "offline",
-                                              "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"},
+                                              "icon status": {"bu-fill": {"fill":light.cssColour()},
                                                               "bu-not-present": {"opacity": 1}}}})
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
                     if self.log:
                         self.log.debug(msg)
-                    for switch in self.devices:
-                        if switch.name == msg["subject"].split(".")[-1]:
-                            switch.nickname = msg["content"]["value"]
+                    for light in self.devices:
+                        if light.name == msg["subject"].split(".")[-1]:
+                            light.nickname = msg["content"]["value"]
                             self.sending({"subject": self.type,
                                           "content_type": "event",
                                           "content": {"event": "nickname",
                                                       "target": self.type +
                                                       "." +
-                                                      switch.name,
-                                                      "value": switch.nickname}})
+                                                      light.name,
+                                                      "value": light.nickname}})
                             break
 
             elif msg["content"]["response"] == "deletion":
@@ -469,15 +572,15 @@ class ShellyBridge(bl.BuddyBridge):
                         self.log.debug(msg)
                     sidx = 0
                     doremove = False
-                    for switch in self.devices:
-                        if switch.name == msg["subject"].split(".")[-1]:
+                    for light in self.devices:
+                        if light.name == msg["subject"].split(".")[-1]:
                             self.sending({"subject": self.type,
                                           "content_type": "event",
                                           "content": {"event": "deletion",
                                                       "target": self.type +
                                                       "." +
-                                                      switch.name,
-                                                      "value": switch.name}})
+                                                      light.name,
+                                                      "value": light.name}})
                             doremove = True
                             break
                         sidx += 1
@@ -512,21 +615,20 @@ class ShellyBridge(bl.BuddyBridge):
                                   "value": shelly_config_default}})
         sess = bl.getSession(self.config["database"])
         self.devices = sess.query(
-            bl.switch).filter_by(
+            bl.light).filter_by(
                 subtype=self.subtype).all(
         )
-        for switch in self.devices:
-            switch.present = False
-            switch.controller = self
-            switch.info={}
-            switch.power=True
-            switch.software_switch = False
+        for light in self.devices:
+            light.present = False
+            light.controller = self
+            light.info={}
+            light.power=True
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
-                                      "target": self.type + "." + switch.name,
+                                      "target": self.type + "." + light.name,
                                       "value": "offline",
-                                      "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 1}}}})
+                                      "icon status": {"bu-fill": {"fill":(light.power and light.cssColour()) or "transparent"}, "bu-not-present": {"opacity": 1}}}})
 
 
         # No shelly is present yet
@@ -610,7 +712,7 @@ class ShellyBridge(bl.BuddyBridge):
             self.infos[payload["id"]] = payload
             self.infos[payload["id"]]['mac'] = ":".join([payload["mac"][i:i+2].lower() for i in range(0,len(payload["mac"]),2)])
             #self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
-            self.register([payload["id"]+"_%d"%x for x in range(int(dtype[6]))])
+            self.register([payload["id"]])
             return
 
         obj = mtopic[2]
@@ -625,7 +727,7 @@ class ShellyBridge(bl.BuddyBridge):
         if obj == "online":
             ispresent = payload
             for shelly in self.devices:
-                if shelly.name.startswith(dev):
+                if shelly.name == dev:
                     unseen = False
                     shelly.controller = self
                     if ispresent != shelly.present:
@@ -642,15 +744,14 @@ class ShellyBridge(bl.BuddyBridge):
 
 
         else:
-            thisdev = dev + "_%s"%mtopic[3]
-            for switch in self.devices:
-                #self.log.debug("Comparing {} to {}".format(thisdev,switch.name))
-                if thisdev == switch.name:
-                    switch._process({"subject":obj,"value":payload},"shelly")
+            for light in self.devices:
+                #self.log.debug("Comparing {} to {}".format(dev,light.name))
+                if dev == light.name:
+                    light._process({"subject":obj,"value":payload},"shelly")
                     unseen = False
                     break
         if unseen:
-            self.register([dev+"_%d"%x for x in range(int(dtype[6]))])
+            self.register([dev])
         #except:
             #pass
 
@@ -659,14 +760,14 @@ class ShellyBridge(bl.BuddyBridge):
 
     def register(self, loshelly):
         seen = False
-        ashelly = loshelly[0] #All the switches are created in tandem with the device
+        ashelly = loshelly[0] #All the lights are created in tandem with the device
 
         for shelly in self.devices:
             if shelly.name == ashelly:
                 seen = True
                 break
         if seen:
-            sname = ashelly.split("_")[0]
+            sname = ashelly
             for shelly in self.devices:
                 if shelly.name.startswith(sname):
                     shelly.controller = self
@@ -696,16 +797,16 @@ class ShellyBridge(bl.BuddyBridge):
         if ashelly in self.pending:
             self.pending.remove(ashelly)
         else:
-            for switch in self.devices:
+            for light in self.devices:
                 try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
-                    if switch.name == ashelly:
-                        switch.present = False
+                    if light.name == ashelly:
+                        light.present = False
                         self.sending({"subject": self.type,
                                       "content_type": "event",
                                       "content": {"event": "presence",
                                                   "target": self.type +
                                                   "." +
-                                                  switch.name,
+                                                  light.name,
                                                   "value": "offline",
                                                   "icon status": {"bu-not-present": {"opacity": 1}}}})
                 except:
@@ -715,41 +816,32 @@ class ShellyBridge(bl.BuddyBridge):
     async def http_settings(self,relay,options):
         pass
 
-aboutstr = """<p>ShellyBuddy is a bridge talking to WiFi switches made by <a href="https://shelly.cloud">Shelly</a> configured
+aboutstr = """<p>ShellyBulbBuddy is a bridge talking to WiFi bulbs made by <a href="https://shelly.cloud">Shelly</a> configured
 to communicate over MQTT. The icon used is based on one made by Freepik from www.flaticon.com </p>
 <p class=\"bu-copyright\">&copy; 2018 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
-<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 537.63 537.63" xmlns="http://www.w3.org/2000/svg">
-<g>
-    <circle class="bu-fill" cx="250" cy="144" r="127" stroke="none" fill="white" />
-    <path class="bu-shape" d="M124.795,144.021c0-69.472,56.528-126.018,126.018-126.018s126.018,56.546,126.018,126.018
-        c0,11.432-1.513,22.737-4.537,33.611l17.355,4.789c3.439-12.44,5.185-25.348,5.185-38.4C394.834,64.611,330.222,0,250.813,0
-        S106.792,64.611,106.792,144.02c0,40.902,17.499,80.022,47.995,107.314l12.008-13.393
-        C140.097,214.051,124.795,179.81,124.795,144.021z" />
-    <rect class="bu-shape" x="230" y="122" width="42" height="160" fill="white" stroke="none"  />
-    <rect class="bu-shape" x="284" y="212" width="42" height="62" fill="white" stroke="none"  />
-    <path class="bu-shape bu-hand" d="M394.834,252.038c-0.001,0-0.001,0-0.002,0v-0.001c0-19.857-16.148-36.005-36.005-36.005
-        c-7.41,0-14.302,2.25-20.032,6.101c-4.925-14.023-18.289-24.104-33.976-24.104c-6.556,0-12.701,1.769-18.001,4.841v-58.849
-        c0-19.857-16.148-36.005-36.005-36.005c-19.857,0-36.005,16.148-36.005,36.005v144.926c-20.513,4.181-36.006,22.359-36.006,44.101
-        c0,25.114,9.452,49.075,26.626,67.456c17.661,18.903,27.382,43.08,27.382,68.14v26.428c0,10.082,5.401,24.124,31.199,33.611
-        c15.681,5.761,36.564,8.947,58.815,8.947c41.532,0,90.013-11.144,90.012-42.557v-47.167c0-12.476,1.603-25.69,4.879-40.38
-        c8.695-39.155,13.124-79.355,13.124-119.483C430.839,268.186,414.691,252.038,394.834,252.038z M400.126,403.619
-        c-3.565,15.986-5.293,30.46-5.293,44.286v47.167c0,13.538-32.297,24.556-72.01,24.556s-72.01-11.018-72.01-24.556v-26.428
-        c0-29.633-11.45-58.203-32.243-80.454c-14.024-15.014-21.765-34.583-21.765-55.142c0-11.733,7.527-21.739,18.003-25.455v34.456
-        h18.001V144.021c0-9.938,8.084-18.003,18.003-18.003c9.92,0,18.003,8.066,18.003,18.003v89.974c0,0.013-0.001,0.026-0.001,0.039
-        h0.001v36.005h18.003v-36.024c0.011-9.929,8.089-17.984,18.002-17.984c9.92,0,18.003,8.066,18.003,18.003v17.964
-        c0,0.013-0.001,0.026-0.001,0.039h0.001v18.002h18.001v-18.002h0.001c0-9.938,8.084-18.003,18.003-18.003
-        c9.92,0,18.003,8.066,18.003,18.003v36.005h18.001V270.15c9.316,0.249,18.004,8.013,18.004,17.892
-        C412.836,326.838,408.551,365.742,400.126,403.619z" fill="black" opacity="1" fill-rule="nonzero"/>
-    <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90"
-        stroke="#a94442" stroke-width="60" fill="none" opacity="1" />
-</g>
-</svg>
+   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
+     <path class="bu-shape" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5
+                               22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90
+                               101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79
+                               68-180zM1400 576q0 155-103 268-45 49-74.5 87t-59.5 95.5-34 107.5q47 28 47 82 0 37-25 64 25 27 25 64 0 52-45
+                               81 13 23 13 47 0 46-31.5 71t-77.5 25q-20 44-60 70t-87 26-87-26-60-70q-46 0-77.5-25t-31.5-71q0-24 13-47-45-29-45-81
+                               0-37 25-64-25-27-25-64 0-54 47-82-4-50-34-107.5t-59.5-95.5-74.5-87q-103-113-103-268 0-99 44.5-184.5t117-142
+                               164-89 186.5-32.5 186.5 32.5 164 89 117 142 44.5 184.5z"/>
+     <path class="bu-fill" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5
+                              22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90
+                              101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79
+                              68-180z" fill="transparent"/>
+    <path class="bu-not-present" fill="#a94442"
+           d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
+              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
+              163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
+   </svg>
 """
 
 cfgdefault = {
-    "type": "switch",
+    "type": "light",
      "subtype": SUBTYPE,
      "host": "localhost",
      "port": 8745,
@@ -762,7 +854,7 @@ cfgdefault = {
 
 
 def configure():
-    parser = argparse.ArgumentParser(description="Track shelly switches..")
+    parser = argparse.ArgumentParser(description="Track shelly lightes..")
     # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-t", "--type", default=cfgdefault["type"],
                         help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
@@ -904,9 +996,9 @@ if __name__ == "__main__":
     conn, bridgectl = loop.run_until_complete(fac)
     loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"ShellySwitchBuddy": aboutstr},
+        {"about": {"ShellyBulbBuddy": aboutstr},
          "display": {config["type"]: {config["subtype"]: iconstr}},
-         "config name":config["subtype"]+"-switch"})
+         "config name":config["subtype"]+"-light"})
 
     try:
         loop.run_until_complete(connFuture)
