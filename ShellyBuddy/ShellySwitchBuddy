@@ -40,7 +40,7 @@ CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
 
-DEVLIST = ["shelly1", "shelly2", "shelly4pro"]
+DEVLIST = {"shelly1": 1, "shelly2": 2, "shellyswitch25":2, "shelly4pro":4}
 
 def intround(x):
     return int(round(x))
@@ -170,18 +170,35 @@ def shelly_process(self, msg, type="autobuddy"):
 
         if msg["subject"] == "relay":
             #We don't really care about the relay. It is manage by the hardware
-            if not self.software_switch:
-                self.power = msg["value"] == "on"
-                bridgectl.sending({"subject": bridgectl.type,
-                                "content_type": "event",
-                                "content": {"event": "status",
-                                            "target": bridgectl.type +
-                                            "." +
-                                            self.name,
-                                            "icon status":
-                                            {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                            "opacity": 0}},
-                                            "value": {"power": {"power": self.power and "on" or "off"}}}})
+            if msg["xtra"]:
+                if msg["xtra"][0] in ["energy","power"]:
+                    if msg["xtra"][0] == "power":
+                        self.power_con = msg["value"]
+                    else:
+                        self.energy = msg["value"]
+                    bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "measurement",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"bu-not-present": { "opacity": 0}}},
+                                                "value": {msg["xtra"][0] : msg["value"] }}})
+            else:
+                if not self.software_switch:
+                    self.power = msg["value"] == "on"
+                    bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                "opacity": 0}},
+                                                "value": {"power": {"power": self.power and "on" or "off"}}}})
+                self.sendInfo()
 
         elif msg["subject"] == "longpush":
             #We don't really care about the relay. It is manage by the hardware
@@ -214,6 +231,33 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 #{"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
                                                 #"opacity": 0}},
                                                 #"value": {"power":{"power":self.power and "on" or "off"}}}})
+        elif msg["subject"] == "temperature":
+            #We don't really care about the relay. It is manage by the hardware
+            devid = self.name.split("_")[0]
+            self.controller.infos[devid]["temperature"] = msg["value"]
+            bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "measurement",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "icon status":
+                                        {"bu-fill": {"bu-not-present": { "opacity": 0}}},
+                                        "value": {"temperature" : msg["value"] }}})
+        elif msg["subject"] == "overtemperature":
+            #We don't really care about the relay. It is manage by the hardware
+            devid = self.name.split("_")[0]
+            self.controller.infos[devid]["overtemperature"] = msg["value"] == 1
+            if msg["value"]:
+                bridgectl.sending({"subject": bridgectl.type,
+                                "content_type": "event",
+                                "content": {"event": "alarm",
+                                            "target": bridgectl.type +
+                                            "." +
+                                            self.name,
+                                            "icon status":
+                                            {"bu-fill": {"bu-not-present": { "opacity": 0}}},
+                                            "value": {"overtemperature" : msg["value"] == 1 }}})
         #except Exception as e:
             #try:
                 #bridgectl.log.warning(
@@ -226,12 +270,44 @@ def shelly_process(self, msg, type="autobuddy"):
 
         return True
 
+def sendInfo(self):
+    # Can be used in callback
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x,lbl in [("power","Switch On"),("power_con","power consumption"),("energy","energy"),("software_switch","software switch")]:
+            if getattr(self,x) is not None:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
+                prefix=""
+        devid = self.name.split("_")[0]
+        for x,lbl in [("temperature","temperature"),("mac","mac address"),("ip","ip address"),("fw_ver","firmware"),("new_fw","firmware upgradable")]:
+            try:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(self.controller.infos[devid][x])+"</dd>"
+                prefix=""
+            except:
+                pass
+        if msg:
+            msg+="</dl></div>"
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except Exception as e:
+        self.controller.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
 
 
 
 # Hop we go....
 bl.switch._process = shelly_process
-
+bl.switch.sendInfo = sendInfo
 
 class ShellyBridge(bl.BuddyBridge):
 
@@ -404,12 +480,17 @@ class ShellyBridge(bl.BuddyBridge):
                 for b in self.pending:
                     if b == switch.name:
                         switch.present = True
-                        switch.conn = b
                         switch.controller = self
+                        try:
+                            switch.info=self.infos[switch.name.split("_")[0]]
+                        except:
+                            switch.info={}
                         switch.info = {}
                         switch.power = True
                         switch.software_switch = False
                         switch.longpush = False
+                        switch.power_con = None
+                        switch.energy = None
                         for x in self.shelly_config["relay"]:
                             if b == x["entity"] and x["relay"]["bu-cvalue"]=="no":
                                 switch.software_switch=True
@@ -518,9 +599,15 @@ class ShellyBridge(bl.BuddyBridge):
         for switch in self.devices:
             switch.present = False
             switch.controller = self
-            switch.info={}
+            try:
+                switch.info=self.infos[switch.name.split("_")[0]]
+            except:
+                switch.info={}
             switch.power=True
             switch.software_switch = False
+            switch.longpush = False
+            switch.power_con = None
+            switch.energy = None
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
@@ -563,7 +650,7 @@ class ShellyBridge(bl.BuddyBridge):
                 await aio.sleep(5)
                 connected=False
                 continue
-            #Whe have a connection. Let's ask ffor announces
+            #Whe have a connection. Let's ask for announces
             try:
                 await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"announce")
                 while True:
@@ -610,7 +697,7 @@ class ShellyBridge(bl.BuddyBridge):
             self.infos[payload["id"]] = payload
             self.infos[payload["id"]]['mac'] = ":".join([payload["mac"][i:i+2].lower() for i in range(0,len(payload["mac"]),2)])
             #self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
-            self.register([payload["id"]+"_%d"%x for x in range(int(dtype[6]))])
+            self.register([payload["id"]+"_%d"%x for x in range(DEVLIST[dtype])])
             return
 
         obj = mtopic[2]
@@ -642,15 +729,26 @@ class ShellyBridge(bl.BuddyBridge):
 
 
         else:
-            thisdev = dev + "_%s"%mtopic[3]
-            for switch in self.devices:
-                #self.log.debug("Comparing {} to {}".format(thisdev,switch.name))
-                if thisdev == switch.name:
-                    switch._process({"subject":obj,"value":payload},"shelly")
-                    unseen = False
-                    break
+            if len(mtopic) > 3:
+                thisdev = dev + "_%s"%mtopic[3]
+                for switch in self.devices:
+                    #self.log.debug("Comparing {} to {}".format(thisdev,switch.name))
+                    if thisdev == switch.name:
+                        switch._process({"subject":obj,"value":payload, "xtra":mtopic[4:]},"shelly")
+                        unseen = False
+                        break
+            else:
+                for i in range(DEVLIST[dev.split("-")[0]]):
+                    thisdev = dev + "_%s"%i
+                    for switch in self.devices:
+                        #self.log.debug("Comparing {} to {}".format(thisdev,switch.name))
+                        if thisdev == switch.name:
+                            switch._process({"subject":obj,"value":payload, "xtra":mtopic[4:]},"shelly")
+                            unseen = False
+                            break
+
         if unseen:
-            self.register([dev+"_%d"%x for x in range(int(dtype[6]))])
+            self.register([dev+"_%d"%x for x in range(int(DEVLIST[dtype]))])
         #except:
             #pass
 
@@ -717,7 +815,7 @@ class ShellyBridge(bl.BuddyBridge):
 
 aboutstr = """<p>ShellyBuddy is a bridge talking to WiFi switches made by <a href="https://shelly.cloud">Shelly</a> configured
 to communicate over MQTT. The icon used is based on one made by Freepik from www.flaticon.com </p>
-<p class=\"bu-copyright\">&copy; 2018 Fran&ccedil;ois Wautier</p>
+<p class=\"bu-copyright\">&copy; 2019 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
 <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 537.63 537.63" xmlns="http://www.w3.org/2000/svg">

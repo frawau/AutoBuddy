@@ -124,7 +124,7 @@ shelly_config = """
     </configuration>
 </buddyui>
 """
-shelly_config_default = {"credential":{"user":"","password":""},"relay":[]}
+shelly_config_default = {"credential":{"user":"","password":""}}
 
 def convert_K_to_RGB(colour_temperature):
     """
@@ -203,7 +203,48 @@ def cssColour(self, col=None):
         print("Exception: {}".format(e))
         return "transparent"
 
+async def shelly_timed(self, target):
+    """Perform the changes gradually
 
+    Target id a dictionary with keys:
+        mode
+        duration
+    and, for mode "white"
+        temperature
+        brightness
+    and for mode "color"
+        red
+        green
+        blue
+        gain
+    """
+    async with self.busy:
+        steps = int(round(target["duration"]*5))
+        if target["mode"] == "white":
+            tdelta = int(round((target["temperature"] - self.temp)/steps))
+            bdelta = int(round((target["brightness"] - self.brightness)/steps))
+            tvals = [ target["temperature"] - (i-1)*tdelta for i in range(steps,0,-1)]
+            bvals = [ target["brightness"] - (i-1)*bdelta for i in range(steps,0,-1)]
+            allvals = [ {"mode":"white", "brightness": x, "temp": y} for x,y in zip(bvals,tvals) ]
+        else:
+            rdelta = int(round((target["red"] - self.red)/steps))
+            gdelta = int(round((target["green"] - self.green)/steps))
+            bdelta = int(round((target["blue"] - self.blue)/steps))
+            zdelta = int(round((target["gain"] - self.gain)/steps))
+            rvals = [ target["red"] - (i-1)*rdelta for i in range(steps,0,-1)]
+            gvals = [ target["green"] - (i-1)*gdelta for i in range(steps,0,-1)]
+            bvals = [ target["blue"] - (i-1)*bdelta for i in range(steps,0,-1)]
+            zvals = [ target["gain"] - (i-1)*zdelta for i in range(steps,0,-1)]
+            allvals = [ {"mode":"color", "white":0, "red": x, "green": y, "blue": z, "gain": t} for x,y,z,t in zip(rvals,gvals,bvals, zvals) ]
+
+        for aval in allvals:
+            if self.interrupt_busy:
+                self.interrupt_busy = False
+                return
+            await bridgectl.mqtt_client.publish(
+                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                json.dumps(aval).encode())
+            await aio.sleep(0.2)
 
 def shelly_process(self, msg, type="autobuddy"):
     bridgectl = self.controller
@@ -263,15 +304,22 @@ def shelly_process(self, msg, type="autobuddy"):
                                         "value": msg["content"]["value"]}})
         elif msg["content"]["command"] == "white":
 
-            aio.ensure_future(bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
-                json.dumps({"mode":"white","temp":msg["content"]["value"]["temperature"],
-                            "brightness":msg["content"]["value"]["value"]}).encode()))
-            bridgectl.sending({"subject": msg["subject"],
-                            "content_type": "event",
-                            "content": {"event": "white",
-                                        "target": msg["subject"],
-                                        "value": msg["content"]["value"]}})
+            if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                if self.busy.locked():
+                    self.interrupt_busy = True
+                aio.ensure_future(self._timed({"mode":"white", "duration":msg["content"]["value"]["duration"],
+                                                        "brightness": msg["content"]["value"]["value"],
+                                                        "temperature": msg["content"]["value"]["temperature"]}))
+            else:
+                aio.ensure_future(bridgectl.mqtt_client.publish(
+                    bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                    json.dumps({"mode":"white","temp":msg["content"]["value"]["temperature"],
+                                "brightness":msg["content"]["value"]["value"]}).encode()))
+                bridgectl.sending({"subject": msg["subject"],
+                                "content_type": "event",
+                                "content": {"event": "white",
+                                            "target": msg["subject"],
+                                            "value": msg["content"]["value"]}})
         elif msg["content"]["command"] == "colour":
             colour =[ x for x in  map(lambda x: int(round(x*255.0)),
                          colorsys.hsv_to_rgb(msg["content"]["value"]["hue"]/360.0,
@@ -283,15 +331,20 @@ def shelly_process(self, msg, type="autobuddy"):
             mqttmsg["green"] = colour[1]
             mqttmsg["blue"] = colour[2]
             mqttmsg["gain"] = msg["content"]["value"]["value"]
-            aio.ensure_future(bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
-                json.dumps(mqttmsg).encode()))
-            print("\n\nSendiing event {}".format(msg["content"]["value"]))
-            bridgectl.sending({"subject": msg["subject"],
-                            "content_type": "event",
-                            "content": {"event": "colour",
-                                        "target": msg["subject"],
-                                        "value": msg["content"]["value"]}})
+            if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+                if self.busy.locked():
+                    self.interrupt_busy = True
+                mqttmsg["duration"] = msg["content"]["value"]["duration"]
+                aio.ensure_future(self._timed(mqttmsg))
+            else:
+                aio.ensure_future(bridgectl.mqtt_client.publish(
+                    bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                    json.dumps(mqttmsg).encode()))
+                bridgectl.sending({"subject": msg["subject"],
+                                "content_type": "event",
+                                "content": {"event": "colour",
+                                            "target": msg["subject"],
+                                            "value": msg["content"]["value"]}})
         return None
     else:
         #try:
@@ -322,12 +375,17 @@ def shelly_process(self, msg, type="autobuddy"):
                 self.temp = msg["value"]["temp"]
                 self.brightness = msg["value"]["brightness"]
 
-            hue, sat, val = colorsys.rgb_to_hsv(self.red/255.0,
-                                                self.green/255.0,
-                                                self.blue/255.0)
-            hue = int(round(hue*360))
-            sat = int(round(sat*100))
-            val = self.gain
+            try:
+                hue, sat, val = colorsys.rgb_to_hsv(self.red/255.0,
+                                                    self.green/255.0,
+                                                    self.blue/255.0)
+                hue = int(round(hue*360))
+                sat = int(round(sat*100))
+                val = self.gain
+            except:
+                hue = 0
+                sat = 30
+                val ==20
             bridgectl.sending({"subject": bridgectl.type,
                             "content_type": "event",
                             "content": {"event": "status",
@@ -357,6 +415,7 @@ def shelly_process(self, msg, type="autobuddy"):
 
 # Hop we go....
 bl.light._process = shelly_process
+bl.light._timed = shelly_timed
 bl.light.cssColour = cssColour
 
 
@@ -518,12 +577,14 @@ class ShellyBridge(bl.BuddyBridge):
                         light.info={}
                         light.power=False
                         light.mode = "white"
-                        light.temperature = 3500
+                        light.temp = 3500
                         light.brightness = 20
                         light.red = 10
                         light.green = 10
                         light.blue = 10
                         light.gain = 20
+                        light.busy = aio.Lock()
+                        light.interrupt_busy = False
                         self.devices.append(light)
                         self.pending.remove(b)
                         self.sending({"subject": self.type,
@@ -623,6 +684,15 @@ class ShellyBridge(bl.BuddyBridge):
             light.controller = self
             light.info={}
             light.power=True
+            light.mode = "white"
+            light.temp = 3500
+            light.brightness = 20
+            light.red = 10
+            light.green = 10
+            light.blue = 10
+            light.gain = 20
+            light.busy = aio.Lock()
+            light.interrupt_busy = False
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
@@ -817,8 +887,10 @@ class ShellyBridge(bl.BuddyBridge):
         pass
 
 aboutstr = """<p>ShellyBulbBuddy is a bridge talking to WiFi bulbs made by <a href="https://shelly.cloud">Shelly</a> configured
-to communicate over MQTT. The icon used is based on one made by Freepik from www.flaticon.com </p>
-<p class=\"bu-copyright\">&copy; 2018 Fran&ccedil;ois Wautier</p>
+to communicate over MQTT.</p>
+<p>The icon used to represent devices has been lifted and adapted from <a href="https://fortawesome.github.io/Font-Awesome">Font Awesome</a>
+<i class=\"fa fa-flag-o \">These guys rock!</i>
+<p class=\"bu-copyright\">&copy; 2019 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
    <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
