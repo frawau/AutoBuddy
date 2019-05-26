@@ -48,7 +48,7 @@ import logging
 import functools
 import os
 import ssl
-from collections import defaultdict
+from collections import defaultdict, Mapping
 from random import randint
 
 
@@ -82,6 +82,13 @@ system_config = """
 """
 system_config_default = {"location": {}}
 
+def dict_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, Mapping):
+            d[k] = update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
 
 def zone_of_interest(self, subject):
     # TODO  change to a regex... Now light.Home and light.Home Theatre  would
@@ -691,7 +698,7 @@ class Controller():
                                             "value"][
                                                 "about"]
                             if "display" in msg["content"]["value"]:
-                                self.display.update(
+                                self.display = dict_update(self.display,
                                     msg["content"]["value"]["display"])
                                 msgval[
                                     "display"] = msg[
