@@ -569,7 +569,7 @@ class ShellyBridge(bl.BuddyBridge):
                                           "value": {"type": self.type, "subtype": self.subtype,
                                                     "name": light.name, "nickname": light.nickname}}})
                 notseen = True
-                for b in self.pending:
+                for b in  [ x for x in self.pending]:
                     if b == light.name:
                         light.present = True
                         light.conn = b
@@ -854,14 +854,15 @@ class ShellyBridge(bl.BuddyBridge):
 
         else:
             for ashelly in loshelly:
-                self.pending.append(ashelly)
-                self.sending({"subject": "control" + "." + self.type,
-                            "content_type": "request",
-                            "content": {"request": "creation",
-                                        "target": self.type,
-                                            # Here we need the type
-                                        #"token": self.target,
-                                        "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
+                if ashelly not in self.pending:
+                    self.pending.append(ashelly)
+                    self.sending({"subject": "control" + "." + self.type,
+                                "content_type": "request",
+                                "content": {"request": "creation",
+                                            "target": self.type,
+                                                # Here we need the type
+                                            #"token": self.target,
+                                            "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
 
     def unregister(self, ashelly):
         if ashelly in self.pending:

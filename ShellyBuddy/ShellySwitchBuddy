@@ -145,10 +145,10 @@ def shelly_process(self, msg, type="autobuddy"):
 
         elif msg["content"]["command"] == "power":
             self.power = msg["content"]["value"]["power"].lower() == "on"
-            #if self.software_switch:
-            aio.ensure_future((bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name.split("_")[0] + "/relay/" + self.name.split("_")[-1] + "/command",
-                self.power and b"on" or b"off")))
+            if not self.software_switch:
+                aio.ensure_future((bridgectl.mqtt_client.publish(
+                    bridgectl.config['mqttprefix'] + self.name.split("_")[0] + "/relay/" + self.name.split("_")[-1] + "/command",
+                    self.power and b"on" or b"off")))
             bridgectl.sending({"subject": msg["subject"],
                             "content_type": "event",
                             "content": {"event": "power",
@@ -183,7 +183,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "." +
                                                 self.name,
                                                 "icon status":
-                                                {"bu-fill": {"bu-not-present": { "opacity": 0}}},
+                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": { "opacity": 0}},
                                                 "value": {msg["xtra"][0] : msg["value"] }}})
             else:
                 if not self.software_switch:
@@ -198,7 +198,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
                                                 "opacity": 0}},
                                                 "value": {"power": {"power": self.power and "on" or "off"}}}})
-                self.sendInfo()
+                    self.sendInfo()
 
         elif msg["subject"] == "longpush":
             #We don't really care about the relay. It is manage by the hardware
@@ -215,22 +215,23 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "value": "long"}})
 
         elif msg["subject"] == "input":
-            if self.software_switch:
+            #if self.software_switch:
                 #Toggle the relay
-                aio.ensure_future((bridgectl.mqtt_client.publish(
-                    bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
-                    self.power and b"off" or b"on")))
+            self.power = msg["value"] == 1
+            #aio.ensure_future((bridgectl.mqtt_client.publish(
+                #bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
+                #self.power and b"off" or b"on")))
 
-                    #bridgectl.sending({"subject": bridgectl.type,
-                                    #"content_type": "event",
-                                    #"content": {"event": "status",
-                                                #"target": bridgectl.type +
-                                                #"." +
-                                                #self.name,
-                                                #"icon status":
-                                                #{"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                                #"opacity": 0}},
-                                                #"value": {"power":{"power":self.power and "on" or "off"}}}})
+            bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "power",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "icon status":
+                                        {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                        "opacity": 0}},
+                                        "value": {"power":self.power and "on" or "off"}}})
         elif msg["subject"] == "temperature":
             #We don't really care about the relay. It is manage by the hardware
             devid = self.name.split("_")[0]
@@ -242,7 +243,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                         "." +
                                         self.name,
                                         "icon status":
-                                        {"bu-fill": {"bu-not-present": { "opacity": 0}}},
+                                        {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": { "opacity": 0}},
                                         "value": {"temperature" : msg["value"] }}})
         elif msg["subject"] == "overtemperature":
             #We don't really care about the relay. It is manage by the hardware
@@ -477,7 +478,7 @@ class ShellyBridge(bl.BuddyBridge):
                                           "value": {"type": self.type, "subtype": self.subtype,
                                                     "name": switch.name, "nickname": switch.nickname}}})
                 notseen = True
-                for b in self.pending:
+                for b in [ x for x in self.pending]:
                     if b == switch.name:
                         switch.present = True
                         switch.controller = self
@@ -781,14 +782,15 @@ class ShellyBridge(bl.BuddyBridge):
 
         else:
             for ashelly in loshelly:
-                self.pending.append(ashelly)
-                self.sending({"subject": "control" + "." + self.type,
-                            "content_type": "request",
-                            "content": {"request": "creation",
-                                        "target": self.type,
-                                            # Here we need the type
-                                        #"token": self.target,
-                                        "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
+                if ashelly not in self.pending:
+                    self.pending.append(ashelly)
+                    self.sending({"subject": "control" + "." + self.type,
+                                "content_type": "request",
+                                "content": {"request": "creation",
+                                            "target": self.type,
+                                                # Here we need the type
+                                            #"token": self.target,
+                                            "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
 
     def unregister(self, ashelly):
         if ashelly in self.pending:
