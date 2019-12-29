@@ -187,6 +187,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "value": {msg["xtra"][0] : msg["value"] }}})
             else:
                 if not self.software_switch:
+                    self.initialized = True
                     self.power = msg["value"] == "on"
                     bridgectl.sending({"subject": bridgectl.type,
                                     "content_type": "event",
@@ -198,7 +199,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
                                                 "opacity": 0}},
                                                 "value": {"power": {"power": self.power and "on" or "off"}}}})
-                    self.sendInfo()
+                self.sendInfo()
 
         elif msg["subject"] == "longpush":
             #We don't really care about the relay. It is manage by the hardware
@@ -215,23 +216,27 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "value": "long"}})
 
         elif msg["subject"] == "input":
-            #if self.software_switch:
+            if self.software_switch:
                 #Toggle the relay
-            self.power = msg["value"] == 1
-            #aio.ensure_future((bridgectl.mqtt_client.publish(
-                #bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
-                #self.power and b"off" or b"on")))
+                if not self.initialized or self.power != (msg["value"] == 1):
+                    #if not self.initialized:
+                        #print("\n\nFirst time for {} with {}\n\n".format(self.name,msg))
+                    self.initialized = True
+                    self.power = msg["value"] == 1
+                    #aio.ensure_future((bridgectl.mqtt_client.publish(
+                        #bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
+                        #self.power and b"off" or b"on")))
 
-            bridgectl.sending({"subject": bridgectl.type,
-                            "content_type": "event",
-                            "content": {"event": "power",
-                                        "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                        "icon status":
-                                        {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                        "opacity": 0}},
-                                        "value": {"power":self.power and "on" or "off"}}})
+                    bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "power",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                "opacity": 0}},
+                                                "value": {"power":self.power and "on" or "off"}}})
         elif msg["subject"] == "temperature":
             #We don't really care about the relay. It is manage by the hardware
             devid = self.name.split("_")[0]
@@ -330,6 +335,10 @@ class ShellyBridge(bl.BuddyBridge):
             if msg["content"]["target"] == self.target:
                 for k, v in msg["content"]["value"].items():
                     shelly_config_default[k] = v
+                try:
+                    shelly_config_default["relay"] = [ x for x in shelly_config_default["relay"] if x["entity"]["bu_cvalue"] ]
+                except:
+                    pass
                 self.sending({"subject": "control" + "." + self.subtype,
                               "content_type": "request",
                               "content": {"request": "save configuration",
@@ -409,22 +418,23 @@ class ShellyBridge(bl.BuddyBridge):
                 # Now update all the shelly present
                 lorelay = {}
                 for x in self.shelly_config["relay"]:
-                    lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
+                    if x["entity"]["bu-cvalue"]:
+                        lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
                 for shelly in self.devices:
                     if shelly.name in lorelay:
                         shelly.software_switch = lorelay[shelly.name]["soft"]
-                        if shelly.software_switch:
+                        #if shelly.software_switch:
                             #here we want detached switch and default to on or off
-                            data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
-                        else:
-                            data = {'btn_type': 'edge', "default_state": 'last'}
+                            #data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
+                        #else:
+                            #data = {'btn_type': 'edge', "default_state": 'last'}
                     else:
-                        data = {'btn_type': 'edge', "default_state": 'last'}
+                        #data = {'btn_type': 'edge', "default_state": 'last'}
                         shelly.software_switch = False
 
-                    aio.ensure_future((self.mqtt_client.publish(
-                            self.config['mqttprefix']+ shelly.name.split("_")[0]+"/settings/relay/"+shelly.name.split("_")[-1],
-                                json.dumps(data).encode())))
+                    #aio.ensure_future((self.mqtt_client.publish(
+                            #self.config['mqttprefix']+ shelly.name.split("_")[0]+"/settings/relay/"+shelly.name.split("_")[-1],
+                                #json.dumps(data).encode())))
 
                     if shelly.present:
                         self.sending({"subject": self.type,
@@ -507,15 +517,15 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "value": "online",
                                                   "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 0}}}})
 
-                        if switch.software_switch:
-                            #here we want detached switch and default to on or off
-                            data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
-                        else:
-                            data = {'btn_type': 'edge', "default_state": 'last'}
+                        #if switch.software_switch:
+                            ##here we want detached switch and default to on or off
+                            #data = {'btn_type': 'detached', "default_state": lorelay[shelly.name]["state"] and True or False }
+                        #else:
+                            #data = {'btn_type': 'edge', "default_state": 'last'}
 
-                        aio.ensure_future((self.mqtt_client.publish(
-                                self.config['mqttprefix']+ switch.name.split("_")[0]+"/settings/relay/"+switch.name.split("_")[-1],
-                                    json.dumps(data).encode())))
+                        #aio.ensure_future((self.mqtt_client.publish(
+                                #self.config['mqttprefix']+ switch.name.split("_")[0]+"/settings/relay/"+switch.name.split("_")[-1],
+                                    #json.dumps(data).encode())))
                         notseen = False
                         break
                 if notseen:
@@ -592,6 +602,12 @@ class ShellyBridge(bl.BuddyBridge):
                       "content": {"event": "config updated",
                                   "target": self.target,
                                   "value": shelly_config_default}})
+
+        lorelay = {}
+        for x in self.shelly_config["relay"]:
+            if x["entity"]["bu-cvalue"]:
+                lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
+
         sess = bl.getSession(self.config["database"])
         self.devices = sess.query(
             bl.switch).filter_by(
@@ -605,7 +621,11 @@ class ShellyBridge(bl.BuddyBridge):
             except:
                 switch.info={}
             switch.power=True
-            switch.software_switch = False
+            switch.initialized = False
+            if switch.name in lorelay:
+                switch.software_switch = lorelay[switch.name]["soft"]
+            else:
+                switch.software_switch = False
             switch.longpush = False
             switch.power_con = None
             switch.energy = None
@@ -654,6 +674,7 @@ class ShellyBridge(bl.BuddyBridge):
             #Whe have a connection. Let's ask for announces
             try:
                 await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"announce")
+                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"update")
                 while True:
                     try:
                         message = await self.mqtt_client.deliver_message()
