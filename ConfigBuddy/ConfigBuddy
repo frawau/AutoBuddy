@@ -498,6 +498,7 @@ dosonoff = False
 doshellybulb = False
 doshellyswitch = False
 domosquito = False
+doshellyupdates = True
 
 
 print("Finaly, we need to know which optional modules you want to run.")
@@ -658,7 +659,7 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
     print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
     choice = input(" Press '<enter>' to continue")
-    
+
 print("\n\nShellySwitchBuddy allows you to receive power events from your Shelly switches.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
@@ -687,7 +688,7 @@ if domqtt:
     choice = input("\n  Do you want to run MQTTBuddy? [yes/NO] : ")
     if choice.strip().lower() not in ["y", "ye", "yes","let's do this","ok"]:
         domosquito=True
-    
+
 #Let's summarize
 print("\nYou have decided:")
 if dolifx:
@@ -759,7 +760,7 @@ if dosonoff:
     print("\tto run SonoffBuddy")
 else:
     print("\tnot to run SonoffBuddy")
-    
+
 if doshellyswitch:
     print("\tto run ShellySwitchBuddy")
 else:
@@ -1448,6 +1449,9 @@ mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "shellies/"
 mycfg["mqtthost"] = "localhost"
 mycfg["mqttport"] = 1883
+if doshellyswitch:
+    mycfg["update"]=doshellyupdates
+    doshellyupdates = False
 fn=BUDDYLOCATION+"/.buddyconfig/shellyswitch.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
@@ -1471,7 +1475,7 @@ os.chmod(fn,0o750)
 if doshellyswitch:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ShellySwitchBuddy "+fn
 else:
-    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n SgellySwitchBuddy "+fn
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellySwitchBuddy "+fn
 
 
 #ShellyBulbBuddy
@@ -1486,6 +1490,9 @@ mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "shellies/"
 mycfg["mqtthost"] = "localhost"
 mycfg["mqttport"] = 1883
+if doshellybulb:
+    mycfg["update"]=doshellyupdates
+    doshellyupdates = False
 fn=BUDDYLOCATION+"/.buddyconfig/shellybulb.cfg"
 with open(fn,"w") as cfile:
     json.dump(mycfg,cfile)
@@ -1509,8 +1516,8 @@ os.chmod(fn,0o750)
 if doshellybulb:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ShellyBulbBuddy "+fn
 else:
-    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n SgellyBulbBuddy "+fn
-    
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellyBulbBuddy "+fn
+
 #MQTTBuddy
 mycfg={}
 mycfg["host"]= brokerlocation

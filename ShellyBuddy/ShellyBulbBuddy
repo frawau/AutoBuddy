@@ -125,6 +125,8 @@ shelly_config = """
 </buddyui>
 """
 shelly_config_default = {"credential":{"user":"","password":""}}
+shelly_module_commands = {}
+
 
 def convert_K_to_RGB(colour_temperature):
     """
@@ -302,6 +304,8 @@ def shelly_process(self, msg, type="autobuddy"):
                             "content": {"event": "power",
                                         "target": msg["subject"],
                                         "value": msg["content"]["value"]}})
+
+            self.sendInfo()
         elif msg["content"]["command"] == "white":
 
             if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
@@ -398,6 +402,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                         "value": {"power": {"power": self.power and "on" or "off"},
                                                   "colour":{"hue": hue, "saturation": sat, "value": val},
                                                   "white":{"temperature":self.temp, "value":self.brightness}}}})
+            self.sendInfo()
         #except Exception as e:
             #try:
                 #bridgectl.log.warning(
@@ -410,6 +415,38 @@ def shelly_process(self, msg, type="autobuddy"):
 
         return True
 
+def sendInfo(self):
+    # Can be used in callback
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x,lbl in [("power","Light On")]:
+            if getattr(self,x) is not None:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
+                prefix=""
+        devid = self.name
+        for x,lbl in [("mac","mac address"),("ip","ip address"),("fw_ver","firmware"),("new_fw","firmware upgradable")]:
+            try:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(self.controller.infos[devid][x])+"</dd>"
+                prefix=""
+            except:
+                pass
+        if msg:
+            msg+="</dl></div>"
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except Exception as e:
+        self.controller.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
 
 
 
@@ -417,6 +454,7 @@ def shelly_process(self, msg, type="autobuddy"):
 bl.light._process = shelly_process
 bl.light._timed = shelly_timed
 bl.light.cssColour = cssColour
+bl.light.sendInfo = sendInfo
 
 
 class ShellyBridge(bl.BuddyBridge):
@@ -445,6 +483,10 @@ class ShellyBridge(bl.BuddyBridge):
                                           "target": self.type,
                                           "config name":config["subtype"]+"-light",
                                           "value": bl.encrypt(shelly_config_default, self.config["buddykey"])}})
+
+        elif msg["content"]["command"] == "update_fw":
+            aio.ensure_future(self.mqtt_client.publish(
+                self.config['mqttprefix']+"command",b"update_fw"))
 
 
         else:
@@ -667,7 +709,9 @@ class ShellyBridge(bl.BuddyBridge):
                                   "target": self.type,
                                   "subtype": self.subtype,
                                   #"token": self.target,
-                                  "value": {"functions": shelly_commands, "configs": [shelly_config, shelly_config_default]}}})
+                                  "value": {"functions": shelly_commands,
+                                            "module commands": shelly_module_commands,
+                                            "configs": [shelly_config, shelly_config_default]}}})
 
         self.sending({"subject": self.config["restricted"],
                       "content_type": "restricted event",
@@ -738,6 +782,7 @@ class ShellyBridge(bl.BuddyBridge):
             #Whe have a connection. Let's ask ffor announces
             try:
                 await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"announce")
+                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"update")
                 while True:
                     try:
                         message = await self.mqtt_client.deliver_message()
@@ -923,7 +968,8 @@ cfgdefault = {
      "restricted": "guibridge",
      "mqtthost": "localhost",
      "mqttport": 1883,
-     "mqttprefix": "shellies/"}
+     "mqttprefix": "shellies/",
+     "update": False}
 
 
 def configure():
@@ -951,6 +997,8 @@ def configure():
                         help="Log debug information (default False)")
     parser.add_argument("-S", "--ssl", default="",
                         help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-U", "--update", action="store_true", default=cfgdefault["update"],
+                        help="Handles Shellies updates (Default: {}".format(cfgdefault["update"]))
     parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
                         help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
@@ -1045,6 +1093,17 @@ def configure():
 if __name__ == "__main__":
     log, config = configure()
     log.info("Configured")
+
+    if config["update"]:
+        log.info("Handling Firmware Updates")
+        shelly_module_commands[
+        "update_fw"] = {
+        "module": config[
+            "type"],
+             "value": config[
+                 "subtype"],
+                 "label": "Update Shellies Firmware"}
+
     loop = aio.get_event_loop()
     #if config["debug"]:
         #loop.set_debug(True)
