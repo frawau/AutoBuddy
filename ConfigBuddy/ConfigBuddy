@@ -497,6 +497,7 @@ domqtt = False
 dosonoff = False
 doshellybulb = False
 doshellyswitch = False
+doshellyroller = False
 domosquito = False
 doshellyupdates = True
 
@@ -654,33 +655,48 @@ print("\n\nSonoffBuddy allows you to receive power events from your Sonoff switc
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dosonoff = True
-    domqtt = True
-    print("Since you will be using SonoffBuddy, you will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
-    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-    choice = input(" Press '<enter>' to continue")
+    if not domqtt:
+        domqtt = True
+        print("Since you will be using SonoffBuddy, you will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
+        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+        choice = input(" Press '<enter>' to continue")
 
-print("\n\nShellySwitchBuddy allows you to receive power events from your Shelly switches.")
+print("\n\nShellySwitchBuddy allows you control and monitor Shelly switches.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doshellyswitch = True
-    domqtt = True
-    print("Since you will be using ShellySwitchBuddy, you will need to set the device to use MQTT.\n")
-    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-    choice = input(" Press '<enter>' to continue")
+    if not domqtt:
+        domqtt = True
+        print("Since you will be using ShellySwitchBuddy, you will need to set the device to use MQTT.\n")
+        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+        choice = input(" Press '<enter>' to continue")
 
-print("\n\nShellyBulbBuddy allows you to receive power events from your Shelly bulbs.")
+print("\n\nShellyBulbBuddy allows you to control and monitor your Shelly bulbs.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doshellybulb = True
-    domqtt = True
-    print("Since you will be using ShellyBulbBuddy, you will need to set the device to use MQTT.\n")
-    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-    choice = input(" Press '<enter>' to continue")
+    if not domqtt:
+        domqtt = True
+        print("Since you will be using ShellyBulbBuddy, you will need to set the device to use MQTT.\n")
+        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+        choice = input(" Press '<enter>' to continue")
+
+print("\n\nShellyRollerBuddy allows you control and monitor Shelly switches that have been configured as roller.\nNote that the MQTT prefix must be changed to shellyroller.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doshellyroller = True
+    if not domqtt:
+        domqtt = True
+        print("Since you will be using ShellyRollerBuddy, you will need to set the device to use MQTT.\n")
+        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+        choice = input(" Press '<enter>' to continue")
 
 if domqtt:
     print("\n\nThe choices you have made require that you use an MQTT broker. You have 2 choices: \"mosquitto\" (recommended) or \"MQTTBuddy\"")
@@ -770,6 +786,11 @@ if doshellybulb:
     print("\tto run ShellyBulbBuddy")
 else:
     print("\tnot to run ShellyBulbBuddy")
+
+if doshellyroller:
+    print("\tto run ShellyRollerBuddy")
+else:
+    print("\tnot to run ShellyRollerBuddy")
 
 if doflic and dopresencebt:
     print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
@@ -1517,6 +1538,48 @@ if doshellybulb:
     bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ShellyBulbBuddy "+fn
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellyBulbBuddy "+fn
+
+
+#ShellyRollerBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "drape"
+mycfg["subtype"] = "shelly"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+mycfg["mqttprefix"] = "shellies/"
+mycfg["mqtthost"] = "localhost"
+mycfg["mqttport"] = 1883
+if doshellyroller:
+    mycfg["update"]=doshellyupdates
+    doshellyupdates = False
+fn=BUDDYLOCATION+"/.buddyconfig/shellyroller.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ShellyBuddy/ShellyRollerBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 25
+"""
+mycmd+=BUDDYLOCATION+"/ShellyBuddy/ShellyRollerBuddy -c "+fn
+mycmd+="\n    sleep 6\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-shellyroller"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doshellyswitch:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ShellyRollerBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellyRollerBuddy "+fn
+
 
 #MQTTBuddy
 mycfg={}
