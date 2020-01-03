@@ -2009,11 +2009,11 @@ class Rule():
             if acmd['bu-cvalue'] == 'set counter':
                 mycmd = [acmd['bu-cvalue'], acmd['variable']['bu-cvalue']]
                 if acmd['set']['bu-cvalue'] == "add":
-                    mycmd.append(lambda x: x + acmd['set']['value'])
+                    mycmd.append(lambda x: x + int(acmd['set']['value']))
                 if acmd['set']['bu-cvalue'] == "sub":
-                    mycmd.append(lambda x: x - acmd['set']['value'])
+                    mycmd.append(lambda x: x - int(acmd['set']['value']))
                 if acmd['set']['bu-cvalue'] == "set":
-                    mycmd.append(lambda x: acmd['set']['value'])
+                    mycmd.append(lambda x: int(acmd['set']['value']))
                 self.action.append(mycmd)
             elif acmd['bu-cvalue'] == 'set variable':
                 self.action.append(
@@ -2106,40 +2106,39 @@ class Rule():
     async def doAct(self):
         for c, v, f in self.action:
             bridgectl.log.debug("\n\nRule action {} {} {}\n\n".format(c, v, f))
-            # try:
-            if c == 'set counter':
-                bridgectl.stateVar[v].state = f(bridgectl.stateVar[v].state)
-            elif c == 'set variable':
-                bridgectl.stateVar[v].state = f
-            elif c == 'freeze':
-                bridgectl.stateVar[v].freeze()
-            elif c == 'unfreeze':
-                bridgectl.stateVar[v].unfreeze()
-            elif c == 'sleep':
-                await aio.sleep(v)
-            elif c == 'event':
-                self.sending(v)
-                bridgectl.process_event(v)
-            elif c == 'command':
-                self.sending(v)
-            elif c == 'command tracker':
-                for ent in bridgectl.stateVar[v].entities:
-                    f["subject"] = ent
-                    f["content"]["token"] = bl.genid()
-                    f["content"]["target"] = ent.split("-")[0]
-                    self.sending(f)
-            elif c == "notify":
-                if dt.datetime.now() > (self.timestamp+dt.timedelta(seconds=f["delay"])):
-                    self.timestamp = dt.datetime.now()
-                    bridgectl.loop.create_task(self.doNotify(v,f))
-                # except Exception as e:
-                # if bridgectl.log:
-                    # emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
-                    # self.sending({"subject":self.target ,
-                                #"content_type": "event",
-                                #"content":{"event":"error report",
-                                            #"target":self.type+".rules",
-                                            #"value":emsg}})
+            try:
+                if c == 'set counter':
+                    bridgectl.stateVar[v].state = f(bridgectl.stateVar[v].state)
+                elif c == 'set variable':
+                    bridgectl.stateVar[v].state = f
+                elif c == 'freeze':
+                    bridgectl.stateVar[v].freeze()
+                elif c == 'unfreeze':
+                    bridgectl.stateVar[v].unfreeze()
+                elif c == 'sleep':
+                    await aio.sleep(v)
+                elif c == 'event':
+                    self.sending(v)
+                    bridgectl.process_event(v)
+                elif c == 'command':
+                    self.sending(v)
+                elif c == 'command tracker':
+                    for ent in bridgectl.stateVar[v].entities:
+                        f["subject"] = ent
+                        f["content"]["token"] = bl.genid()
+                        f["content"]["target"] = ent.split("-")[0]
+                        self.sending(f)
+                elif c == "notify":
+                    if dt.datetime.now() > (self.timestamp+dt.timedelta(seconds=f["delay"])):
+                        self.timestamp = dt.datetime.now()
+                        bridgectl.loop.create_task(self.doNotify(v,f))
+            except Exception as e:
+                emsg="Error: Rule {} failed.\nTrace: {}".format(self.name),(val,e.__traceback__)
+                self.sending({"subject":self.target ,
+                            "content_type": "event",
+                            "content":{"event":"error report",
+                                        "target":self.type+".rules",
+                                        "value":emsg}})
 
     async def doNotify(self,v,f):
         try:
