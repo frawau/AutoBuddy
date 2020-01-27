@@ -543,9 +543,8 @@ class PresenceBridge(bl.BuddyBridge):
 
 
 aboutstr = """<p>PresenceBuddy is an application tracking on the LAN devices associated with transient entities... mostly people,pets,cars.</p>
-<p>Some icons taken from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a></p>
-<p>Also <a target='_blank' href='https://www.vexels.com/vectors/png-svg/139891/cat-sitting '> Cat sitting </a> | Designed by Vexels.com </a>
-<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+<p>All icons taken from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a></p>
+<p class=\"bu-copyright\">&copy; 2020 Fran&ccedil;ois Wautier</p>
 """
 
 iconstr = {}
