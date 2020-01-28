@@ -105,16 +105,15 @@ def shelly_process(self, msg, type="autobuddy"):
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
             # try:
-            iconsts = {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
-            iconsts["animation"] = self.genAnim(self.position,newpos)
+            iconsts={"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
+            iconsts["animation"]  = self.genAnim(self.position,self.position)
             bridgectl.sending({"subject": bridgectl.type,
                                     "content_type": "event",
                                     "content": {"event": "status",
                                                 "target": bridgectl.type +
                                                 "." +
                                                 self.name,
-                                                "icon status":
-                                                {"bu-fill": iconsts,
+                                                "icon status": iconsts,
                                                 "value": {"position": self.position }}})
             # except: #Most probably is known but we lost pairing
                 # pass
@@ -208,16 +207,16 @@ def shelly_process(self, msg, type="autobuddy"):
                                                         "value": {"position": self.position}}})
 
                 else:
-                    if not self.initialized:
                         self.initialized = True
-                        #iconsts["animation"] = self.genAnim(self.position,self.position)
-                        #bridgectl.sending({"subject": msg["subject"],
+                        #bridgectl.sending({"subject": bridgectl.type,
                                         #"content_type": "event",
-                                        #"content": {"event": "position",
+                                        #"content": {"event": "status",
                                                     #"target": bridgectl.type +
-                                                        #"." +
-                                                        #self.name,
-                                                    #"icon status": iconsts,
+                                                    #"." +
+                                                    #self.name,
+                                                    #"icon status":
+                                                    #{"bu-fill": {"fill":cssColour()}, "bu-not-present": {
+                                                    #"opacity": 0}},
                                                     #"value": {"position": self.position}}})
                 self.sendInfo()
         except Exception as e:
