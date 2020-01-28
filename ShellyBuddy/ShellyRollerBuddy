@@ -162,41 +162,54 @@ def shelly_process(self, msg, type="autobuddy"):
             self.sendInfo()
         return None
     else:
-        #try:
-        if not self.present:
-            self.present = True
-            bridgectl.sending({"subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {"event": "presence",
-                                    "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                                    "value":"online",
-                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+        try:
+            if not self.present:
+                self.present = True
+                bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "value":"online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
 
-        if msg["subject"] == "roller":
-            #We don't really care about the relay. It is manage by the hardware
-            if msg["xtra"]:
-                if msg["xtra"][0] in ["energy","power"]:
-                    if msg["xtra"][0] == "power":
-                        self.power_con = msg["value"]
-                    else:
-                        self.energy = msg["value"]
-                    bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "measurement",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "icon status":
-                                                {"bu-fill": {"fill": cssColour() }, "bu-not-present": { "opacity": 0}},
-                                                "value": {msg["xtra"][0] : msg["value"] }}})
-                elif msg["xtra"][0] == "pos":
-                    iconsts = {"bu-not-present": { "opacity": 0}}
-                    newpos = min(100,100-int(msg["value"]))
-                    if self.position != newpos:
-                        iconsts["animation"] = self.genAnim(self.position,newpos)
-                        self.position = newpos
+            if msg["subject"] == "roller":
+                #We don't really care about the relay. It is manage by the hardware
+                if msg["xtra"]:
+                    if msg["xtra"][0] in ["energy","power"]:
+                        if msg["xtra"][0] == "power":
+                            self.power_con = msg["value"]
+                        else:
+                            self.energy = msg["value"]
+                        bridgectl.sending({"subject": bridgectl.type,
+                                        "content_type": "event",
+                                        "content": {"event": "measurement",
+                                                    "target": bridgectl.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status":
+                                                    {"bu-fill": {"fill": cssColour() }, "bu-not-present": { "opacity": 0}},
+                                                    "value": {msg["xtra"][0] : msg["value"] }}})
+                    elif msg["xtra"][0] == "pos":
+                        iconsts = {"bu-not-present": { "opacity": 0}}
+                        newpos = min(100,100-int(msg["value"]))
+                        if self.position != newpos:
+                            iconsts["animation"] = self.genAnim(self.position,newpos)
+                            self.position = newpos
+                            bridgectl.sending({"subject": msg["subject"],
+                                            "content_type": "event",
+                                            "content": {"event": "position",
+                                                        "target": bridgectl.type +
+                                                            "." +
+                                                            self.name,
+                                                        "icon status": iconsts,
+                                                        "value": {"position": self.position}}})
+
+                else:
+                    if not self.initialized:
+                        self.initialized = True
+                        iconsts["animation"] = self.genAnim(self.position,self.position)
                         bridgectl.sending({"subject": msg["subject"],
                                         "content_type": "event",
                                         "content": {"event": "position",
@@ -205,29 +218,26 @@ def shelly_process(self, msg, type="autobuddy"):
                                                         self.name,
                                                     "icon status": iconsts,
                                                     "value": {"position": self.position}}})
-
-            else:
-                    self.initialized = True
-                    #bridgectl.sending({"subject": bridgectl.type,
-                                    #"content_type": "event",
-                                    #"content": {"event": "status",
-                                                #"target": bridgectl.type +
-                                                #"." +
-                                                #self.name,
-                                                #"icon status":
-                                                #{"bu-fill": {"fill":cssColour()}, "bu-not-present": {
-                                                #"opacity": 0}},
-                                                #"value": {"position": self.position}}})
-            self.sendInfo()
-        #except Exception as e:
-            #try:
-                #bridgectl.log.warning(
-                    #"Bloody process problem",
-                    #exc_info=(type(e),
-                              #e,
-                              #e.__traceback__))
-            #except:
-                #print("Oops")
+                        #bridgectl.sending({"subject": bridgectl.type,
+                                        #"content_type": "event",
+                                        #"content": {"event": "status",
+                                                    #"target": bridgectl.type +
+                                                    #"." +
+                                                    #self.name,
+                                                    #"icon status":
+                                                    #{"bu-fill": {"fill":cssColour()}, "bu-not-present": {
+                                                    #"opacity": 0}},
+                                                    #"value": {"position": self.position}}})
+                self.sendInfo()
+        except Exception as e:
+            try:
+                bridgectl.log.warning(
+                    "Bloody process problem",
+                    exc_info=(type(e),
+                              e,
+                              e.__traceback__))
+            except:
+                print("Oops")
 
         return True
 
