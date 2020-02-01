@@ -24,7 +24,7 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ##
 
-from aioblescan.plugins import EddyStone
+from aioblescan.plugins import RuuviWeather
 from struct import unpack
 from base64 import b64decode
 from math import sqrt
@@ -49,7 +49,7 @@ class RuuviTag(object):
         self.calibrating = {}
         self.is_running=True
         self.next_run = {}       #mac keyed dictionaries
-        self.avgbat = None;
+        self.avgbat = {};
 
     def __call__(self,parent,calibration,throttle):
         #Needed when a plugin is disabled then enabled.
@@ -83,153 +83,63 @@ class RuuviTag(object):
         thisrun=dt.datetime.now()
         hasinfo=False
         result={}
-        url=EddyStone().decode(packet)
-        if url is None:
-            url=packet.retrieve("Payload for mfg_specific_data")
-            if url:
-                val=url[0].val
-                if val[0]==0x99 and val[1]==0x04 and val[2]==0x03:
-                    #Looks just right
-                    macaddr = packet.retrieve("peer")[0].val
-                    if macaddr not in self.next_run:
-                        self.next_run[macaddr]={}
-                        for x in self.measurements:
-                            self.next_run[macaddr][x]=thisrun
-                    if macaddr not in self.calibration:
-                        self.calibration[macaddr]={"cx":0,"cy":0,"cz":0}
+        rawresult=RuuviWeather().decode(packet)
+        if rawresult:
 
-                    result["mac address"]=packet.retrieve("peer")[0].val
-                    val=val[2:]
-                    if thisrun >= self.next_run[macaddr]["humidity"]:
-                        result["humidity"]=val[1]/2.0
-                        hasinfo = True
-                        if "humidity" in self.throttle:
-                            self.next_run[macaddr]["humidity"]=thisrun+dt.timedelta(seconds=self.throttle["humidity"])
-                    if thisrun >= self.next_run[macaddr]["temperature"]:
-                        result["temperature"]=unpack(">b",int(val[2]).to_bytes(1,"big"))[0]
-                        result["temperature"]+=val[3]/100.0
-                        hasinfo = True
-                        if "temperature" in self.throttle:
-                            self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
+            macaddr = rawresult["mac address"]
+            if macaddr not in self.next_run:
+                self.next_run[macaddr]={}
+                for x in self.measurements:
+                    self.next_run[macaddr][x]=thisrun
+            if macaddr not in self.calibration:
+                self.calibration[macaddr]={"cx":0,"cy":0,"cz":0}
 
-                    if thisrun >= self.next_run[macaddr]["pressure"]:
-                        result["pressure"]=int.from_bytes(val[4:6],"big")+50000
-                        hasinfo = True
-                        if "pressure" in self.throttle:
-                            self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
+            result["mac address"]=rawresult["mac address"]
+            if thisrun >= self.next_run[macaddr]["humidity"]:
+                result["humidity"]=rawresult["humidity"]
+                hasinfo = True
+                if "humidity" in self.throttle:
+                    self.next_run[macaddr]["humidity"]=thisrun+dt.timedelta(seconds=self.throttle["humidity"])
+            if thisrun >= self.next_run[macaddr]["temperature"]:
+                result["temperature"]=rawresult["temperature"]
+                hasinfo = True
+                if "temperature" in self.throttle:
+                    self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
 
-                    dx=int.from_bytes(val[6:8],"big",signed=True) + self.calibration[macaddr]["cx"]
-                    dy=int.from_bytes(val[8:10],"big",signed=True) + self.calibration[macaddr]["cy"]
-                    dz=int.from_bytes(val[10:12],"big",signed=True) + self.calibration[macaddr]["cz"]
-                    if thisrun >= self.next_run[macaddr]["accelerometer"]:
-                        result["accelerometer"]={"x":dx,"y":dy,"z":dz,"vector":round(sqrt(dx**2 + dy**2 + dz**2),2)}
-                        hasinfo = True
-                        if "accelerometer" in self.throttle:
-                            self.next_run[macaddr]["accelerometer"]=thisrun+dt.timedelta(seconds=self.throttle["accelerometer"])
+            if thisrun >= self.next_run[macaddr]["pressure"]:
+                result["pressure"]=rawresult["pressure"]
+                hasinfo = True
+                if "pressure" in self.throttle:
+                    self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
 
-                    if macaddr in self.calibrating:
-                        self.calibrating[macaddr][0].append(int.from_bytes(val[6:8],"big",signed=True) )
-                        self.calibrating[macaddr][1].append(int.from_bytes(val[8:10],"big",signed=True) )
-                        self.calibrating[macaddr][2].append(int.from_bytes(val[10:12],"big",signed=True))
-                        if len(self.calibrating[macaddr][0]) >= SAMPLESIZE:
-                            self.done_calibrate(macaddr)
-                    if self.avgbat is None:
-                        self.avgbat = int.from_bytes(val[12:14],"big")
-                    else:
-                        self.avgbat = (self.avgbat + int.from_bytes(val[12:14],"big"))/2.0
-                    if thisrun >= self.next_run[macaddr]["battery"]:
-                        result["battery"]=self.avgbat
-                        self.avgbat = None #reset
-                        hasinfo = True
-                        if "battery" in self.throttle:
-                            self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
+            dx, dy, dz, vector = rawresult["accelerometer"]
+            if thisrun >= self.next_run[macaddr]["accelerometer"]:
+                result["accelerometer"]={"x":dx,"y":dy,"z":dz,"vector":round(vector,2)}
+                hasinfo = True
+                if "accelerometer" in self.throttle:
+                    self.next_run[macaddr]["accelerometer"]=thisrun+dt.timedelta(seconds=self.throttle["accelerometer"])
 
-                    if hasinfo:
-                        return result
-                    else:
-                        return None
-
+            if macaddr in self.calibrating:
+                self.calibrating[macaddr][0].append(dx)
+                self.calibrating[macaddr][1].append(dy)
+                self.calibrating[macaddr][2].append(dz)
+                if len(self.calibrating[macaddr][0]) >= SAMPLESIZE:
+                    self.done_calibrate(macaddr)
+            if macaddr not in self.avgbat:
+                self.avgbat[macaddr] = None
+            if self.avgbat[macaddr]  is None:
+                self.avgbat[macaddr] = rawresult["voltage"]
             else:
-                return None
-        rssi=packet.retrieve("rssi")
-        if rssi:
-            result["rssi"]=rssi[-1].val
-        power=packet.retrieve("tx_power")
-        if power:
-            result["tx_power"]=power[-1].val
-        try:
-            if "//ruu.vi/" in url["url"]:
-                #We got a live one
-                macaddr=packet.retrieve("peer")[0].val
-                result["mac address"]=macaddr
-                if macaddr not in self.next_run:
-                    self.next_run[macaddr]={}
-                    for x in self.measurements:
-                        self.next_run[macaddr][x]=thisrun
-                url=url["url"].split("//ruu.vi/#")[-1]
-                if len(url)>8:
-                    url=url[:-1]
-                val=b64decode(url+ '=' * (4 - len(url) % 4),"#.")
-                if val[0] in [2,4]:
-                    if thisrun >= self.next_run[macaddr]["humidity"]:
-                        result["humidity"]=val[1]/2.0
-                        hasinfo = True
-                        if "humidity" in self.throttle:
-                            self.next_run[macaddr]["humidity"]=thisrun+dt.timedelta(seconds=self.throttle["humidity"])
-                    if thisrun >= self.next_run[macaddr]["temperature"]:
-                        result["temperature"]=unpack(">b",int(val[2]).to_bytes(1,"big"))[0] #Signed int...
-                        hasinfo = True
-                        if "temperature" in self.throttle:
-                            self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
-                    if thisrun >= self.next_run[macaddr]["pressure"]:
-                        result["pressure"]=int.from_bytes(val[4:6],"big")+50000
-                        hasinfo = True
-                        if "pressure" in self.throttle:
-                            self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
-                    if hasinfo:
-                        return result
-                elif val[0] == 3:
-                    if thisrun >= self.next_run[macaddr]["humidity"]:
-                        result["humidity"]=val[1]/2.0
-                        hasinfo = True
-                        if "humidity" in self.throttle:
-                            self.next_run[macaddr]["humidity"]=thisrun+dt.timedelta(seconds=self.throttle["humidity"])
+                self.avgbat[macaddr]  = (self.avgbat[macaddr]  + rawresult["voltage"])/2
+            if thisrun >= self.next_run[macaddr]["battery"]:
+                result["battery"]=self.avgbat[macaddr]
+                self.avgbat[macaddr] = None #reset
+                hasinfo = True
+                if "battery" in self.throttle:
+                    self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
 
-                    if thisrun >= self.next_run[macaddr]["temperature"]:
-                        result["temperature"]=unpack(">b",int(val[2]).to_bytes(1,"big"))[0]
-                        result["temperature"]+=val[3]/100.0
-                        hasinfo = True
-                        if "temperature" in self.throttle:
-                            self.next_run[macaddr]["temperature"]=thisrun+dt.timedelta(seconds=self.throttle["temperature"])
-
-                    if thisrun >= self.next_run[macaddr]["pressure"]:
-                        result["pressure"]=int.from_bytes(val[4:6],"big")+50000
-                        hasinfo = True
-                        if "pressure" in self.throttle:
-                            self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
-                    dx=int.from_bytes(val[6:8],"big",signed=True) + self.calibration[macaddr]["cx"]
-                    dy=int.from_bytes(val[8:10],"big",signed=True) + self.calibration[macaddr]["cy"]
-                    dz=int.from_bytes(val[10:12],"big",signed=True) + self.calibration[macaddr]["cz"]
-                    if thisrun >= self.next_run[macaddr]["accelerometer"]:
-                        result["accelerometer"]={"x":dx,"y":dy,"z":dz,"vector":round(sqrt(dx**2 + dy**2 + dz**2),2)}
-                        hasinfo = True
-                        if "accelerometer" in self.throttle:
-                            self.next_run[macaddr]["accelerometer"]=thisrun+dt.timedelta(seconds=self.throttle["accelerometer"])
-                    if macaddr in self.calibrating:
-                        self.calibrating[macaddr][0].append(int.from_bytes(val[6:8],"big",signed=True) )
-                        self.calibrating[macaddr][1].append(int.from_bytes(val[8:10],"big",signed=True) )
-                        self.calibrating[macaddr][2].append(int.from_bytes(val[10:12],"big",signed=True))
-                        if len(self.calibrating[macaddr][0]) >= SAMPLESIZE:
-                            self.done_calibrate(macaddr)
-                    if thisrun >= self.next_run[macaddr]["battery"]:
-                        result["battery"]=int.from_bytes(val[12:14],"big")
-                        hasinfo = True
-                        if "battery" in self.throttle:
-                            self.next_run[macaddr]["battery"]=thisrun+dt.timedelta(seconds=self.throttle["battery"])
-                    if hasinfo:
-                        return result
-        except:
-            return None
+            if hasinfo:
+                return result
         return None
 
 PluginObject=RuuviTag
