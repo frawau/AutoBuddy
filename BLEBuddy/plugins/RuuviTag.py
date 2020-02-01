@@ -113,8 +113,12 @@ class RuuviTag(object):
                     self.next_run[macaddr]["pressure"]=thisrun+dt.timedelta(seconds=self.throttle["pressure"])
 
             dx, dy, dz, vector = rawresult["accelerometer"]
+            dx += self.calibration[macaddr]["cx"]
+            dy += self.calibration[macaddr]["cy"]
+            dz += self.calibration[macaddr]["cz"]
+
             if thisrun >= self.next_run[macaddr]["accelerometer"]:
-                result["accelerometer"]={"x":dx,"y":dy,"z":dz,"vector":round(vector,2)}
+                result["accelerometer"]={"x":dx,"y":dy,"z":dz,"vector":round(sqrt(dx**2 + dy**2 + dz**2),2)}
                 hasinfo = True
                 if "accelerometer" in self.throttle:
                     self.next_run[macaddr]["accelerometer"]=thisrun+dt.timedelta(seconds=self.throttle["accelerometer"])
