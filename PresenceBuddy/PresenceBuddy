@@ -431,8 +431,8 @@ class PresenceBridge(bl.BuddyBridge):
                 if self.log:
                     self.log.debug("Probing {} on {}".format(net, dev))
                 sock = aping.create_raw_socket(dev)
-                fac = self.loop.create_connection(
-                    aping.ArpRequester, sock=sock)
+                fac = self.loop._create_connection_transport(
+                    sock, aping.ArpRequester, None, None)
                 conn, arpctrl = await self.loop.create_task(fac)
                 arpctrl.process = self.process_mac
                 arpctrl.skip_list = list(self.untracked_mac.values())
