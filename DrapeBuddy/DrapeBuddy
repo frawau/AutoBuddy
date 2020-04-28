@@ -1,0 +1,956 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for Shelly drapees
+#
+# Copyright (c) 2018 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import logging
+import math
+import os
+import random
+import ssl
+import string
+import buddylib as bl
+import asyncio as aio
+from uuid import uuid4
+from functools import partial
+
+SUBTYPE = "proxy"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
+
+
+
+def intround(x):
+    return int(round(x))
+
+#Used to have different animation names
+def animname():
+    res = ""
+    for x in range(4):
+        res += random.choice(string.ascii_letters)
+    return res
+
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+proxy_commands = """
+<buddyui version="0.1">
+    <command name="proxy">
+        <controlgroup  type="grouplist" name="action" label="Operate" rteffect="1">
+            <controlgroup type="choice" name="action" label="Action">
+                <item value="open" label="Open" />
+                <item value="stop" label="Stop" />
+                <item value="close" label="Close" />
+            </controlgroup>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="learn" label="Learn IR" rteffect="-1" onlyif="learnir::yes" >
+            <controlgroup type="choice" name="action" label="Action">
+                <item value="open" label="Open" />
+                <item value="stop" label="Stop" />
+                <item value="close" label="Close" />
+            </controlgroup>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="rflearn" label="Learn RF" rteffect="-1" onlyif="learnrf::yes" >
+            <controlgroup type="choice" name="action" label="Action">
+                <item value="open" label="Open" />
+                <item value="stop" label="Stop" />
+                <item value="close" label="Close" />
+            </controlgroup>
+        </controlgroup>
+        <controlgroup  type="grouplist" name="upload" label="Upload" rteffect="-1">
+            <controlgroup type="choice" name="action" label="Action">
+                <item value="open" label="Open" />
+                <item value="stop" label="Stop" />
+                <item value="close" label="Close" />
+            </controlgroup>
+            <controlgroup type="choice" name="ctype" label="Type">
+                <item value="ir" label="Infrared" />
+                <item value="rf" label="Radio Frequency" />
+            </controlgroup>
+            <control type="text" name="code" label="RC Code (hex string)" length="2048"/>
+        </controlgroup>
+    </command>
+</buddyui>
+"""
+
+proxy_config = """
+"""
+proxy_config_default = {"gateway": {}, "position": {}, 'commands': {}, 'capabilities': {}}
+proxy_module_commands = {}
+
+
+def cssColour(hue=214, sat=176, val=167):
+    return "#4c0013"
+
+
+def proxy_process(self, msg, type="autobuddy"):
+    bridgectl = self.controller
+    #bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
+    if type == "autobuddy":
+        if msg["content"]["command"] == "nickname":
+            # print msg
+            self.nickname = msg["content"]["value"]
+            bridgectl.sending(
+                {"subject": "control" + "." + bridgectl.type,
+                    "content_type": "request",
+                    "content": {"request": "nickname",
+                                "target": bridgectl.type + "." + self.name,
+                                #"token": bridgectl.target,
+                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+        elif msg["content"]["command"] == "status":
+            # Not gone the way of the dodo
+            # try:
+            self.sendStatus()
+            #iconsts={"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
+            #iconsts["animation"]  = self.genAnim(self.position,self.position)
+            #bridgectl.sending({"subject": bridgectl.type,
+                                    #"content_type": "event",
+                                    #"content": {"event": "status",
+                                                #"target": bridgectl.type +
+                                                #"." +
+                                                #self.name,
+                                                #"icon status": iconsts,
+                                                #"value": {"position": self.position }}})
+            # except: #Most probably is known but we lost pairing
+                # pass
+        elif msg["content"]["command"] == "deletion":
+            bridgectl.sending(
+                {"subject": "control" + "." + bridgectl.type,
+                    "content_type": "request",
+                    "content": {"request": "deletion",
+                                "target": bridgectl.type,
+                                "value": self.name}})
+
+        elif msg["content"]["command"] == "action":
+            iconsts = {}
+            action = None
+            ctype = "ir"
+            value = msg["content"]["value"]
+            if value["bu-cvalue"].lower() == "open":
+                tcmd = "open"
+                if "open" in self.commands:
+                    action, ctype = self.commands["open"]
+                iconsts["animation"]  = self.genAnim(self.position,0)
+                self.position = 0
+            elif value["bu-cvalue"].lower() == "close":
+                tcmd = "close"
+                if "close" in self.commands:
+                    action, ctype = self.commands["close"]
+                iconsts["animation"] = self.genAnim(self.position,100)
+                self.position = 100
+            else:
+                tcmd = "stop"
+                if "stop" in self.commands:
+                    action, ctype = self.commands["stop"]
+
+            if action:
+                #action = bytes.fromhex(action)
+                bridgectl.sending({"subject": self.gateway,
+                                "content_type": "command",
+                                "content": {"command": "send",
+                                            "target": "remotec",
+                                            "value":{"ctype" : ctype, "code": action, "sender": self.name, "command": tcmd }}})
+
+                bridgectl.sending({"subject": msg["subject"],
+                                "content_type": "event",
+                                "content": {"event": "action",
+                                            "target": msg["subject"],
+                                            "icon status": iconsts,
+                                            "value": value["bu-cvalue"].lower()}})
+
+            self.sendInfo()
+        elif msg["content"]["command"] == "learn":
+            value = msg["content"]["value"]
+            bridgectl.sending({"subject": self.gateway,
+                            "content_type": "command",
+                            "content": {"command": "learn",
+                                        "target": "remotec",
+                                        "value": {"sender":bridgectl.type + "." + self.name,
+                                                  "command":value["action"]["bu-cvalue"].lower(),
+                                                  "ctype": "ir"}}})
+        elif msg["content"]["command"] == "rflearn":
+            value = msg["content"]["value"]
+            bridgectl.sending({"subject": self.gateway,
+                            "content_type": "command",
+                            "content": {"command": "learn",
+                                        "target": "remotec",
+                                        "value": {"sender":bridgectl.type + "." + self.name,
+                                                  "command":value["action"]["bu-cvalue"].lower(),
+                                                  "ctype": "rf"}}})
+
+        elif msg["content"]["command"] == "code learned" and msg["content"]["value"]["sender"] == self.gateway:
+            value = msg["content"]["value"]
+            if value["code"]:
+                self.commands[value["command"]] = (value["code"],value["ctype"])
+                bridgectl.add_rccommand(self.name, value["command"], (value["code"],value["ctype"]))
+        elif msg["content"]["command"] == "upload":
+            value = msg["content"]["value"]
+            self.commands[value["action"]["bu-cvalue"]] = (value["code"],value["ctype"]["bu-cvalue"])
+            bridgectl.add_rccommand(self.name, value["action"]["bu-cvalue"], (value["code"],value["ctype"]["bu-cvalue"]))
+        return None
+    else:
+        try:
+            if not self.present:
+                self.present = True
+                bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "presence",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "value":"online",
+                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
+
+            #if msg["subject"] == "roller":
+                ##We don't really care about the relay. It is manage by the hardware
+                #if msg["xtra"]:
+                    #if msg["xtra"][0] in ["energy","power"]:
+                        #if msg["xtra"][0] == "power":
+                            #self.power_con = msg["value"]
+                        #else:
+                            #self.energy = msg["value"]
+                        #bridgectl.sending({"subject": bridgectl.type,
+                                        #"content_type": "event",
+                                        #"content": {"event": "measurement",
+                                                    #"target": bridgectl.type +
+                                                    #"." +
+                                                    #self.name,
+                                                    #"icon status":
+                                                    #{"bu-fill": {"fill": cssColour() }, "bu-not-present": { "opacity": 0}},
+                                                    #"value": {msg["xtra"][0] : msg["value"] }}})
+                    #elif msg["xtra"][0] == "pos":
+                        #iconsts = {"bu-not-present": { "opacity": 0}}
+                        #newpos = min(100,100-int(msg["value"]))
+                        #if self.position != newpos:
+                            #iconsts["animation"] = self.genAnim(self.position,newpos)
+                            #self.position = newpos
+                            #bridgectl.sending({"subject": msg["subject"],
+                                            #"content_type": "event",
+                                            #"content": {"event": "position",
+                                                        #"target": bridgectl.type +
+                                                            #"." +
+                                                            #self.name,
+                                                        #"icon status": iconsts,
+                                                        #"value": {"position": self.position}}})
+
+                #else:
+                self.initialized = True
+                        #bridgectl.sending({"subject": bridgectl.type,
+                                        #"content_type": "event",
+                                        #"content": {"event": "status",
+                                                    #"target": bridgectl.type +
+                                                    #"." +
+                                                    #self.name,
+                                                    #"icon status":
+                                                    #{"bu-fill": {"fill":cssColour()}, "bu-not-present": {
+                                                    #"opacity": 0}},
+                                                    #"value": {"position": self.position}}})
+            self.sendInfo()
+        except Exception as e:
+            try:
+                bridgectl.log.warning(
+                    "Bloody process problem",
+                    exc_info=(type(e),
+                              e,
+                              e.__traceback__))
+            except:
+                print("Oops")
+
+        return True
+
+def sendInfo(self):
+    # Can be used in callback
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x,lbl in [("position","Position"),("learnir","Can use IR"),("learnrf","Can use RF")]:
+            if getattr(self,x) is not None:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
+                prefix=""
+        devid = self.name
+        if msg:
+            msg+="</dl></div>"
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except Exception as e:
+        self.controller.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
+def sendStatus(self):
+    status = {}
+    for x in ["position","learnir","learnrf"]:
+        status[x] = getattr(self,x)
+
+    iconsts={"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
+    iconsts["animation"]  = self.genAnim(self.position,self.position)
+
+    self.controller.sending({"subject": self.controller.type,
+                                "content_type": "event",
+                                "content": {"event": "status",
+                                            "target": self.controller.type +
+                                            "." +
+                                            self.name,
+                                            "icon status": iconsts,
+                                            "value": status}})
+
+
+def genAnim(self,fro,to):
+    """Generate an animation for the given pos to the given.
+         fro and to are in %
+    """
+    anim = ""
+    prefix = animname()
+    idx=0
+    for hook, curt in iconposition:
+        hstart = int(round(hook * fro / 100.0))
+        cstart = int(round(curt * fro / 100.0))
+        wstart = iconcurtwidth[0] + (round(iconcurtwidth[1] * fro / 100.0))
+        hstop = int(round(hook * to / 100.0))
+        cstop = int(round(curt * to / 100.0))
+        wstop = iconcurtwidth[0] + (round(iconcurtwidth[1] * to / 100.0))
+
+        anim += "@keyframes " + prefix + self.name + "hook" + str(idx) + \
+                            " {  0%   {transform: translate(" + str(hstart) + "px, 0); }" + \
+                            "   100%   {transform: translate(" + str(hstop) + "px, 0); } } "
+        anim += "@-webkit-keyframes " + prefix + self.name + "hook" + str(idx) + \
+                            " {  0%   {transform: translate(" + str(hstart) + "px, 0); }" + \
+                            "   100%   {transform: translate(" + str(hstop) + "px, 0); } } "
+
+        anim += "@keyframes " + prefix + self.name + "curt" + str(idx) + \
+                            " {  0%   {transform: translate(" + str(cstart) + "px, 0); width: "+str(wstart)+"px; }" + \
+                            "   100%   {transform: translate(" + str(cstop) + "px, 0); width: "+str(wstop)+"px; } } "
+        anim += "@-webkit-keyframes " + prefix + self.name + "curt" + str(idx) + \
+                            " {  0%   {transform: translate(" + str(cstart) + "px, 0); width: "+str(wstart)+"px; }" + \
+                            "   100%   {transform: translate(" + str(cstop) + "px, 0); width: "+str(wstop)+"px; } } "
+
+
+        anim += "\n#" + self.name + " .bu-hook" + str(idx) + \
+            " { animation: " + prefix + self.name + "hook" + str(idx) + " 8s" + \
+            "; animation-fill-mode: forwards; " + \
+            "  -webkit-animation: " + prefix + self.name + "hook" + str(idx) + " 8s" + \
+            "; -webkit-animation-fill-mode: forwards; } "
+
+        anim += "\n#" + self.name + " .bu-curt" + str(idx) + \
+            " { animation: " + prefix + self.name + "curt" + str(idx) + " 8s" + \
+            "; animation-fill-mode: forwards; " + \
+            "  -webkit-animation: " + prefix + self.name + "curt" + str(idx) + " 8s"  + \
+            "; -webkit-animation-fill-mode: forwards; } "
+
+        idx+=1
+
+    return anim
+
+# Hop we go....
+bl.drape._process = proxy_process
+bl.drape.cssColour = cssColour
+bl.drape.sendInfo = sendInfo
+bl.drape.sendStatus = sendStatus
+bl.drape.genAnim = genAnim
+
+
+class DrapeBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of proxy
+    It will report any new roller
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(DrapeBridge, self).__init__(loop, future, config, log)
+        self.proxy_config = proxy_config_default
+        self.shuttingdown = False
+        self.infos = {}
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    self.proxy_config[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "config name":config["subtype"]+"-drape",
+                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+
+        elif msg["content"]["command"] == "new proxy device":
+            ndev = msg["content"]["value"]
+            ndev['nickname'] = ndev['name']
+            needname = True
+            newname = ""
+            while needname:
+                newname = "drape-p"+uuid4().hex[:9]
+                needname = False
+                for adev in self.devices:
+                    if adev.name == newname:
+                        needname = True
+                        break
+            ndev['name'] = newname
+            self.pending.append(ndev)
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                          # Here we need the type
+                                      #"token": self.target,
+                                      "value": {"name": newname, "nickname": ndev['nickname'], "subtype": self.subtype}}})
+
+
+        else:
+            for aproxy in self.devices:
+                aproxy.process(msg)
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.proxy_config[x] = storedconfig[x]
+
+
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"value":bl.encrypt(self.proxy_config,self.config["buddykey"])}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [proxy_config, {}]}}})
+                #self.sending({"subject": self.config["restricted"],
+                              #"content_type": "restricted event",
+                              #"content": {"event": "config updated",
+                                          #"target": self.target,
+                                          #"value": self.proxy_config}})
+                # Now update all the proxied present
+                for dev in self.devices:
+                    self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                dev.name,
+                                                "value": "online",
+                                                "icon status": {"bu-fill": {"fill":dev.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+
+        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            if msg["content"]["configuration"]:
+                try:
+                    storedprop = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored is {}".format(storedprop))
+                except:
+                    storedprop = {}
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored cannot be decrypted.")
+                for k, v in storedprop.items():
+                    self.proxy_config[k] = v
+
+            if not(msg["content"]["configuration"] and storedprop):
+                # First time around... was never saved that property.. let's do
+                # it
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "config name":config["subtype"]+"-drape",
+                                          #"token": self.target,
+                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                drape = sess.query(bl.drape).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          drape.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": drape.name, "nickname": drape.nickname}}})
+                notseen = True
+                for b in  [ x for x in self.pending]:
+                    if b['name'] == drape.name:
+                        drape.present = True
+                        drape.controller = self
+                        drape.gateway = b['gateway']
+                        drape.info={}
+                        drape.position=0
+                        drape.commands = {}
+                        self.proxy_config['commands'][drape.name] = {}
+                        drape.learnir = ('learn_ir' in b['commands']  and 'yes') or 'no'
+                        drape.learnrf = ('learn_rf' in b['commands']  and 'yes') or 'no'
+                        self.proxy_config['position'][drape.name] = drape.position
+                        self.proxy_config['gateway'][drape.name] = b['gateway']
+                        self.proxy_config['capabilities'][b['gateway']] = b['commands']
+                        self.devices.append(drape)
+                        self.pending.remove(b)
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  drape.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill":drape.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                        self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "config name":self.config["subtype"]+"-drape",
+                                          #"token": self.target,
+                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+                        notseen = False
+                        break
+                if notseen:
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              drape.name,
+                                              "value": "offline",
+                                              "icon status": {"bu-fill": {"fill":drape.cssColour()},
+                                                              "bu-not-present": {"opacity": 1}}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for drape in self.devices:
+                        if drape.name == msg["subject"].split(".")[-1]:
+                            drape.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      drape.name,
+                                                      "value": drape.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for drape in self.devices:
+                        if drape.name == msg["subject"].split(".")[-1]:
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      drape.name,
+                                                      "value": drape.name}})
+                            doremove = True
+                            if drape.name in self.proxy_config["commands"]:
+                                del(self.proxy_config["commands"][drape.name])
+                            if drape.name in self.proxy_config["gateway"]:
+                                del(self.proxy_config["gateway"][drape.name])
+                            if drape.name in self.proxy_config["position"]:
+                                del(self.proxy_config["position"][drape.name])
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+                        self.sending({"subject": "control" + "." + self.subtype,
+                                    "content_type": "request",
+                                    "content": {"request": "save configuration",
+                                                "target": self.type,
+                                                "config name":self.config["subtype"]+"-drape",
+                                                "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+    def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": proxy_commands,
+                                            "module commands": proxy_module_commands,
+                                            "configs": [proxy_config, {}]}}})
+                                            #"configs": [proxy_config, self.proxy_config]}}})
+
+        #self.sending({"subject": self.config["restricted"],
+                      #"content_type": "restricted event",
+                      #"content": {"event": "config updated",
+                                  #"target": self.target,
+                                  #"value": self.proxy_config}})
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(
+            bl.drape).filter_by(
+                subtype=self.subtype).all(
+        )
+        for drape in self.devices:
+            drape.present = False
+            drape.controller = self
+            drape.info = {}
+            drape.position = self.proxy_config["position"][drape.name]
+            drape.gateway = self.proxy_config["gateway"][drape.name]
+            drape.learnir = ("learn_ir" in self.proxy_config["capabilities"][drape.gateway] and 'yes' ) or 'no'
+            drape.learnrf = ("learn_rf" in self.proxy_config["capabilities"][drape.gateway] and 'yes' ) or 'no'
+            if drape.name in self.proxy_config["commands"]:
+                drape.commands = self.proxy_config["commands"][drape.name]
+            else:
+                drape.commands = {}
+
+
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type + "." + drape.name,
+                                      "value": "online",
+                                      "icon status": {"bu-fill": {"fill":drape.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+
+        sess.close()
+
+
+    def register(self, loproxy):
+        seen = False
+        aproxy = loproxy[0] #All the drapes are created in tandem with the device
+
+        for proxy in self.devices:
+            if proxy.name == aproxy:
+                seen = True
+                break
+        if seen:
+            sname = aproxy
+            for proxy in self.devices:
+                if proxy.name.startswith(sname):
+                    proxy.controller = self
+                    if not proxy.present:
+                        proxy.present = True
+                        self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                proxy.name,
+                                                "value": "online",
+                                                "icon status": {"bu-not-present": {"opacity": 0}}}})
+
+        else:
+            for aproxy in loproxy:
+                if aproxy not in self.pending:
+                    self.pending.append(aproxy)
+                    self.sending({"subject": "control" + "." + self.type,
+                                "content_type": "request",
+                                "content": {"request": "creation",
+                                            "target": self.type,
+                                                # Here we need the type
+                                            #"token": self.target,
+                                            "value": {"name": aproxy, "nickname": aproxy, "subtype": self.subtype}}})
+
+    def unregister(self, aproxy):
+        if aproxy.name in [x['name'] for x in self.pending]:
+            self.pending = [x for x in self.pending if x['name'] != aproxy.name]
+        else:
+            for drape in self.devices:
+                try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
+                    if drape.name == aproxy:
+                        drape.present = False
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  drape.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                except:
+                    pass
+
+    def add_rccommand(self, device, command, value):
+        if not device in self.proxy_config["commands"]:
+            self.proxy_config["commands"][device] = {command: value}
+        else:
+            self.proxy_config["commands"][device][command] = value
+        self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "config name":config["subtype"]+"-drape",
+                                          #"token": self.target,
+                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+
+aboutstr = """<p>DrapeBuddy is a proxy between AutoBuddy and drape devices controlled by a IR/RF remote control.</p>
+<p class=\"bu-copyright\">&copy; 2019 Fran&ccedil;ois Wautier</p>
+"""
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+    <rect class="bu-rod" x="25" y="50" width="400px" height="25px" rx="5" ry="5" fill="black" />
+    <rect class="bu-hook0" x="30" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
+    <rect class="bu-fill bu-curt0" x="25" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
+    <rect class="bu-hook1" x="45" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
+    <rect class="bu-fill bu-curt1" x="40" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
+    <rect class="bu-hook2" x="60" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
+    <rect class="bu-fill bu-curt2" x="55" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
+    <rect class="bu-hook3" x="75" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
+    <rect class="bu-fill bu-curt3" x="70" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
+    <rect class="bu-hook4" x="90" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
+    <rect class="bu-fill bu-curt4" x="85" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
+
+    <g transform="scale(0.8,0.8)">
+        <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90"
+            stroke="#a94442" stroke-width="60" fill="none" opacity="1" />
+    </g>
+</svg>
+"""
+
+#Here are the values for the icon animation,  order for closing. First is the hook second the curtain
+iconposition = [(32,0), (95, 65), (160, 130), (225, 195), (290, 260)]
+iconcurtwidth = (15, 65) #65 is a delta, real is 15+65 = 80
+
+cfgdefault = {
+    "type": "drape",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "restricted": "guibridge"}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Track proxy drapes..")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/proxy.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/proxy.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    proxylog = logging.getLogger('')
+    proxycfg = {"debug": opts.debug}
+    try:
+    # if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except:
+            cfgdata = {}
+            proxylog.warning("Config file could not be opened.")
+
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                proxycfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                proxycfg[attr] = cfgdata[attr]
+            else:
+                proxycfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                proxylog.debug("The %s is %s." % (attr,proxycfg[attr]))
+
+
+        if proxycfg["ssl"] and not (os.path.isfile(proxycfg["ssl"] + "/" + CERTFILE)):
+            proxylog.critical("Encryption: Could not find {} .".format(
+                proxycfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if proxycfg["ssl"]:
+                proxylog.debug(
+                    "The ssl certificates can be found in %s" %
+                    proxycfg["ssl"])
+            else:
+                proxylog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            proxycfg["buddykey"] = cfgdata["buddykey"]
+
+
+        if opts.configonly:
+
+            if "buddykey" not in proxycfg:
+                if opts.debug:
+                    proxylog.debug("Generating random key")
+                proxycfg["buddykey"] = bl.keygen()
+            try:
+                del(proxycfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(proxycfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        proxylog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (proxylog, proxycfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+
+    loop = aio.get_event_loop()
+    #if config["debug"]:
+        #loop.set_debug(True)
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(DrapeBridge,
+                loop,
+                connFuture,
+                config,
+                log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"DrapeBuddy": aboutstr},
+         "display": {config["type"]: {config["subtype"]: iconstr}},
+         "config name":config["subtype"]+"-drape"})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+        bridgectl.shuttingdown = True
+        loop.run_until_complete(aio.sleep(3))
+        conn.close()
+        loop.close()
