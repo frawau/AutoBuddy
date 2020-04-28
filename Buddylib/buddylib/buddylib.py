@@ -439,7 +439,7 @@ class BuddyBridge(aio.Protocol):
                 #clean
                 comp=dt.datetime.now()-dt.timedelta(minutes=1)
                 lot=self.tokens.keys()
-                for x in lot:
+                for x in [y for y in lot]:
                     if self.tokens[x]<comp:
                         del(self.tokens[x])
 
@@ -467,7 +467,7 @@ class BuddyBridge(aio.Protocol):
         By default just do nothing
         """
         if self.log:
-            self.log.debug("event {}".format(msg["content"]))
+            self.log.debug("request {}".format(msg["content"]))
 
     def process_event(self,msg):
         """
