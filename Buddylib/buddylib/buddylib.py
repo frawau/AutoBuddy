@@ -137,10 +137,13 @@ class BEntity(object):
         of interest to the entity
         """
         #TODO  change to a regex... Now light.Home and light.Home Theatre  would both match on Home zone
-        myinterest="%s.%s"%(self.type,self.name)
-        split=subject.split(".")
-        if split[0] == self.type and ( split[1] in ["*","#"] or split[1] == self.name):
-            return True
+        try:
+            myinterest="%s.%s"%(self.type,self.name)
+            split=subject.split(".")
+            if split[0] == self.type and ( split[1] in ["*","#"] or split[1] == self.name):
+                return True
+        except:
+            pass
         return False
 
     def process(self,msg):
