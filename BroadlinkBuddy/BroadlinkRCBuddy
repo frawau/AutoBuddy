@@ -182,10 +182,11 @@ def broadlinkrc_process(self, msg):
 async def do_send_code(self, code, req_from, command):
     global bridgectl
 
-    resu = await self.conn.send_code(bytes.fromhex(code))  or False
-    #resu = await self.conn.send_code(base64.b64decode(code))
-    resu = True if resu else False
-    bridgectl.sending({"subject": req_from.split(".")[0],
+    async with self.accesslock:
+        resu = await self.conn.send_code(bytes.fromhex(code))  or False
+        #resu = await self.conn.send_code(base64.b64decode(code))
+        resu = True if resu else False
+    bridgectl.sending({"subject": req_from,
                     "content_type": "event",
                     "content": {"event": "code sent",
                                 "target": req_from,
@@ -195,19 +196,20 @@ async def do_send_code(self, code, req_from, command):
 async def do_learn_code(self, req_from, command):
     global bridgectl
 
-    bridgectl.sending({"subject": bridgectl.type ,
-                "content_type": "event",
-                "content": {"event": "gui alert",
-                            "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                            "value": "Please, do press the buttun you want to learn."}})
-    resu = await self.conn.learn_ir_code() or False
-    #resu = await self.conn.send_code(base64.b64decode(code))
-    if resu:
-        resu = resu.hex()
-    else:
-        resu = False
+    async with self.accesslock:
+        bridgectl.sending({"subject": bridgectl.type ,
+                    "content_type": "event",
+                    "content": {"event": "gui alert",
+                                "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                "value": "Please, do press the buttun you want to learn."}})
+        resu = await self.conn.learn_ir_code() or False
+        #resu = await self.conn.send_code(base64.b64decode(code))
+        if resu:
+            resu = resu.hex()
+        else:
+            resu = False
     bridgectl.sending({"subject": req_from,
                     "content_type": "command",
                     "content": {"command": "code learned",
@@ -257,38 +259,39 @@ async def rffreq_locked(self):
 async def do_rflearn_code(self, req_from, command):
     global bridgectl
 
-    bridgectl.sending({"subject": bridgectl.type,
-                "content_type": "event",
-                "content": {"event": "gui alert",
-                            "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                            "value": "Please, do press continuously a button so we can lock onto its frequency."}})
-    resu = await self.conn.learn_rf_code(cb=self.rffreq_locked) or False
-    if resu:
-        resu = resu.hex()
-    else:
-        resu = False
-    bridgectl.sending({"subject": req_from,
-                    "content_type": "command",
-                    "content": {"command": "code learned",
-                                "target": req_from,
-                                "value": {"code": resu,
-                                          "sender": bridgectl.type + "." + self.name,
-                                          "ctype": "rf",
-                                          "command": command}}})
-    iconsts = {"bu-radar1": {"opacity": "0"},
-                "bu-radar2": {"opacity": "0"},
-                "bu-radar3": {"opacity": "0"},
-                "multipart": True}
-    bridgectl.sending({"subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {"event": "status",
-                                    "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                                    "icon status": iconsts,
-                                    "value": {}}})
+    async with self.accesslock:
+        bridgectl.sending({"subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {"event": "gui alert",
+                                "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                "value": "Please, do press continuously a button so we can lock onto its frequency."}})
+        resu = await self.conn.learn_rf_code(cb=self.rffreq_locked) or False
+        if resu:
+            resu = resu.hex()
+        else:
+            resu = False
+        bridgectl.sending({"subject": req_from,
+                        "content_type": "command",
+                        "content": {"command": "code learned",
+                                    "target": req_from,
+                                    "value": {"code": resu,
+                                            "sender": bridgectl.type + "." + self.name,
+                                            "ctype": "rf",
+                                            "command": command}}})
+        iconsts = {"bu-radar1": {"opacity": "0"},
+                    "bu-radar2": {"opacity": "0"},
+                    "bu-radar3": {"opacity": "0"},
+                    "multipart": True}
+        bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "status",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "icon status": iconsts,
+                                        "value": {}}})
 
 
 def genAnim(self,state="send"):
@@ -527,6 +530,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                 for adev in self.pending:
                     if mac_to_name(adev.name) == remotec.name:
                         remotec.conn = adev
+                        remotec.accesslock = aio.Lock()
                         if adev.dev == "RM PRO":
                             remotec.commands = ["learn_ir", "send_ir", "learn_rf", "send_rf"]
                         else:
@@ -639,6 +643,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
         for remotec in self.devices:
             remotec.present = False
             remotec.infoval={}
+            remotec.accesslock = aio.Lock()
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
@@ -655,7 +660,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
 
 
     def register(self, entity):
-        if entity.dev in ["RM", "RM PRO"]:
+        if entity.dev in ["RM", "RM PRO", "RM4"]:
             found = False
             ename = mac_to_name(entity.mac)
             for remotec in self.devices:

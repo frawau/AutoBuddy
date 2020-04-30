@@ -65,21 +65,21 @@ proxy_commands = """
                 <item value="close" label="Close" />
             </controlgroup>
         </controlgroup>
-        <controlgroup  type="grouplist" name="learn" label="Learn IR" rteffect="-1" onlyif="learnir::yes" >
+        <controlgroup  type="grouplist" name="learn" label="Learn IR" rteffect="1" onlyif="learnir::yes" >
             <controlgroup type="choice" name="action" label="Action">
                 <item value="open" label="Open" />
                 <item value="stop" label="Stop" />
                 <item value="close" label="Close" />
             </controlgroup>
         </controlgroup>
-        <controlgroup  type="grouplist" name="rflearn" label="Learn RF" rteffect="-1" onlyif="learnrf::yes" >
+        <controlgroup  type="grouplist" name="rflearn" label="Learn RF" rteffect="1" onlyif="learnrf::yes" >
             <controlgroup type="choice" name="action" label="Action">
                 <item value="open" label="Open" />
                 <item value="stop" label="Stop" />
                 <item value="close" label="Close" />
             </controlgroup>
         </controlgroup>
-        <controlgroup  type="grouplist" name="upload" label="Upload" rteffect="-1">
+        <controlgroup  type="grouplist" name="upload" label="Upload" rteffect="1">
             <controlgroup type="choice" name="action" label="Action">
                 <item value="open" label="Open" />
                 <item value="stop" label="Stop" />
@@ -152,14 +152,14 @@ def proxy_process(self, msg, type="autobuddy"):
                 tcmd = "open"
                 if "open" in self.commands:
                     action, ctype = self.commands["open"]
-                iconsts["animation"]  = self.genAnim(self.position,0)
-                self.position = 0
+                #iconsts["animation"]  = self.genAnim(self.position,0)
+                #self.position = 0
             elif value["bu-cvalue"].lower() == "close":
                 tcmd = "close"
                 if "close" in self.commands:
                     action, ctype = self.commands["close"]
-                iconsts["animation"] = self.genAnim(self.position,100)
-                self.position = 100
+                #iconsts["animation"] = self.genAnim(self.position,100)
+                #self.position = 100
             else:
                 tcmd = "stop"
                 if "stop" in self.commands:
@@ -171,14 +171,14 @@ def proxy_process(self, msg, type="autobuddy"):
                                 "content_type": "command",
                                 "content": {"command": "send",
                                             "target": "remotec",
-                                            "value":{"ctype" : ctype, "code": action, "sender": self.name, "command": tcmd }}})
+                                            "value":{"ctype" : ctype, "code": action, "sender": bridgectl.type + "." +self.name, "command": tcmd }}})
 
-                bridgectl.sending({"subject": msg["subject"],
-                                "content_type": "event",
-                                "content": {"event": "action",
-                                            "target": msg["subject"],
-                                            "icon status": iconsts,
-                                            "value": value["bu-cvalue"].lower()}})
+                #bridgectl.sending({"subject": msg["subject"],
+                                #"content_type": "event",
+                                #"content": {"event": "action",
+                                            #"target": msg["subject"],
+                                            #"icon status": iconsts,
+                                            #"value": value["bu-cvalue"].lower()}})
 
             self.sendInfo()
         elif msg["content"]["command"] == "learn":
@@ -212,6 +212,27 @@ def proxy_process(self, msg, type="autobuddy"):
         return None
     else:
         try:
+            if msg["content_type"] == "event" and msg["content"]["event"] == "code sent":
+                value = msg["content"]["value"]
+                if value["sender"] == bridgectl.type + "." + self.name and value["sent"]:
+                    iconsts = {}
+                    if value["command"] == "open":
+                        iconsts["animation"]  = self.genAnim(self.position,0)
+                        self.position = 0
+                    elif value["command"].lower() == "close":
+                        iconsts["animation"] = self.genAnim(self.position,100)
+                        self.position = 100
+                    if iconsts:
+                        bridgectl.sending({"subject": msg["subject"],
+                                        "content_type": "event",
+                                        "content": {"event": "action",
+                                                    "target": msg["subject"],
+                                                    "icon status": iconsts,
+                                                    "value": value["command"]}})
+                return True
+
+
+
             if not self.present:
                 self.present = True
                 bridgectl.sending({"subject": bridgectl.type,
@@ -650,6 +671,13 @@ class DrapeBridge(bl.BuddyBridge):
                     "Unknown response {} {} {}".format(msg["subject"],
                                                        msg["content_type"],
                                                        msg["content"]))
+
+    def process_event(self, msg):
+        if msg["content"]["event"] == "code sent":
+            for dev in self.devices:
+                if dev.of_interest(msg["subject"]):
+                    return dev._process(msg,"proxy")
+
 
     def build(self):
         self.sending({"subject": "control" + "." + self.target,
