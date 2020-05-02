@@ -239,6 +239,14 @@
           <h2>ShellyBulbBuddy</h2>
           <p>ShellyRollerBuddy is a bridge for <a href="http://shelly.cloud">Shelly Bulbs</a>. It probably also supports Selliy RGBW2, but this has not been tested. ShellyBulbBuddy communicates with the devices over MQTT.</p>
 
+          <h2>BroadlinkRCBuddy</h2>
+          <p>BroadlinkRCBuddy is a bridge to Broadlink's remote control units. This is meant to be used with proxy modules. Proxy modules would
+          represent actual devices to be controlled by learning and sending RC commands via this module (or others). A BroadlinkRCDevice can
+          only create associated devices, the corresponding proxy must be running for all this to work. This requires the <a href="https://github.com/frawau/aiobroadlink">aiobroadlink</a> library to work.</p>
+
+          <h2>DrapeBuddy</h2>
+          <p>DrapeBuddy is a proxy for drape-like devices: curtains, gates, etc. It works in cunjunction with a bridge, like BroadlinkRCBuddy, to learn and
+          send commands to the actual device. The only known commands are Open, Close and Stop. Depending on the capabilities of the associated device (remote control) one can also learn and upload IR and/or RF codes.</p>
 
           <h2>ConfigBuddy</h2>
           <p>ConfigBuddy is a an application use for the initial configuration of the system.</p>
