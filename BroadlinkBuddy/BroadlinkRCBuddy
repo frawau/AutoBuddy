@@ -670,6 +670,14 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                         remotec.commands = ["learn_ir", "send_ir", "learn_rf", "send_rf"]
                     else:
                         remotec.commands = ["learn_ir", "send_ir"]
+                    if entity.dev == "RM4" and entity.cloud:
+                        self.sending({"subject": self.type ,
+                                    "content_type": "event",
+                                    "content": {"event": "gui alert",
+                                                "target": self.type +
+                                                        "." +
+                                                        ename,
+                                                "value": "Warning: Device {} is cloud enabled. It won't respond!".format(remotec.nickname)}})
                     if not remotec.present:
                         remotec.conn = entity
                         update = True
@@ -729,7 +737,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                             e,
                             e.__traceback__))
 
-aboutstr = """<p>BroadlinRCBuddy is a bridge managing Broalink remote control devices. </p>
+aboutstr = """<p>BroadlinRCBuddy is a bridge managing Broadlink remote control devices. </p>
 <p>The icon was designed by lifting an icon from <a href="http://fontawesome.io">Flat Icons - http://flaticon.com</a> and
 adding to it parts.
 </p>

@@ -1,0 +1,866 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for Shelly sensors
+#
+# Copyright (c) 2018 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import logging
+import os
+import ssl
+#import colorsys
+import buddylib as bl
+import asyncio as aio
+from functools import partial
+from hbmqtt.client import MQTTClient, ClientException
+
+SUBTYPE = "shelly"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
+
+
+DEVLIST = ["shellydw"]
+
+def intround(x):
+    return int(round(x))
+
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+shelly_commands = """
+"""
+
+shelly_config = """
+<buddyui version="0.1">
+    <configuration  name="shelly">
+        <controlgroup type="list"  name="credential" label="Credentials">
+            <control name="user" label="User" type="text" length="32" />
+            <control name="password" label="Password" type="text" length="32" />
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+shelly_config_default = {"credential":{"user":"","password":""}}
+shelly_module_commands = {}
+
+
+def cssColour(hue=214, sat=176, val=167):
+    return "#8b0000"
+    #return'#%02x%02x%02x' % tuple([int((x * 255) + 0.5) for x in colorsys.hsv_to_rgb(shelly_config_default["colour"]["hue"] / 360.0,
+                                                                                     #shelly_config_default[
+                                                                                     #"colour"][
+        #"saturation"] / 100.0,
+        #shelly_config_default["colour"]["value"] / 100.0)])
+
+
+def shelly_process(self, msg, type="autobuddy"):
+    bridgectl = self.controller
+    #bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
+    if type == "autobuddy":
+        if msg["content"]["command"] == "nickname":
+            # print msg
+            self.nickname = msg["content"]["value"]
+            bridgectl.sending(
+                {"subject": "control" + "." + bridgectl.type,
+                    "content_type": "request",
+                    "content": {"request": "nickname",
+                                "target": bridgectl.type + "." + self.name,
+                                #"token": bridgectl.target,
+                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+        elif msg["content"]["command"] == "status":
+            # Not gone the way of the dodo
+            # try:
+            bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"fill":cssColour()}},
+                                                "value": {"state":self.state }}})
+            # except: #Most probably is known but we lost pairing
+                # pass
+        elif msg["content"]["command"] == "deletion":
+            try:
+                bridgectl.sending(
+                    {"subject": "control" + "." + bridgectl.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": bridgectl.type,
+                                    "value": self.name}})
+            except:
+                #Deleting non active devices
+                bridgectl.sending(
+                    {"subject": "control" + "." + bridgectl.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": bridgectl.type,
+                                    "value": self.name}})
+
+        return None
+    else:
+        #try:
+        if not self.present:
+            self.present = True
+            bridgectl.sending({"subject": bridgectl.type,
+                        "content_type": "event",
+                        "content": {"event": "presence",
+                                    "target": bridgectl.type +
+                                    "." +
+                                    self.name,
+                                    "value":"online",
+                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+
+        if msg["subject"] == "sensor":
+            #bridgectl.log.debug("Message is {}".format(msg))
+            if msg["xtra"]:
+                if msg["xtra"] in ["state","battery","tilt","vibration","lux"]:
+                    iconsts={}
+                    if msg["xtra"] == "state":
+                        self.state = msg["value"]
+                        iconsts = {"bu-door-open":{"opacity": 1 if self.state=="open" else 0, "fill":cssColour()},
+                                   "bu-door-close":{"opacity": 1 if self.state=="close" else 0, "fill":cssColour()}}
+                    elif msg["xtra"] == "battery":
+                        self.battery = msg["value"]
+                    elif msg["xtra"] == "tilt":
+                        self.tilt = msg["value"]
+                    elif msg["xtra"] == "lux":
+                        self.lux = msg["value"]
+                    else:
+                        self.vibration = msg["value"]
+                    bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "measurement",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":iconsts,
+                                                "value": {msg["xtra"] : msg["value"] }}})
+                    if msg["xtra"] == "battery":
+                        self.sendInfo()
+            else:
+                self.sendInfo()
+
+        #except Exception as e:
+            #try:
+                #bridgectl.log.warning(
+                    #"Bloody process problem",
+                    #exc_info=(type(e),
+                              #e,
+                              #e.__traceback__))
+            #except:
+                #print("Oops")
+
+        return True
+
+def sendInfo(self):
+    # Can be used in callback
+    try:
+        msg=""
+        prefix="<div><dl class=\"dl-horizontal\">"
+        for x,lbl in [("mac","mac address"),("ip","ip address"),("fw_ver","firmware"),("new_fw","firmware upgradable"),("state","State"),("battery","Battery Level"),("lux","Lux"),("tilt","Tilt"),("vibration","Vibration")]:
+            if getattr(self,x) is not None:
+                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
+                prefix=""
+        if msg:
+            msg+="</dl></div>"
+            self.controller.sending({"subject": self.controller.type,
+                                 "content_type": "event",
+                                 "content": {"event": "info",
+                                             "target": self.controller.type +
+                                             "." +
+                                             self.name,
+                                             "value": msg }})
+    except Exception as e:
+        self.controller.log.debug(
+            "Ooops could not send info",
+            exc_info=(type(e),
+                      e,
+                      e.__traceback__))
+
+
+
+
+# Hop we go....
+bl.sensor._process = shelly_process
+bl.sensor.sendInfo = sendInfo
+
+class ShellyBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of shelly
+    It will report any new bulb
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(ShellyBridge, self).__init__(loop, future, config, log)
+        self.mqtt_client = None
+        self.mqtt_future = None
+        self.shelly_config = shelly_config_default
+        self.shuttingdown = False
+        self.infos = {}
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    self.shelly_config[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "config name":config["subtype"]+"-sensor",
+                                          "value": bl.encrypt(self.shelly_config, self.config["buddykey"])}})
+
+        elif msg["content"]["command"] == "update_fw":
+            aio.ensure_future(self.mqtt_client.publish(
+                self.config['mqttprefix']+"command",b"update_fw"))
+
+        else:
+            for ashelly in self.devices:
+                ashelly.process(msg)
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.shelly_config[x] = storedconfig[x]
+
+
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"value":bl.encrypt(shelly_config_default,self.config["buddykey"])}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [shelly_config, self.shelly_config]}}})
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": self.shelly_config}})
+
+
+        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            if msg["content"]["configuration"]:
+                try:
+                    storedprop = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored is {}".format(storedprop))
+                except:
+                    storedprop = {}
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored cannot be decrypted.")
+                for k, v in storedprop.items():
+                    shelly_config_default[k] = v
+
+            if not(msg["content"]["configuration"] and storedprop):
+                # First time around... was never saved that property.. let's do
+                # it
+                self.sending({"subject": "control" + "." + self.type,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.subtype,
+                                          "config name":config["subtype"]+"-sensor",
+                                          #"token": self.target,
+                                          "value": bl.encrypt(self.shelly_config, self.config["buddykey"])}})
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                sensor = sess.query(bl.sensor).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          sensor.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": sensor.name, "nickname": sensor.nickname}}})
+                notseen = True
+                for b in [ x for x in self.pending]:
+                    if b == sensor.name:
+                        sensor.present = True
+                        sensor.controller = self
+                        try:
+                            sensor.info=self.infos[sensor.name]
+                            sensor.mac  = sensor.info["mac"]
+                            sensor.ip  = sensor.info["ip"]
+                            sensor.new_fw  = sensor.info["new_fw"]
+                            sensor.fw_ver  = sensor.info["fw_ver"]
+                        except:
+                            sensor.info={}
+                            sensor.mac = ""
+                            sensor.ip  = ""
+                            sensor.new_fw  = ""
+                            sensor.fw_ver  = ""
+                        sensor.state = "close"
+                        sensor.tilt = 0
+                        sensor.vibration = 0
+                        sensor.battery = 0
+                        sensor.lux = 0
+                        self.devices.append(sensor)
+                        self.pending.remove(b)
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  sensor.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill":cssColour()}, "bu-door-open":{"opacity": 1 if sensor.state=="open" else 0},
+                                                                  "bu-door-close":{"opacity": 1 if sensor.state=="close" else 0},"bu-not-present": {"opacity": 0}}}})
+
+
+                        notseen = False
+                        break
+
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for sensor in self.devices:
+                        if sensor.name == msg["subject"].split(".")[-1]:
+                            sensor.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      sensor.name,
+                                                      "value": sensor.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for sensor in self.devices:
+                        if sensor.name == msg["subject"].split(".")[-1]:
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      sensor.name,
+                                                      "value": sensor.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+    def build(self):
+        self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": shelly_commands,
+                                            "module commands": shelly_module_commands,
+                                            "configs": [shelly_config, shelly_config_default]}}})
+
+        self.sending({"subject": self.config["restricted"],
+                      "content_type": "restricted event",
+                      "content": {"event": "config updated",
+                                  "target": self.target,
+                                  "value": shelly_config_default}})
+
+        lorelay = {}
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(
+            bl.sensor).filter_by(
+                subtype=self.subtype).all(
+        )
+        for sensor in self.devices:
+            sensor.present = True
+            sensor.controller = self
+            sensor.state = "close"
+            sensor.tilt = 0
+            sensor.vibration = 0
+            sensor.battery = 0
+            sensor.lux = 0
+            try:
+                sensor.info=self.infos[sensor.name]
+            except:
+                sensor.info={}
+            sensor.initialized = False
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type + "." + sensor.name,
+                                      "value": "online",
+                                    "icon status": {"bu-fill": {"fill":cssColour()}, "bu-door-open":{"opacity": 1 if sensor.state=="open" else 0},
+                                                    "bu-door-close":{"opacity": 1 if sensor.state=="close" else 0},"bu-not-present": {"opacity": 0}}}})
+
+
+        # No shelly is present yet
+        self.mqtt_future = aio.ensure_future(self.mqtt_reader())
+
+    async def mqtt_reader(self):
+        mqttconfig = {
+            'keep_alive': 10,
+            'ping_delay': 5,
+            'default_qos': 0,
+            'default_retain': False,
+            'auto_reconnect': False,
+            'reconnect_max_interval': 5,
+            'reconnect_retries': 10,
+            'topics': {
+                self.config["mqttprefix"]+'#': { 'qos': 1}
+            }
+        }
+        self.mqtt_client = MQTTClient(config=mqttconfig)
+        connected = False
+        while not connected:
+            try:
+                self.log.debug("DEBUG MQTT connection.")
+                if "credential" in self.shelly_config and "user" in self.shelly_config["credential"] and  self.shelly_config["credential"]["user"]:
+                    await self.mqtt_client.connect('mqtt://{}:{}@{}:{}/'.format(self.shelly_config["credential"]["user"],
+                                                                                self.shelly_config["credential"]["password"],
+                                                                                self.config["mqtthost"],self.config["mqttport"]))
+                else:
+                    await self.mqtt_client.connect('mqtt://{}:{}/'.format(self.config["mqtthost"],self.config["mqttport"]))
+                await self.mqtt_client.subscribe([(self.config["mqttprefix"]+'#', 1)])
+                connected=True
+            except:
+                self.log.debug("DEBUG MQTT could not connect to broker.")
+                await aio.sleep(5)
+                connected=False
+                continue
+            #Whe have a connection. Let's ask for announces
+            try:
+                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"announce")
+                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"update")
+                while True:
+                    try:
+                        message = await self.mqtt_client.deliver_message()
+                    except aio.TimeoutError:
+                        continue
+                    self.handle_mqtt(message.publish_packet)
+            except ClientException as ce:
+                self.log.debug("\n\n\nClient exception: %s\n\n" % ce)
+                try:
+                    await self.mqtt_client.disconnect()
+                except:
+                    pass
+                connected = False
+            except Exception as ce:
+                self.log.debug("\n\n\nOther exception: %s\n\n" %ce, exc_info=(type(ce),
+                              ce,
+                              ce.__traceback__))
+                if self.shuttingdown:
+                    return
+                connected = False
+
+
+    def handle_mqtt(self,packet):
+        # Check if it is a new one
+        #try:
+        mtopic = packet.variable_header.topic_name.split("/")
+        prefix, dev = mtopic[:2]
+        try:
+            payload=json.loads("".join([chr(z) for z in packet.payload.data]))
+        except:
+            payload="".join([chr(z) for z in packet.payload.data])
+        self.log.debug("DEBUG MQTT:  {} => {}".format(mtopic, str(payload)))
+        if dev == "command":
+            return
+
+        if dev == "announce":
+            dtype = payload["id"].split("-")[0]
+            if dtype not in DEVLIST:
+                self.log.debug("We do not handle {}".format(dtype))
+                return
+            self.infos[payload["id"]] = payload
+            self.infos[payload["id"]]['mac'] = ":".join([payload["mac"][i:i+2].lower() for i in range(0,len(payload["mac"]),2)])
+            #self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
+            self.register(payload["id"])
+            return
+
+        obj = mtopic[2]
+        dtype = dev.split("-")[0]
+
+        if dtype not in DEVLIST:
+            self.log.debug("We do not handle {}".format(dtype))
+            return
+
+        #Deal with LWT messages:
+        unseen = True
+        if obj == "online":
+            ispresent = payload
+            self.log.debug("Present payload is {}, {}".format(payload,payload.__class__))
+            #Do nothing, the sensor keep going online/offline to save energy. Consider always on.
+            unseen = False
+
+        else:
+            #self.log.debug("\n\n\nmtopic is {}\n\n\n".format(mtopic))
+            if len(mtopic) > 3:
+                for sensor in self.devices:
+                    #self.log.debug("Comparing {} to {}".format(dev,sensor.name))
+                    if dev == sensor.name:
+                        sensor._process({"subject":obj,"value":payload, "xtra":mtopic[3]},"shelly")
+                        unseen = False
+                        break
+            else:
+                for sensor in self.devices:
+                    #self.log.debug("Comparing {} to {}".format(dev,sensor.name))
+                    if dev == sensor.name:
+                        sensor._process({"subject":obj,"value":payload, "xtra":[]},"shelly")
+                        unseen = False
+                        break
+
+        if unseen:
+            self.register(dev)
+        #except:
+            #pass
+
+
+
+
+    def register(self, ashelly):
+        seen = False
+
+        for shelly in self.devices:
+            if shelly.name == ashelly:
+                seen = True
+                break
+        if seen:
+            for shelly in self.devices:
+                if shelly.name == ashelly:
+                    shelly.controller = self
+                    shelly.mac = self.infos[ashelly]['mac']
+                    shelly.ip = self.infos[ashelly]['ip']
+                    shelly.new_fw = self.infos[ashelly]['new_fw']
+                    shelly.fw_ver = self.infos[ashelly]['fw_ver']
+                    if not shelly.present:
+                        shelly.present = True
+                        self.sending({"subject": self.type,
+                                    "content_type": "event",
+                                    "content": {"event": "presence",
+                                                "target": self.type +
+                                                "." +
+                                                shelly.name,
+                                                "value": "online",
+                                                "icon status": {"bu-not-present": {"opacity": 0}}}})
+
+        else:
+            if ashelly not in self.pending:
+                self.pending.append(ashelly)
+                self.sending({"subject": "control" + "." + self.type,
+                            "content_type": "request",
+                            "content": {"request": "creation",
+                                        "target": self.type,
+                                            # Here we need the type
+                                        #"token": self.target,
+                                        "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
+
+    def unregister(self, ashelly):
+        if ashelly in self.pending:
+            self.pending.remove(ashelly)
+        else:
+            for sensor in self.devices:
+                try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
+                    if sensor.name == ashelly:
+                        sensor.present = False
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  sensor.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                except:
+                    pass
+
+
+    async def http_settings(self,relay,options):
+        pass
+
+aboutstr = """<p>ShellyBuddy is a bridge talking to WiFi Door/Window sensors made by <a href="https://shelly.cloud">Shelly</a> configured
+to communicate over MQTT. The icon used is based on two icons from <a href="http://fontawesome.io">Font Awesome by Dave Gandy - http://fontawesome.io.</a></p>
+<p class=\"bu-copyright\">&copy; 2019 Fran&ccedil;ois Wautier</p>
+"""
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg">
+    <path class="bu-fill bu-door-open" d="M624 448h-80V113.45C544 86.19 522.47 64 496 64H384v64h96v384h144c8.84 0 16-7.16 16-16v-32c0-8.84-7.16-16-16-16zM312.24 1.01l-192 49.74C105.99 54.44 96 67.7 96 82.92V448H16c-8.84 0-16 7.16-16 16v32c0 8.84 7.16 16 16 16h336V33.18c0-21.58-19.56-37.41-39.76-32.17zM264 288c-13.25 0-24-14.33-24-32s10.75-32 24-32 24 14.33 24 32-10.75 32-24 32z" opacity="0" />
+    <path class="bu-fill bu-door-close" d="M624 448H512V50.8C512 22.78 490.47 0 464 0H175.99c-26.47 0-48 22.78-48 50.8V448H16c-8.84 0-16 7.16-16 16v32c0 8.84 7.16 16 16 16h608c8.84 0 16-7.16 16-16v-32c0-8.84-7.16-16-16-16zM415.99 288c-17.67 0-32-14.33-32-32s14.33-32 32-32 32 14.33 32 32c.01 17.67-14.32 32-32 32z"  opacity="1" />
+</svg>
+"""
+
+cfgdefault = {
+    "type": "sensor",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "restricted": "guibridge",
+     "mqtthost": "localhost",
+     "mqttport": 1883,
+     "mqttprefix": "shellies/",
+     "update": False}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Track shelly sensors..")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-P", "--mqttport", type=int, default=cfgdefault["mqttport"],
+                        help="The port used by the mqtt broker (default \"%s\")." % cfgdefault["mqttport"])
+    parser.add_argument("-n", "--mqtthost", default=cfgdefault["mqtthost"],
+                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqtthost"])
+    parser.add_argument("-f", "--mqttprefix", default=cfgdefault["mqttprefix"],
+                        help="The MQTT topic prefix (default \"%s\"). " % cfgdefault["mqttprefix"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/shelly.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/shelly.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-U", "--update", action="store_true", default=cfgdefault["update"],
+                        help="Handles Shellies updates (Default: {}".format(cfgdefault["update"]))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    shellylog = logging.getLogger('')
+    shellycfg = {"debug": opts.debug}
+    try:
+    # if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except:
+            cfgdata = {}
+            shellylog.warning("Config file could not be opened.")
+
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                shellycfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                shellycfg[attr] = cfgdata[attr]
+            else:
+                shellycfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                shellylog.debug("The %s is %s." % (attr,shellycfg[attr]))
+
+
+        if shellycfg["ssl"] and not (os.path.isfile(shellycfg["ssl"] + "/" + CERTFILE)):
+            shellylog.critical("Encryption: Could not find {} .".format(
+                shellycfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if shellycfg["ssl"]:
+                shellylog.debug(
+                    "The ssl certificates can be found in %s" %
+                    shellycfg["ssl"])
+            else:
+                shellylog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            shellycfg["buddykey"] = cfgdata["buddykey"]
+
+
+        if opts.configonly:
+
+            if "buddykey" not in shellycfg:
+                if opts.debug:
+                    shellylog.debug("Generating random key")
+                shellycfg["buddykey"] = bl.keygen()
+            try:
+                del(shellycfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(shellycfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        shellylog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (shellylog, shellycfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+
+    if config["update"]:
+        log.info("Handling Firmware Updates")
+        shelly_module_commands[
+        "update_fw"] = {
+        "module": config[
+            "type"],
+             "value": config[
+                 "subtype"],
+                 "label": "Update Shellies Firmware"}
+
+    loop = aio.get_event_loop()
+    #if config["debug"]:
+        #loop.set_debug(True)
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(ShellyBridge,
+                loop,
+                connFuture,
+                config,
+                log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"ShellySwitchBuddy": aboutstr},
+         "display": {config["type"]: {config["subtype"]: iconstr}},
+         "config name":config["subtype"]+"-sensor"})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+        loop.run_until_complete(bridgectl.mqtt_client.unsubscribe([
+                    'shellies/#']))
+        loop.run_until_complete(bridgectl.mqtt_client.disconnect())
+        bridgectl.shuttingdown = True
+        bridgectl.mqtt_future.cancel()
+        loop.run_until_complete(aio.sleep(3))
+        conn.close()
+        loop.close()
