@@ -54,6 +54,7 @@ blremote_function = """
                 <!-- Insert Here -->
                 <!-- End Insert Here -->
                 <item value="drape" label="Curtain" />
+                <item value="hvac" label="HVAC Device" />
             </controlgroup>
         </controlgroup>
     </command>
