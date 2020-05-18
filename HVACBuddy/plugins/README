@@ -1,0 +1,63 @@
+This directory contain plugins that generate codes for various
+A/C systems.
+
+Each plugin file must have a
+
+       PluginObject
+
+class that must have a "factory" method to generate HVAC objects
+
+Each HVAC object describes a specific way of generating codes for IR transmission.
+
+The codes should be returned as a list of bytes in either lsb or msb format. The
+HVAC object must have its "is_msb" attribute set to False or True accordingly.
+
+All HVAC objects are required to have at the minimum 2 capabilities:
+
+    mode   with at least "off" and another value ("auto", "cool", ....)
+    temperature  with the accepted range
+
+Other capabilities are expected.
+
+To simplify things, it is requested that some sort of normalization
+of function names occur. In most cases an AC unit will have the following
+
+    mode: the operating mode. Values are expected to be amongst
+          "off"   turned off (This is mandatory)
+          "auto"  automatic mode sometines known as "feel", ...
+          "cool"  Cooling
+          "heat"  Heating
+          "dry"   dehumidifying
+          "fan"   fan mode only
+
+    temperature:  The full range of temperatures. If there
+                  are 2 distinct ranges for cooling or heating,
+                  the union should be used here.
+
+    fan: The air flow power. Values are expecterd to be amongst
+           "auto"   Automatic mode
+           lowest   The lowest air flow setting
+           low
+           medium
+           high
+           highest
+
+           When there are only 3 modes, highest, medium and lowest should be used
+
+    swing: The use of the vertical orientation of the air flow..
+            It can be a switch on/off (values False and True) or more complex
+
+            auto  automatic (in many cases similar to the on/off switch function)
+            90    Horizontal orientation
+            60
+            45
+            30
+            15
+            0     Vertical orientation
+
+Many other functions are possible, but still some canonization is recommended.
+
+For instance, many manufactures trademarked their air purifying techonlogy: nanoe, nanoex (Panasonic),
+plasmacluster (Sharp),.... In this case it is recommended to use the name "purifier" fore that functionm
+
+TO BE CONTINUED

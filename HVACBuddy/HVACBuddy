@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application is simply a bridge application for Shelly drapees
+# This application is proxy to control HVAC system bia remote controls
 #
 # Copyright (c) 2018 François Wautier
 #
@@ -25,9 +25,9 @@
 import argparse
 import sys
 import traceback
+import importlib
 import json
 import logging
-import math
 import os
 import random
 import ssl
@@ -58,38 +58,10 @@ def animname():
 proxy_commands = """
 <buddyui version="0.1">
     <command name="proxy">
-        <controlgroup  type="grouplist" name="action" label="Operate" rteffect="1">
-            <controlgroup type="choice" name="action" label="Action">
-                <item value="open" label="Open" />
-                <item value="stop" label="Stop" />
-                <item value="close" label="Close" />
-            </controlgroup>
-        </controlgroup>
-        <controlgroup  type="grouplist" name="learn" label="Learn IR" rteffect="-1" onlyif="learnir::yes" >
-            <controlgroup type="choice" name="action" label="Action">
-                <item value="open" label="Open" />
-                <item value="stop" label="Stop" />
-                <item value="close" label="Close" />
-            </controlgroup>
-        </controlgroup>
-        <controlgroup  type="grouplist" name="rflearn" label="Learn RF" rteffect="-1" onlyif="learnrf::yes" >
-            <controlgroup type="choice" name="action" label="Action">
-                <item value="open" label="Open" />
-                <item value="stop" label="Stop" />
-                <item value="close" label="Close" />
-            </controlgroup>
-        </controlgroup>
-        <controlgroup  type="grouplist" name="upload" label="Upload" rteffect="-1">
-            <controlgroup type="choice" name="action" label="Action">
-                <item value="open" label="Open" />
-                <item value="stop" label="Stop" />
-                <item value="close" label="Close" />
-            </controlgroup>
-            <controlgroup type="choice" name="ctype" label="Type">
-                <item value="ir" label="Infrared" />
-                <item value="rf" label="Radio Frequency" />
-            </controlgroup>
-            <control type="text" name="code" label="RC Code (hex string)" length="2048"/>
+        <controlgroup  type="grouplist" name="action" label="Set" rteffect="1">
+        <controlgroup type="choice" name="selectmodel" label="Select Model" onlyif="model::notset">
+"""
+proxy_command_end="""
         </controlgroup>
     </command>
 </buddyui>
@@ -97,12 +69,12 @@ proxy_commands = """
 
 proxy_config = """
 """
-proxy_config_default = {"gateway": {}, "position": {}, 'commands': {}, 'capabilities': {}}
+proxy_config_default = {"gateway": {}, 'capabilities': {}, "model":{}}
 proxy_module_commands = {}
 
 
-def cssColour(hue=214, sat=176, val=167):
-    return "#4c0013"
+def cssColour(self):
+    return "#00ee00"
 
 
 def proxy_process(self, msg, type="autobuddy"):
@@ -144,71 +116,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                 "value": self.name}})
 
         elif msg["content"]["command"] == "action":
-            iconsts = {}
-            action = None
-            ctype = "ir"
-            value = msg["content"]["value"]
-            if value["bu-cvalue"].lower() == "open":
-                tcmd = "open"
-                if "open" in self.commands:
-                    action, ctype = self.commands["open"]
-                #iconsts["animation"]  = self.genAnim(self.position,0)
-                #self.position = 0
-            elif value["bu-cvalue"].lower() == "close":
-                tcmd = "close"
-                if "close" in self.commands:
-                    action, ctype = self.commands["close"]
-                #iconsts["animation"] = self.genAnim(self.position,100)
-                #self.position = 100
-            else:
-                tcmd = "stop"
-                if "stop" in self.commands:
-                    action, ctype = self.commands["stop"]
-
-            if action:
-                #action = bytes.fromhex(action)
-                bridgectl.sending({"subject": self.gateway,
-                                "content_type": "command",
-                                "content": {"command": "send",
-                                            "target": "remotec",
-                                            "value":{"ctype" : ctype, "code": action, "sender": bridgectl.type + "." +self.name, "command": tcmd }}})
-
-                #bridgectl.sending({"subject": msg["subject"],
-                                #"content_type": "event",
-                                #"content": {"event": "action",
-                                            #"target": msg["subject"],
-                                            #"icon status": iconsts,
-                                            #"value": value["bu-cvalue"].lower()}})
-
-            self.sendInfo()
-        elif msg["content"]["command"] == "learn":
-            value = msg["content"]["value"]
-            bridgectl.sending({"subject": self.gateway,
-                            "content_type": "command",
-                            "content": {"command": "learn",
-                                        "target": "remotec",
-                                        "value": {"sender":bridgectl.type + "." + self.name,
-                                                  "command":value["action"]["bu-cvalue"].lower(),
-                                                  "ctype": "ir"}}})
-        elif msg["content"]["command"] == "rflearn":
-            value = msg["content"]["value"]
-            bridgectl.sending({"subject": self.gateway,
-                            "content_type": "command",
-                            "content": {"command": "learn",
-                                        "target": "remotec",
-                                        "value": {"sender":bridgectl.type + "." + self.name,
-                                                  "command":value["action"]["bu-cvalue"].lower(),
-                                                  "ctype": "rf"}}})
-
-        elif msg["content"]["command"] == "code learned" and msg["content"]["value"]["sender"] == self.gateway:
-            value = msg["content"]["value"]
-            if value["code"]:
-                self.commands[value["command"]] = (value["code"],value["ctype"])
-                bridgectl.add_rccommand(self.name, value["command"], (value["code"],value["ctype"]))
-        elif msg["content"]["command"] == "upload":
-            value = msg["content"]["value"]
-            self.commands[value["action"]["bu-cvalue"]] = (value["code"],value["ctype"]["bu-cvalue"])
-            bridgectl.add_rccommand(self.name, value["action"]["bu-cvalue"], (value["code"],value["ctype"]["bu-cvalue"]))
+            print(msg["content"])
         return None
     else:
         try:
@@ -244,50 +152,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                         "value":"online",
                                         "icon status": {"bu-not-present": {"opacity": 0}}}})
 
-            #if msg["subject"] == "roller":
-                ##We don't really care about the relay. It is manage by the hardware
-                #if msg["xtra"]:
-                    #if msg["xtra"][0] in ["energy","power"]:
-                        #if msg["xtra"][0] == "power":
-                            #self.power_con = msg["value"]
-                        #else:
-                            #self.energy = msg["value"]
-                        #bridgectl.sending({"subject": bridgectl.type,
-                                        #"content_type": "event",
-                                        #"content": {"event": "measurement",
-                                                    #"target": bridgectl.type +
-                                                    #"." +
-                                                    #self.name,
-                                                    #"icon status":
-                                                    #{"bu-fill": {"fill": cssColour() }, "bu-not-present": { "opacity": 0}},
-                                                    #"value": {msg["xtra"][0] : msg["value"] }}})
-                    #elif msg["xtra"][0] == "pos":
-                        #iconsts = {"bu-not-present": { "opacity": 0}}
-                        #newpos = min(100,100-int(msg["value"]))
-                        #if self.position != newpos:
-                            #iconsts["animation"] = self.genAnim(self.position,newpos)
-                            #self.position = newpos
-                            #bridgectl.sending({"subject": msg["subject"],
-                                            #"content_type": "event",
-                                            #"content": {"event": "position",
-                                                        #"target": bridgectl.type +
-                                                            #"." +
-                                                            #self.name,
-                                                        #"icon status": iconsts,
-                                                        #"value": {"position": self.position}}})
-
-                #else:
                 self.initialized = True
-                        #bridgectl.sending({"subject": bridgectl.type,
-                                        #"content_type": "event",
-                                        #"content": {"event": "status",
-                                                    #"target": bridgectl.type +
-                                                    #"." +
-                                                    #self.name,
-                                                    #"icon status":
-                                                    #{"bu-fill": {"fill":cssColour()}, "bu-not-present": {
-                                                    #"opacity": 0}},
-                                                    #"value": {"position": self.position}}})
             self.sendInfo()
         except Exception as e:
             try:
@@ -306,7 +171,7 @@ def sendInfo(self):
     try:
         msg=""
         prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("position","Position"),("learnir","Can use IR"),("learnrf","Can use RF")]:
+        for x,lbl in [("model","Model"),("learnir","Can use IR"),("learnrf","Can use RF")]:
             if getattr(self,x) is not None:
                 msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
                 prefix=""
@@ -329,11 +194,54 @@ def sendInfo(self):
 
 def sendStatus(self):
     status = {}
-    for x in ["position","learnir","learnrf"]:
-        status[x] = getattr(self,x)
 
-    iconsts={"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
-    iconsts["animation"]  = self.genAnim(self.position,self.position)
+    if getattr(self,"hvac") is None:
+        status["model"] = "notset"
+        status["temperature"] = 0
+        iconsts={"bu-fill": {"fill":self.cssColour()},
+                 "bu-tens-0":{"opacity": 0},
+                 "bu-tens-not-0":{"opacity": 1},
+                 "bu-naught-0":{"opacity": 0},
+                 "bu-naught-not-0":{"opacity": 1},
+                 "bu-deci-0":{"opacity": 0},
+                 "bu-deci-not-0":{"opacity": 1},
+                 "bu-auto":{"opacity": 0.5},
+                 "bu-not-auto":{"opacity": 0},
+                 "bu-fan-highest":{"opacity": 0.5},
+                 "bu-fan-not-highest":{"opacity": 0},
+                 "bu-swing-auto":{"opacity": 0.5},
+                 "bu-swing-not-auto":{"opacity": 0}}
+    else:
+        status["model"] = self.hvac.model
+        iconsts={"bu-fill": {"fill":self.cssColour()}}
+        for f,v in self.hvac.status.items():
+            status[f] = v
+            if f == "mode":
+                if v not in ["auto", "feel", "cool", "dry", "heat", "fan"]:
+                    v = "auto"
+                iconsts["bu-"+v] = {"opacity": 1}
+                iconsts["bu-not-"+v] = {"opacity": 0}
+            elif f == "fan":
+                if v not in ["highest", "high", "medium","low","lowest"]:
+                    iconsts["bu-fan-highest"] = {"opacity": 0.5}
+                    iconsts["bu-fan-not-hishest"] = {"opacity": 0}
+                else:
+                    iconsts["bu-fan-"+v] = {"opacity": 1}
+                    iconsts["bu-fan-not-"+v] = {"opacity": 0}
+            elif f == "swing":
+                if v not in ["auto", "auto high", "auto low", "90", "60", "45","30","15"]:
+                    v = "auto"
+                iconsts["bu-swing-"+v] = {"opacity": 1}
+                iconsts["bu-swing-not-"+v] = {"opacity": 0}
+            elif f == "temperature":
+                if float(v)>=100:
+                    v = float(v)/10
+
+                v = str(int(float(v)*10+0.5))
+                for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
+                    iconsts[s+d] = {"opacity": 1}
+                    iconsts[s+"not-"+d] = {"opacity": 0}
+
 
     self.controller.sending({"subject": self.controller.type,
                                 "content_type": "event",
@@ -345,61 +253,16 @@ def sendStatus(self):
                                             "value": status}})
 
 
-def genAnim(self,fro,to):
-    """Generate an animation for the given pos to the given.
-         fro and to are in %
-    """
-    anim = ""
-    prefix = animname()
-    idx=0
-    for hook, curt in iconposition:
-        hstart = int(round(hook * fro / 100.0))
-        cstart = int(round(curt * fro / 100.0))
-        wstart = iconcurtwidth[0] + (round(iconcurtwidth[1] * fro / 100.0))
-        hstop = int(round(hook * to / 100.0))
-        cstop = int(round(curt * to / 100.0))
-        wstop = iconcurtwidth[0] + (round(iconcurtwidth[1] * to / 100.0))
 
-        anim += "@keyframes " + prefix + self.name + "hook" + str(idx) + \
-                            " {  0%   {transform: translate(" + str(hstart) + "px, 0); }" + \
-                            "   100%   {transform: translate(" + str(hstop) + "px, 0); } } "
-        anim += "@-webkit-keyframes " + prefix + self.name + "hook" + str(idx) + \
-                            " {  0%   {transform: translate(" + str(hstart) + "px, 0); }" + \
-                            "   100%   {transform: translate(" + str(hstop) + "px, 0); } } "
-
-        anim += "@keyframes " + prefix + self.name + "curt" + str(idx) + \
-                            " {  0%   {transform: translate(" + str(cstart) + "px, 0); width: "+str(wstart)+"px; }" + \
-                            "   100%   {transform: translate(" + str(cstop) + "px, 0); width: "+str(wstop)+"px; } } "
-        anim += "@-webkit-keyframes " + prefix + self.name + "curt" + str(idx) + \
-                            " {  0%   {transform: translate(" + str(cstart) + "px, 0); width: "+str(wstart)+"px; }" + \
-                            "   100%   {transform: translate(" + str(cstop) + "px, 0); width: "+str(wstop)+"px; } } "
-
-
-        anim += "\n#" + self.name + " .bu-hook" + str(idx) + \
-            " { animation: " + prefix + self.name + "hook" + str(idx) + " 8s" + \
-            "; animation-fill-mode: forwards; " + \
-            "  -webkit-animation: " + prefix + self.name + "hook" + str(idx) + " 8s" + \
-            "; -webkit-animation-fill-mode: forwards; } "
-
-        anim += "\n#" + self.name + " .bu-curt" + str(idx) + \
-            " { animation: " + prefix + self.name + "curt" + str(idx) + " 8s" + \
-            "; animation-fill-mode: forwards; " + \
-            "  -webkit-animation: " + prefix + self.name + "curt" + str(idx) + " 8s"  + \
-            "; -webkit-animation-fill-mode: forwards; } "
-
-        idx+=1
-
-    return anim
 
 # Hop we go....
-bl.drape._process = proxy_process
-bl.drape.cssColour = cssColour
-bl.drape.sendInfo = sendInfo
-bl.drape.sendStatus = sendStatus
-bl.drape.genAnim = genAnim
+bl.hvac._process = proxy_process
+bl.hvac.cssColour = cssColour
+bl.hvac.sendInfo = sendInfo
+bl.hvac.sendStatus = sendStatus
 
 
-class DrapeBridge(bl.BuddyBridge):
+class HVACBridge(bl.BuddyBridge):
 
     """
     This is the bridge application. It will check for the current list  of proxy
@@ -407,7 +270,7 @@ class DrapeBridge(bl.BuddyBridge):
     """
 
     def __init__(self, loop, future, config, log):
-        super(DrapeBridge, self).__init__(loop, future, config, log)
+        super().__init__(loop, future, config, log)
         self.proxy_config = proxy_config_default
         self.shuttingdown = False
         self.infos = {}
@@ -421,7 +284,7 @@ class DrapeBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          "config name":config["subtype"]+"-drape",
+                                          "config name":config["subtype"]+"-hvac",
                                           "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
 
         elif msg["content"]["command"] == "new proxy device":
@@ -430,7 +293,7 @@ class DrapeBridge(bl.BuddyBridge):
             needname = True
             newname = ""
             while needname:
-                newname = "drape-p"+uuid4().hex[:9]
+                newname = "hvac-p"+uuid4().hex[:9]
                 needname = False
                 for adev in self.devices:
                     if adev.name == newname:
@@ -550,52 +413,48 @@ class DrapeBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          "config name":config["subtype"]+"-drape",
+                                          "config name":config["subtype"]+"-hvac",
                                           #"token": self.target,
                                           "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
         elif self.state == "active":
             if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
                 sess = bl.getSession(self.config["database"])
-                drape = sess.query(bl.drape).filter_by(
+                hvac = sess.query(bl.hvac).filter_by(
                     name=msg["subject"].split(".")[-1]).one()
                 self.sending({"subject": self.type,
                               "content_type": "event",
                               "content": {"event": "new device",
                                           "target": self.type +
                                           "." +
-                                          drape.name,
+                                          hvac.name,
                                           "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": drape.name, "nickname": drape.nickname}}})
+                                                    "name": hvac.name, "nickname": hvac.nickname}}})
                 notseen = True
                 for b in  [ x for x in self.pending]:
-                    if b['name'] == drape.name:
-                        drape.present = True
-                        drape.controller = self
-                        drape.gateway = b['gateway']
-                        drape.info={}
-                        drape.position=0
-                        drape.commands = {}
-                        self.proxy_config['commands'][drape.name] = {}
-                        drape.learnir = ('learn_ir' in b['commands']  and 'yes') or 'no'
-                        drape.learnrf = ('learn_rf' in b['commands']  and 'yes') or 'no'
-                        self.proxy_config['position'][drape.name] = drape.position
-                        self.proxy_config['gateway'][drape.name] = b['gateway']
-                        self.proxy_config['capabilities'][b['gateway']] = b['commands']
-                        self.devices.append(drape)
+                    if b['name'] == hvac.name:
+                        hvac.present = True
+                        hvac.controller = self
+                        hvac.gateway = b['gateway']
+                        hvac.info={}
+                        self.hvac = None
+                        hvac.learnir = ('learn_ir' in b['commands']  and 'yes') or 'no'
+                        hvac.learnrf = ('learn_rf' in b['commands']  and 'yes') or 'no'
+                        self.proxy_config['gateway'][hvac.name] = b['gateway']
+                        self.devices.append(hvac)
                         self.pending.remove(b)
                         self.sending({"subject": self.type,
                                       "content_type": "event",
                                       "content": {"event": "presence",
                                                   "target": self.type +
                                                   "." +
-                                                  drape.name,
+                                                  hvac.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":drape.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                                                  "icon status": {"bu-fill": {"fill":hvac.cssColour()}, "bu-not-present": {"opacity": 0}}}})
                         self.sending({"subject": "control" + "." + self.subtype,
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          "config name":self.config["subtype"]+"-drape",
+                                          "config name":self.config["subtype"]+"-hvac",
                                           #"token": self.target,
                                           "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
                         notseen = False
@@ -606,25 +465,25 @@ class DrapeBridge(bl.BuddyBridge):
                                   "content": {"event": "presence",
                                               "target": self.type +
                                               "." +
-                                              drape.name,
+                                              hvac.name,
                                               "value": "offline",
-                                              "icon status": {"bu-fill": {"fill":drape.cssColour()},
+                                              "icon status": {"bu-fill": {"fill":hvac.cssColour()},
                                                               "bu-not-present": {"opacity": 1}}}})
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
                     if self.log:
                         self.log.debug(msg)
-                    for drape in self.devices:
-                        if drape.name == msg["subject"].split(".")[-1]:
-                            drape.nickname = msg["content"]["value"]
+                    for hvac in self.devices:
+                        if hvac.name == msg["subject"].split(".")[-1]:
+                            hvac.nickname = msg["content"]["value"]
                             self.sending({"subject": self.type,
                                           "content_type": "event",
                                           "content": {"event": "nickname",
                                                       "target": self.type +
                                                       "." +
-                                                      drape.name,
-                                                      "value": drape.nickname}})
+                                                      hvac.name,
+                                                      "value": hvac.nickname}})
                             break
 
             elif msg["content"]["response"] == "deletion":
@@ -633,22 +492,18 @@ class DrapeBridge(bl.BuddyBridge):
                         self.log.debug(msg)
                     sidx = 0
                     doremove = False
-                    for drape in self.devices:
-                        if drape.name == msg["subject"].split(".")[-1]:
+                    for hvac in self.devices:
+                        if hvac.name == msg["subject"].split(".")[-1]:
                             self.sending({"subject": self.type,
                                           "content_type": "event",
                                           "content": {"event": "deletion",
                                                       "target": self.type +
                                                       "." +
-                                                      drape.name,
-                                                      "value": drape.name}})
+                                                      hvac.name,
+                                                      "value": hvac.name}})
                             doremove = True
-                            if drape.name in self.proxy_config["commands"]:
-                                del(self.proxy_config["commands"][drape.name])
-                            if drape.name in self.proxy_config["gateway"]:
-                                del(self.proxy_config["gateway"][drape.name])
-                            if drape.name in self.proxy_config["position"]:
-                                del(self.proxy_config["position"][drape.name])
+                            if hvac.name in self.proxy_config["gateway"]:
+                                del(self.proxy_config["gateway"][hvac.name])
                             break
                         sidx += 1
 
@@ -658,7 +513,7 @@ class DrapeBridge(bl.BuddyBridge):
                                     "content_type": "request",
                                     "content": {"request": "save configuration",
                                                 "target": self.type,
-                                                "config name":self.config["subtype"]+"-drape",
+                                                "config name":self.config["subtype"]+"-hvac",
                                                 "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
         else:
             if self.log:
@@ -698,40 +553,44 @@ class DrapeBridge(bl.BuddyBridge):
                                   #"value": self.proxy_config}})
         sess = bl.getSession(self.config["database"])
         self.devices = sess.query(
-            bl.drape).filter_by(
+            bl.hvac).filter_by(
                 subtype=self.subtype).all(
         )
-        for drape in self.devices:
-            drape.present = False
-            drape.controller = self
-            drape.info = {}
+        for hvac in self.devices:
+            hvac.present = False
+            hvac.controller = self
+            hvac.info = {}
             try:
-                drape.position = self.proxy_config["position"][drape.name]
+                hvac.hvac = self.get_hvac(self.proxy_config["model"][hvac.name])
             except:
-                drape.position = 0
-                self.proxy_config["position"][drape.name] = 0
-            drape.gateway = self.proxy_config["gateway"][drape.name]
-            drape.learnir = ("learn_ir" in self.proxy_config["capabilities"][drape.gateway] and 'yes' ) or 'no'
-            drape.learnrf = ("learn_rf" in self.proxy_config["capabilities"][drape.gateway] and 'yes' ) or 'no'
-            if drape.name in self.proxy_config["commands"]:
-                drape.commands = self.proxy_config["commands"][drape.name]
-            else:
-                drape.commands = {}
+                hvac.hvac = None
+            hvac.gateway = self.proxy_config["gateway"][hvac.name]
+            try:
+                hvac.learnir = ("learn_ir" in self.proxy_config["capabilities"][hvac.gateway] and 'yes' ) or 'no'
+            except:
+                hvac.learnir = 'no'
+            try:
+                hvac.learnrf = ("learn_rf" in self.proxy_config["capabilities"][hvac.gateway] and 'yes' ) or 'no'
+            except:
+                hvac.learnrf = 'no'
+
 
 
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
-                                      "target": self.type + "." + drape.name,
+                                      "target": self.type + "." + hvac.name,
                                       "value": "online",
-                                      "icon status": {"bu-fill": {"fill":drape.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                                      "icon status": {}}})
+            #hvac.sendStatus()
+
 
         sess.close()
 
 
     def register(self, loproxy):
         seen = False
-        aproxy = loproxy[0] #All the drapes are created in tandem with the device
+        aproxy = loproxy[0] #All the hvacs are created in tandem with the device
 
         for proxy in self.devices:
             if proxy.name == aproxy:
@@ -769,16 +628,16 @@ class DrapeBridge(bl.BuddyBridge):
         if aproxy.name in [x['name'] for x in self.pending]:
             self.pending = [x for x in self.pending if x['name'] != aproxy.name]
         else:
-            for drape in self.devices:
+            for hvac in self.devices:
                 try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
-                    if drape.name == aproxy:
-                        drape.present = False
+                    if hvac.name == aproxy:
+                        hvac.present = False
                         self.sending({"subject": self.type,
                                       "content_type": "event",
                                       "content": {"event": "presence",
                                                   "target": self.type +
                                                   "." +
-                                                  drape.name,
+                                                  hvac.name,
                                                   "value": "offline",
                                                   "icon status": {"bu-not-present": {"opacity": 1}}}})
                 except:
@@ -793,30 +652,151 @@ class DrapeBridge(bl.BuddyBridge):
                               "content_type": "request",
                               "content": {"request": "save configuration",
                                           "target": self.type,
-                                          "config name":config["subtype"]+"-drape",
+                                          "config name":config["subtype"]+"-hvac",
                                           #"token": self.target,
                                           "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
 
-aboutstr = """<p>DrapeBuddy is a proxy between AutoBuddy and drape devices controlled by a IR/RF remote control.</p>
+    def get_hvac(self, name):
+        global plugs
+
+        brand,model = name.split("|")
+        for x in plugs:
+            if brand == x.brand:
+                newhvac =  x.factory(model)
+                #TODO Add persisted information
+                return newhvac
+        return None
+
+
+
+
+aboutstr = """<p>HVACBuddy is a proxy between AutoBuddy and hvac devices controlled by a IR/RF remote control.</p>
 <p class=\"bu-copyright\">&copy; 2019 Fran&ccedil;ois Wautier</p>
 """
 iconstr = """
-<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
-    <rect class="bu-rod" x="25" y="50" width="400px" height="25px" rx="5" ry="5" fill="black" />
-    <rect class="bu-hook0" x="30" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
-    <rect class="bu-fill bu-curt0" x="25" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
-    <rect class="bu-hook1" x="45" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
-    <rect class="bu-fill bu-curt1" x="40" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
-    <rect class="bu-hook2" x="60" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
-    <rect class="bu-fill bu-curt2" x="55" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
-    <rect class="bu-hook3" x="75" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
-    <rect class="bu-fill bu-curt3" x="70" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
-    <rect class="bu-hook4" x="90" y="40" width="5px" height="45px" rx="5" ry="5" fill="black" />
-    <rect class="bu-fill bu-curt4" x="85" y="85" width="15px" height="350px" rx="5" ry="5" fill="#4c0013" stroke="black" stroke-width="1px" stroke-opacity="0.5" />
-
-    <g transform="scale(0.8,0.8)">
-        <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90"
-            stroke="#a94442" stroke-width="60" fill="none" opacity="1" />
+<svg class="bu-device-icon" width="60" height="60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <g  class="bu-temps" transform="scale(0.6 0.6) translate(0 30)" >
+        <g transform="translate(-60 0)" >
+            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-5 bu-tens-6 bu-tens-7 bu-tens-8 bu-tens-9"
+            d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1"/>
+            <path class="bu-fill bu-tens-not-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
+            d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0"/>
+            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-not-2 bu-tens-not-3 bu-tens-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-9"
+            d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
+            <path class="bu-fill bu-tens-0 bu-tens-1 bu-tens-2 bu-tens-3 bu-tens-4 bu-tens-not-5 bu-tens-not-6 bu-tens-7 bu-tens-8 bu-tens-9"
+            d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1"/>
+            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-not-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
+                d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1"/>
+            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-not-3 bu-tens-not-4 bu-tens-not-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
+            d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
+            <path class="bu-fill bu-tens-0 bu-tens-1 bu-tens-not-2 bu-tens-3 bu-tens-4 bu-tens-5 bu-tens-6 bu-tens-7 bu-tens-8 bu-tens-9"
+            d="M 194,157.44257 L 209.5,172.65453 L 209.5,217.65452 L 194,233.1723 L 178.5,217.65452 L 178.5,172.65453 L 194,157.44257 z"  opacity="1" />
+        </g>
+        <g transform="translate(80 0)" >
+            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-5 bu-naught-6 bu-naught-7 bu-naught-8 bu-naught-9"
+            d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1" />
+            <path class="bu-fill bu-naught-not-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
+            d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0" />
+            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-not-2 bu-naught-not-3 bu-naught-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-9"
+            d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1"  />
+            <path class="bu-fill bu-naught-0 bu-naught-1 bu-naught-2 bu-naught-3 bu-naught-4 bu-naught-not-5 bu-naught-not-6 bu-naught-7 bu-naught-8 bu-naught-9"
+            d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1"  />
+            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-not-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
+            d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1" />
+            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-not-3 bu-naught-not-4 bu-naught-not-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
+            d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
+            <path class="bu-fill bu-naught-0 bu-naught-1 bu-naught-not-2 bu-naught-3 bu-naught-4 bu-naught-5 bu-naught-6 bu-naught-7 bu-naught-8 bu-naught-9"
+            d="M 194,157.44257 L 209.5,172.65453 L 209.5,217.65452 L 194,233.1723 L 178.5,217.65452 L 178.5,172.65453 L 194,157.44257 z" opacity="1" />
+            <path class="bu-fill"
+            d="M 221.5 299.25 A 12.25 12.25 0 1 1  197,299.25 A 12.25 12.25 0 1 1  221.5 299.25 z"
+            transform="matrix(1.474389,0,0,1.404061,-77.23529,-186.3204)" opacity="1" />
+        </g>
+        <g transform="translate(290 120) scale(0.5 0.5)" >
+            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-5 bu-deci-6 bu-deci-7 bu-deci-8 bu-deci-9"
+            d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1"/>
+            <path class="bu-fill bu-deci-not-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
+            d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0"/>
+            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-not-2 bu-deci-not-3 bu-deci-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-9"
+            d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
+            <path class="bu-fill bu-deci-0 bu-deci-1 bu-deci-2 bu-deci-3 bu-deci-4 bu-deci-not-5 bu-deci-not-6 bu-deci-7 bu-deci-8 bu-deci-9"
+            d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1" />
+            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-not-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
+            d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1" />
+            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-not-3 bu-deci-not-4 bu-deci-not-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
+            d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
+            <path class="bu-fill bu-deci-0 bu-deci-1 bu-deci-not-2 bu-deci-3 bu-deci-4 bu-deci-5 bu-deci-6 bu-deci-7 bu-deci-8 bu-deci-9"
+            d="M 194,157.44257 L 209.5,172.65453 L 209.5,217.65452 L 194,233.1723 L 178.5,217.65452 L 178.5,172.65453 L 194,157.44257 z" opacity="1" />
+        </g>
+    </g>
+    <g  class="bu-mode" transform="scale(0.50 0.50) translate(500, 0)" >
+        <g transform="translate(32 0)" >
+            <path class="bu-cool bu-not-fan bu-not-heat bu-not-auto bu-not-feel"
+                  d="M440.3 345.2l-33.8-19.5 26-7c8.2-2.2 13.1-10.7
+                  10.9-18.9l-4-14.9c-2.2-8.2-10.7-13.1-18.9-10.9l-70.8 19-63.9-37 63.8-36.9
+                  70.8 19c8.2 2.2 16.7-2.7 18.9-10.9l4-14.9c2.2-8.2-2.7-16.7-10.9-18.9l-26-7
+                  33.8-19.5c7.4-4.3 9.9-13.7 5.7-21.1L430.4 119c-4.3-7.4-13.7-9.9-21.1-5.7l-33.8
+                  19.5 7-26c2.2-8.2-2.7-16.7-10.9-18.9l-14.9-4c-8.2-2.2-16.7 2.7-18.9 10.9l-19
+                  70.8-62.8 36.2v-77.5l53.7-53.7c6.2-6.2 6.2-16.4 0-22.6l-11.3-11.3c-6.2-6.2-16.4-6.2-22.6
+                  0L256 56.4V16c0-8.8-7.2-16-16-16h-32c-8.8 0-16 7.2-16 16v40.4l-19.7-19.7c-6.2-6.2-16.4-6.2-22.6
+                  0L138.3 48c-6.3 6.2-6.3 16.4 0 22.6l53.7 53.7v77.5l-62.8-36.2-19-70.8c-2.2-8.2-10.7-13.1-18.9-10.9l-14.9
+                  4c-8.2 2.2-13.1 10.7-10.9 18.9l7 26-33.8-19.5c-7.4-4.3-16.8-1.7-21.1 5.7L2.1 145.7c-4.3
+                  7.4-1.7 16.8 5.7 21.1l33.8 19.5-26 7c-8.3 2.2-13.2 10.7-11 19l4 14.9c2.2 8.2 10.7 13.1
+                  18.9 10.9l70.8-19 63.8 36.9-63.8 36.9-70.8-19c-8.2-2.2-16.7 2.7-18.9 10.9l-4 14.9c-2.2
+                  8.2 2.7 16.7 10.9 18.9l26 7-33.8 19.6c-7.4 4.3-9.9 13.7-5.7 21.1l15.5 26.8c4.3 7.4
+                  13.7 9.9 21.1 5.7l33.8-19.5-7 26c-2.2 8.2 2.7 16.7 10.9 18.9l14.9 4c8.2 2.2 16.7-2.7
+                  18.9-10.9l19-70.8 62.8-36.2v77.5l-53.7 53.7c-6.3 6.2-6.3 16.4 0 22.6l11.3 11.3c6.2
+                  6.2 16.4 6.2 22.6 0l19.7-19.7V496c0 8.8 7.2 16 16 16h32c8.8 0 16-7.2 16-16v-40.4l19.7
+                  19.7c6.2 6.2 16.4 6.2 22.6 0l11.3-11.3c6.2-6.2 6.2-16.4 0-22.6L256 387.7v-77.5l62.8
+                  36.2 19 70.8c2.2 8.2 10.7 13.1 18.9 10.9l14.9-4c8.2-2.2 13.1-10.7 10.9-18.9l-7-26
+                  33.8 19.5c7.4 4.3 16.8 1.7 21.1-5.7l15.5-26.8c4.3-7.3 1.8-16.8-5.6-21z" opacity="1"/>
+        </g>
+        <path class="bu-fan bu-not-cool bu-not-heat bu-not-auto bu-not-feel"
+                d="M352.57 128c-28.09 0-54.09 4.52-77.06 12.86l12.41-123.11C289 7.31 279.81-1.18
+                269.33.13 189.63 10.13 128 77.64 128 159.43c0 28.09 4.52 54.09 12.86 77.06L17.75 224.08C7.31
+                223-1.18 232.19.13 242.67c10 79.7 77.51 141.33 159.3 141.33 28.09 0 54.09-4.52 77.06-12.86l-12.41
+                123.11c-1.05 10.43 8.11 18.93 18.59 17.62 79.7-10 141.33-77.51 141.33-159.3
+                0-28.09-4.52-54.09-12.86-77.06l123.11 12.41c10.44 1.05 18.93-8.11
+                17.62-18.59-10-79.7-77.51-141.33-159.3-141.33zM256 288a32 32 0 1 1 32-32 32 32 0 0 1-32 32z" opacity="0" />
+        <path class="bu-heat bu-not-cool bu-not-fan bu-not-auto bu-not-feel"
+              d="M323.56 51.2c-20.8 19.3-39.58 39.59-56.22 59.97C240.08 73.62 206.28
+              35.53 168 0 69.74 91.17 0 209.96 0 281.6 0 408.85 100.29 512 224 512s224-103.15
+              224-230.4c0-53.27-51.98-163.14-124.44-230.4zm-19.47 340.65C282.43 407.01 255.72 416 226.86 416
+              154.71 416 96 368.26 96 290.75c0-38.61 24.31-72.63 72.79-130.75 6.93 7.98 98.83 125.34
+              98.83 125.34l58.63-66.88c4.14 6.85 7.91 13.55 11.27 19.97 27.35 52.19 15.81 118.97-33.43 153.42z" opacity="0" />
+        <g transform="translate(80 0)" >
+            <path class="bu-dry bu-not-cool bu-not-fan bu-not-heat bu-not-auto bu-not-feel" d="M205.22
+            22.09c-7.94-28.78-49.44-30.12-58.44 0C100.01 179.85 0 222.72 0
+                  333.91 0 432.35 78.72 512 176 512s176-79.65 176-178.09c0-111.75-99.79-153.34-146.78-311.82zM176
+                  448c-61.75 0-112-50.25-112-112 0-8.84 7.16-16 16-16s16 7.16 16 16c0 44.11 35.89 80 80 80 8.84
+                  0 16 7.16 16 16s-7.16 16-16 16z" opacity="0" />
+        </g>
+        <path class="bu-auto bu-feel bu-not-cool bu-not-heat bu-not-fan" transform="scale(-1, 1) translate(-512, 0)"
+              d="M184.561 261.903c3.232 13.997-12.123
+              24.635-24.068 17.168l-40.736-25.455-50.867 81.402C55.606 356.273 70.96 384 96.012 384H148c6.627 0 12 5.373
+              12 12v40c0 6.627-5.373 12-12 12H96.115c-75.334 0-121.302-83.048-81.408-146.88l50.822-81.388-40.725-25.448c-12.081-7.547-8.966-25.961
+              4.879-29.158l110.237-25.45c8.611-1.988 17.201 3.381 19.189 11.99l25.452 110.237zm98.561-182.915l41.289
+              66.076-40.74 25.457c-12.051 7.528-9 25.953 4.879 29.158l110.237 25.45c8.672 1.999 17.215-3.438 19.189-11.99l25.45-110.237c3.197-13.844-11.99-24.719-24.068-17.168l-40.687
+              25.424-41.263-66.082c-37.521-60.033-125.209-60.171-162.816 0l-17.963 28.766c-3.51 5.62-1.8
+              13.021 3.82 16.533l33.919 21.195c5.62 3.512 13.024 1.803 16.536-3.817l17.961-28.743c12.712-20.341
+              41.973-19.676 54.257-.022zM497.288 301.12l-27.515-44.065c-3.511-5.623-10.916-7.334-16.538-3.821l-33.861
+              21.159c-5.62 3.512-7.33 10.915-3.818 16.536l27.564 44.112c13.257 21.211-2.057 48.96-27.136 48.96H320V336.02c0-14.213-17.242-21.383-27.313-11.313l-80 79.981c-6.249 6.248-6.249 16.379 0 22.627l80
+              79.989C302.689 517.308 320 510.3 320 495.989V448h95.88c75.274 0 121.335-82.997 81.408-146.88z" opacity="0" />
+    </g>
+    <g class="bu-fan">
+        <polygon class="bu-fan-highest bu-fan-not-high bu-fan-not-middle bu-fan-not-low bu-fan-not-lowest" points="20,500 254,500 254,320" opacity="0.5" />
+        <polygon class="bu-fan-not-highest bu-fan-high bu-fan-not-middle bu-fan-not-low bu-fan-not-lowest" points="20,500 215,500 215,350" opacity="0" />
+        <polygon class="bu-fan-not-highest bu-fan-not-high bu-fan-middle bu-fan-not-low bu-fan-not-lowest" points="20,500 175,500 176,380" opacity="0" />
+        <polygon class="bu-fan-not-highest bu-fan-not-high bu-fan-not-middle bu-fan-low bu-fan-not-lowest" points="20,500 137,500 137,410" opacity="0" />
+        <polygon class="bu-fan-not-highest bu-fan-not-high bu-fan-not-middle bu-fan-not-low bu-fan-lowest" points="20,500 98,500 98,440" opacity="0" />
+    </g>
+    <g class="bu-swing" transform="translate(220, 256)" >
+        <circle cx="246" cy="75" r="10" fill="black" />
+        <rect class="bu-swing-90 bu-swing-auto bu-swing-autohigh bu-swing-not-autolow bu-swing-not-75 bu-swing-not-60 bu-swing-not-45 bu-swing-not-30 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" opacity="1" />
+        <rect class="bu-swing-75 bu-swing-auto bu-swing-autohigh bu-swing-not-autolow bu-swing-not-90 bu-swing-not-45 bu-swing-not-30 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-15, 246 75)" opacity="1" />
+        <rect class="bu-swing-60 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-45 bu-swing-not-30 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-30, 246 75)" opacity="1" />
+        <rect class="bu-swing-45 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-30 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-45, 246 75)" opacity="1" />
+        <rect class="bu-swing-30 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-45 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-60, 246 75)" opacity="1" />
+        <rect class="bu-swing-15 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-45 bu-swing-not-30" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-75, 246 75)" opacity="1" />
     </g>
 </svg>
 """
@@ -826,7 +806,7 @@ iconposition = [(32,0), (95, 65), (160, 130), (225, 195), (290, 260)]
 iconcurtwidth = (15, 65) #65 is a delta, real is 15+65 = 80
 
 cfgdefault = {
-    "type": "drape",
+    "type": "hvac",
      "subtype": SUBTYPE,
      "host": "localhost",
      "port": 8745,
@@ -836,7 +816,7 @@ cfgdefault = {
 
 
 def configure():
-    parser = argparse.ArgumentParser(description="Track proxy drapes..")
+    parser = argparse.ArgumentParser(description="Track proxied hvacs..")
     # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument("-t", "--type", default=cfgdefault["type"],
                         help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
@@ -945,9 +925,91 @@ def configure():
     return (proxylog, proxycfg)
 
 
+def special_cmp(a):
+    if a.startswith('buf-mode-'):
+        return "buf-0"
+    if a.startswith('buf-temperature-'):
+        return "buf-1"
+    if a.startswith('buf-fan-'):
+        return "buf-2"
+    if a.startswith('buf-swing-'):
+        return "buf-3"
+    return a
+
+
 if __name__ == "__main__":
+    global plugs
+
     log, config = configure()
     log.info("Configured")
+
+    #Let's get the plugins and generate all possible commands
+    dir_path = os.path.join(os.path.dirname(__file__),'plugins')
+    importlib.import_module('plugins')
+    plugs = []
+    for filename in os.listdir(dir_path):
+        if "hvaclib.py" in filename:
+            continue
+        name, ext = os.path.splitext(filename)
+        if ext.endswith(".py"):
+            mod = importlib.import_module("."+name, package="plugins")
+            plugs.append(mod.PluginObject())
+    generated_xml = {}
+    inserted_xml=set()
+    lof = {}
+    for p in plugs:
+        for m in p.models:
+            proxy_commands += """\n<item label="{}" value="{}" />\n""".format(p.brand.title()+" "+m,p.brand+"|"+m)
+            ac = p.factory(m)
+            for x,v in ac.available_functions().items():
+                print("Adding for {} : {}".format(x,v))
+                lof[x] = v
+            del(ac)
+    proxy_commands += "</controlgroup>"
+    #Now let's generate the xmln
+    lofn = [x for x in lof.keys()]
+    for i in lofn:
+        if i in inserted_xml:
+            continue
+        _,f,k = i.split("-")
+        if k not in generated_xml:#Generation needed
+            #Is this an On/Off thing?
+            if f == "temperature":
+                h = '<control type="slider" name="{}" label="{}" onlyif="{}::yes">'
+                s, e = k.split("|")
+                v = """
+                    <start>{}</start>
+                    <end>{}</end>
+                    <increment>1</increment>
+                </control>""".format(s,e)
+            elif len(lof[i]) == 2 and True in lof[i] and False in lof[i]:
+                h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
+                v = """<value label="On">true</value>
+                     <value label="Off">false</value>
+                </control>"""
+            elif len(lof[i]) == 2:
+                h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
+                v = """<value label="{}">{}</value>
+                     <value label="{}">{}</value>
+                </control>""".format(str(lof[i][0]).title(), str(lof[i][0]), str(lof[i][1]).title(), str(lof[i][1]))
+            else: #A choice it is
+                h = '<controlgroup type="choice" name="{}" label="{}" onlyif="{}::yes">'
+                v=""
+                for val in lof[i]:
+                    v += """<item label="{}" value="{}" />\n""".format(str(val).title(),val)
+                v += "</controlgroup>"
+            generated_xml[k] = (h,v)
+
+        h, v  = generated_xml[k]
+        proxy_commands += "\n" + h.format(f,f.title(),i) + "\n" + v
+        inserted_xml.add(i)
+
+    proxy_commands += proxy_command_end
+    #Clean up
+    del(inserted_xml)
+    del(generated_xml)
+    del(lofn)
+
 
     loop = aio.get_event_loop()
     #if config["debug"]:
@@ -962,7 +1024,7 @@ if __name__ == "__main__":
         sslcontext = None
     connFuture = aio.Future()
     fac = loop.create_connection(
-        partial(DrapeBridge,
+        partial(HVACBridge,
                 loop,
                 connFuture,
                 config,
@@ -973,9 +1035,9 @@ if __name__ == "__main__":
     conn, bridgectl = loop.run_until_complete(fac)
     loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"DrapeBuddy": aboutstr},
+        {"about": {"HVACBuddy": aboutstr},
          "display": {config["type"]: {config["subtype"]: iconstr}},
-         "config name":config["subtype"]+"-drape"})
+         "config name":config["subtype"]+"-hvac"})
 
     try:
         loop.run_until_complete(connFuture)

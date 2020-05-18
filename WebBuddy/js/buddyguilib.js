@@ -165,36 +165,37 @@ var buddyPanel = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -368,13 +369,16 @@ var listCG = Class.extend({
             $.each(this.locontrols, function (idx, actrl) {
                 var zz = {};
                 var aval = actrl.getValue();
-                if ( actrl.widget_name || ( $.isPlainObject(aval) && actrl.part.attr("name") in aval && Object.keys(aval).length <= 1)) {
-                    zz=$.extend(resu,aval)
-                } else {
-                    zz[actrl.part.attr("name")] = aval;
-                }
+                for ( key in aval ) { //Just in case the object is empty/undefined
+                    if ( actrl.widget_name || ( $.isPlainObject(aval) && actrl.part.attr("name") in aval && Object.keys(aval).length <= 1)) {
+                        zz=$.extend(resu,aval)
+                    } else {
+                        zz[actrl.part.attr("name")] = aval;
+                    }
 
-                zz=$.extend(resu,zz);
+                    zz=$.extend(resu,zz);
+                    break
+                }
             })
         }
         var r = {};
@@ -430,36 +434,37 @@ var listCG = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -533,36 +538,37 @@ var grouplistCG = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -938,36 +944,37 @@ var listmakerCG = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 var choiceCG = Class.extend({
@@ -1142,7 +1149,11 @@ var choiceCG = Class.extend({
 
     getValue: function() {
         var resu={};
-        resu[this.part.attr("name")] = {"bu-cvalue":$("#"+this.jsid).val()};
+        var rvalue = $("#"+this.jsid).val()
+        if ( rvalue == undefined ) {
+            return resu;
+        }
+        resu[this.part.attr("name")] = {"bu-cvalue":rvalue};
         var zz = {};
         var self = this;
 
@@ -1183,36 +1194,37 @@ var choiceCG = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1275,7 +1287,9 @@ var sliderControl = Class.extend({
     },
 
     getValue: function() {
-        return this.widget.bootstrapSlider('getValue');
+        if ( this.widget ) {
+            return this.widget.bootstrapSlider('getValue');
+        }
     },
 
     getDefault: function() {
@@ -1297,36 +1311,37 @@ var sliderControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1417,36 +1432,37 @@ var switchControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1528,36 +1544,37 @@ var spinnerControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1641,36 +1658,37 @@ var textControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1746,36 +1764,37 @@ var dateControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1853,36 +1872,37 @@ var timeControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
@@ -1996,36 +2016,37 @@ var timerangeControl = Class.extend({
 
     checkDoAdd: function(part) {
         if (! this.realtime) {
-            if (part.attr("rteffect") == undefined) {
-                return true;
-            } else if (part.attr("rteffect") >= 0 ) {
-                return true;
+            if (part.attr("rteffect") != undefined) {
+                if (part.attr("rteffect") < 0 ) {
+                    return false;
+                }
             }
-            return false;
+        } else {
+            if (part.attr("rteffect") == undefined) {
+                    return false;
+            } else if (part.attr("rteffect") == 0 ) {
+                    return false;
+            }
         }
-        if (part.attr("rteffect") == undefined) {
-                return false;
-        } else if (part.attr("rteffect") == 0 ) {
-                return false;
-        }
-        if ( this.statevalue == {} ) {
-            return true;
-        }
+
         if (part.attr("onlyif") == undefined) {
             return true;
         }
         var keys = part.attr("onlyif").split("::");
         if (keys.length == 0) {
-            return true;
+            return true; //Not defined, so ignore
+        }
+        if ( this.statevalue == {} ) {
+            return false; //onlyif defined but no statevalue... cannot be equal
         }
         var cvalue=this.statevalue
         for (i=0;i<keys.length-1;i++) {
             cvalue=cvalue[keys[i]];
         }
-        if (cvalue == keys[keys.length-1]) {
-            return true;
+        if (cvalue != keys[keys.length-1]) {
+            return false;
         }
-        return false;
+        return true;
     }
 })
 
