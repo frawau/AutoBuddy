@@ -290,8 +290,8 @@ class video(BuddyDevice):
 class voice(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'voice'}
 
-class aircon(BuddyDevice):
-    __mapper_args__ = {'polymorphic_identity': 'aircon'}
+class hvac(BuddyDevice):
+    __mapper_args__ = {'polymorphic_identity': 'hvac'}
 
 class remotec(BuddyDevice):
     __mapper_args__ = {'polymorphic_identity': 'remotec'}
