@@ -38,6 +38,9 @@ except:
         def available_functions(self):
             return {}
 
+        def build_ircode(self):
+            return self._build_ircode()
+
 STARFRAME = [ 3500, 1750 ]
 ENDFRAME = [435, 10000 ]
 MARK = 435
@@ -224,7 +227,7 @@ class Daikin(HVAC):
         frames += [packet]
         return frames
 
-    def build_ircode(self):
+    def _build_ircode(self):
         frames = []
         frames += self.code_comfort()
         frames += self.build_code()

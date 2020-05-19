@@ -39,6 +39,9 @@ except:
         def available_functions(self):
             return {}
 
+        def build_ircode(self):
+            return self._build_ircode()
+
 STARFRAME = [ 3500, 1750 ]
 ENDFRAME = [435, 10000 ]
 MARK = 435
@@ -294,7 +297,7 @@ class Panasonic(HVAC):
         frames += [f2]
         return frames
 
-    def build_ircode(self):
+    def _build_ircode(self):
         frames = []
         frames += self.code_odourwash()
         frames += self.code_economy()
@@ -305,11 +308,6 @@ class Panasonic(HVAC):
             idx += 1
         return frames
 
-
-    def update_status(self):
-        for x,y in self.to_set:
-            self.status[x] = y
-        self.to_set = {}
 
 
 class PanaPX2T5(Panasonic):
@@ -454,4 +452,4 @@ if __name__ == '__main__':
             print("{}".format(bframe))
     else:
         for f in frames:
-            print( " ".join([hex(x) for x in f]))
+            print( " ".join(["%02x"%x for x in f]))

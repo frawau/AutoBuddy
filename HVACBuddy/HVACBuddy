@@ -67,9 +67,8 @@ proxy_command_end="""
 </buddyui>
 """
 
-proxy_config = """
-"""
-proxy_config_default = {"gateway": {}, 'capabilities': {}, "model":{}}
+proxy_config = ""
+proxy_config_default = {"gateway": {}, 'capabilities': {}, "model":{}, "status":{}}
 proxy_module_commands = {}
 
 
@@ -116,27 +115,47 @@ def proxy_process(self, msg, type="autobuddy"):
                                 "value": self.name}})
 
         elif msg["content"]["command"] == "action":
-            print(msg["content"])
+            if "value" in msg["content"]:
+                mvalue = msg["content"]["value"]
+                if 'selectmodel' in mvalue:
+                    hdef = mvalue['selectmodel']['bu-cvalue']
+                    self.hvac = bridgectl.get_hvac(hdef)
+                    bridgectl.match_model(self.name,hdef)
+                else:
+                    for k,v in mvalue:
+                        if k in self.hvac.capabilities:
+                            if isinstance(v,dict) and 'bu-cvalue' in v:
+                                val = v['bu-cvalue']
+                            else:
+                                val = v
+                        try:
+                            self.hvac.set_value(k,val)
+                        except:
+                            bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.hvac.mode))
+                    frames = self.hvac.build_ircode()
+                    val=[]
+                    for f in frames:
+                        val.append("".join(["%02x"%x for x in f]))
+
+                    bridgectl.sending({"subject": self.gateway,
+                                    "content_type": "command",
+                                    "content": {"command": "send",
+                                                "target": "remotec",
+                                                "value":{"ctype" : "ir", "code": val, "timing": self.get_timing(),
+                                                        "sender": bridgectl.type + "." +self.name, "command": "set" }}})
         return None
     else:
         try:
             if msg["content_type"] == "event" and msg["content"]["event"] == "code sent":
                 value = msg["content"]["value"]
                 if value["sender"] == bridgectl.type + "." + self.name and value["sent"]:
-                    iconsts = {}
-                    if value["command"] == "open":
-                        iconsts["animation"]  = self.genAnim(self.position,0)
-                        self.position = 0
-                    elif value["command"].lower() == "close":
-                        iconsts["animation"] = self.genAnim(self.position,100)
-                        self.position = 100
-                    if iconsts:
-                        bridgectl.sending({"subject": msg["subject"],
-                                        "content_type": "event",
-                                        "content": {"event": "action",
-                                                    "target": msg["subject"],
-                                                    "icon status": iconsts,
-                                                    "value": value["command"]}})
+                    bridgectl.sending({"subject": msg["subject"],
+                                    "content_type": "event",
+                                    "content": {"event": "action",
+                                                "target": msg["subject"],
+                                                "value": value["command"]}})
+                    self.update_status()
+                    self.sendStatus()
                 return True
 
 
@@ -200,11 +219,11 @@ def sendStatus(self):
         status["temperature"] = 0
         iconsts={"bu-fill": {"fill":self.cssColour()},
                  "bu-tens-0":{"opacity": 0},
-                 "bu-tens-not-0":{"opacity": 1},
+                 "bu-tens-not-0":{"opacity": 1, "fill":self.cssColour()},
                  "bu-naught-0":{"opacity": 0},
-                 "bu-naught-not-0":{"opacity": 1},
+                 "bu-naught-not-0":{"opacity": 1, "fill":self.cssColour()},
                  "bu-deci-0":{"opacity": 0},
-                 "bu-deci-not-0":{"opacity": 1},
+                 "bu-deci-not-0":{"opacity": 1, "fill":self.cssColour()},
                  "bu-auto":{"opacity": 0.5},
                  "bu-not-auto":{"opacity": 0},
                  "bu-fan-highest":{"opacity": 0.5},
@@ -275,17 +294,25 @@ class HVACBridge(bl.BuddyBridge):
         self.shuttingdown = False
         self.infos = {}
 
+
+    def match_model(self,dev,model):
+        self.proxy_config["model"][dev]=model
+        self.save_config()
+
+    def save_config(self):
+        self.sending({"subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {"request": "save configuration",
+                                    "target": self.type,
+                                    "config name":config["subtype"]+"-hvac",
+                                    "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
             if msg["content"]["target"] == self.target:
                 for k, v in msg["content"]["value"].items():
                     self.proxy_config[k] = v
-                self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          "config name":config["subtype"]+"-hvac",
-                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+                self.save_config()
 
         elif msg["content"]["command"] == "new proxy device":
             ndev = msg["content"]["value"]
@@ -659,7 +686,7 @@ class HVACBridge(bl.BuddyBridge):
     def get_hvac(self, name):
         global plugs
 
-        brand,model = name.split("|")
+        brand,model = name.split("||")
         for x in plugs:
             if brand == x.brand:
                 newhvac =  x.factory(model)
@@ -959,7 +986,7 @@ if __name__ == "__main__":
     lof = {}
     for p in plugs:
         for m in p.models:
-            proxy_commands += """\n<item label="{}" value="{}" />\n""".format(p.brand.title()+" "+m,p.brand+"|"+m)
+            proxy_commands += """\n<item label="{}" value="{}" />\n""".format(p.brand.title()+" "+m,p.brand+"||"+m)
             ac = p.factory(m)
             for x,v in ac.available_functions().items():
                 print("Adding for {} : {}".format(x,v))

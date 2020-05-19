@@ -92,6 +92,49 @@ def cssColour(state="send"):
     return "#99cc00"
 
 
+def to_lirc(frames,timing):
+    """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""
+    lircframe =  []
+    for frame in frames:
+        lircframe += timing["start frame"]
+        for x in [ int(frame[i:i+2],16) for i in range(0,len(frame),2)]:
+            idx = 0x80
+            while idx:
+                lircframe.append(timing["mark"])
+                if x & idx:
+                    lircframe.append(timing["space 1"])
+                else:
+                    lircframe.append(timing["space 0"])
+                idx >>= 1
+        lircframe += timing["end frame"]
+    return lircframe
+
+def to_broadlink(frames, timing):
+    pulses = to_lirc(frames,timing)
+    array = bytearray()
+
+    for pulse in pulses:
+        pulse = round(pulse * 269 / 8192)  # 32.84ms units
+
+        if pulse < 256:
+            array += bytearray(struct.pack('>B', pulse))  # big endian (1-byte)
+        else:
+            array += bytearray([0x00])  # indicate next number is 2-bytes
+            array += bytearray(struct.pack('>H', pulse))  # big endian (2-bytes)
+
+    packet = bytearray([0x26, 0x00])  # 0x26 = IR, 0x00 = no repeats
+    packet += bytearray(struct.pack('<H', len(array)))  # little endian byte count
+    packet += array
+    packet += bytearray([0x0d, 0x05])  # IR terminator
+
+    # Add 0s to make ultimate packet size a multiple of 16 for 128-bit AES encryption.
+    remainder = (len(packet) + 4) % 16  # rm.send_data() adds 4-byte header (02 00 00 00)
+    if remainder:
+        packet += bytearray(16 - remainder)
+
+    return packet
+
+
 def broadlinkrc_process(self, msg):
     global bridgectl
     if msg["content_type"] == "command":
@@ -129,6 +172,12 @@ def broadlinkrc_process(self, msg):
             req_from = value["sender"]
             command = value["command"]
             code = value["code"]
+            if "timing" in value:
+                #We got an hex string
+                if isinstance(code,str):
+                    code = [code]  #single frame
+                code = to_broadlink(code, value["timing"])
+
             xx = aio.create_task(self.do_send_code(code, req_from, command))
             iconsts = {"bu-radar1": {"opacity": "0.1","fill":cssColour("send")},
                         "bu-radar2": {"opacity": "0","fill":cssColour("send")},

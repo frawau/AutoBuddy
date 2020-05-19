@@ -31,14 +31,28 @@
 
 from hashlib import blake2b
 
+#90% of hvac remotes use this timing
+STARFRAME = [ 3500, 1750 ]
+ENDFRAME = [435, 10000 ]
+MARK = 435
+SPACE0 = 435
+SPACE1 = 1300
+
+def bit_reverse(i, n=8):
+    return int(format(i, '0%db' % n)[::-1], 2)
+
+
 class HVAC(object):
 
+    def get_timing(self):
+        return {"start frame": STARFRAME,
+                  "end frame": ENDFRAME,
+                  "mark": MARK,
+                  "space 0": SPACE0,
+                  "space 1": SPACE1}
 
     def set_value(self, name, value):
-        try:
-            xx = getattr(self,"set_"+name)(value)
-        except AttributeError:
-            print("Setting {} on {} {} should not have appened.".format(name,selt.brand, self.model))
+        xx = getattr(self,"set_"+name)(value)
 
     def available_functions(self):
         """Here we generate a number of names that can bew used to
@@ -75,3 +89,17 @@ class HVAC(object):
                 lof[newname] = v
 
         return lof
+
+    def update_status(self):
+        for x,y in self.to_set:
+            self.status[x] = y
+        self.to_set = {}
+
+    def build_ircode(self):
+        frames = self._build_ircode()
+        if self.is_msb:
+            newframes = []
+            for f in frames:
+                newframes.append(bytearray([bit_reverse(x) for x in f]))
+            frames = newframes
+        return frames

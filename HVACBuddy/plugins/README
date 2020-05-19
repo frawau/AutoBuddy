@@ -5,7 +5,12 @@ Each plugin file must have a
 
        PluginObject
 
-class that must have a "factory" method to generate HVAC objects
+class that must have a "factory" method to generate HVAC objects, a 'brand' attribute
+and a 'models' attribute containing the list of models supported
+
+NOTE: DO NOT use '|' in either the brand or the model names. It is used to concatenate
+
+
 
 Each HVAC object describes a specific way of generating codes for IR transmission.
 
