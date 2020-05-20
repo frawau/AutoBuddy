@@ -83,25 +83,18 @@ var buddyPanel = Class.extend({
                         var nco = false;
                         if ( $(part).attr("type") == "slider" ) {
                             nco = new sliderControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if  ( $(part).attr("type") == "knob" ) {
                             nco = new knobControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if   ( $(part).attr("type") == "spinner" ) {
                             nco = new spinnerControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if   ( $(part).attr("type") == "switch" ) {
                             nco = new switchControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if   ( $(part).attr("type") == "time" ) {
                             nco = new switchControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if   ( $(part).attr("type") == "time range" ) {
                             nco = new switchControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else if   ( $(part).attr("type") == "text" ) {
                             nco = new textControl(ctxname,cname,$(part),realtime)
-                            tabmsg+=nco.render();
                         } else {
                             console.log("Unknown control type " + $(part).attr("type") )
                         }
@@ -109,6 +102,7 @@ var buddyPanel = Class.extend({
                             if (self.statevalue) {
                                 nco.setStateValue(self.statevalue)
                             }
+                            tabmsg+=nco.render();
                             locontrols.push(nco)
                         }
 
@@ -252,7 +246,9 @@ var listCG = Class.extend({
                 var ctxname = this.ctxname;
                 var tabstr=undefined;
                 var active=true;
+                var addtotab=undefined;
                 $.each(this.part.children(), function (jdx, actrl) {
+                    addtotab=undefined;
                     if ($(actrl).is("[newtab=\"true\"]")) {
                         if ( active ) {
                             active=false;
@@ -284,35 +280,30 @@ var listCG = Class.extend({
                             if (self.statevalue) {
                                 ncg.setStateValue(self.statevalue)
                             }
-                            tabmsg+=ncg.render(classes);
-                            locontrols.push(ncg)
+                            addtotab=ncg.render(classes);
+                            if ( addtotab != undefined ) {
+                                tabmsg+=addtotab;
+                                locontrols.push(ncg);
+                            }
                         }
                     } else if ( $(actrl).is("control") ) {
                         var nco = false;
                         if ( $(actrl).attr("type") == "slider" ) {
                             nco = new sliderControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if  ( $(actrl).attr("type") == "knob" ) {
                             nco = new knobControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "spinner" ) {
                             nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "switch" ) {
                             nco = new switchControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "time" ) {
                             nco = new timeControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "time range" ) {
                             nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "date" ) {
                             nco = new dateControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else if   ( $(actrl).attr("type") == "text" ) {
                             nco = new textControl(ctxname,cname,$(actrl),realtime)
-                            tabmsg+=nco.render(classes);
                         } else {
                             console.log("Unknown control type " + $(actrl).attr("type") )
                         }
@@ -320,7 +311,14 @@ var listCG = Class.extend({
                             if (self.statevalue) {
                                 nco.setStateValue(self.statevalue)
                             }
-                            locontrols.push(nco)
+                            addtotab = nco.render(classes)
+                            if ( addtotab != undefined ) {
+                                tabmsg+=addtotab
+                                locontrols.push(nco);
+                                if ( self.key === undefined ) {
+                                    self.key = nco.part.attr("name");
+                                }
+                            }
                         }
                     }
                 })
@@ -649,9 +647,11 @@ var listmakerCG = Class.extend({
             }
             tabmsg += ">"
             var tabstr=undefined;
+            var addtotab=undefined;
             var active=true;
             var wastabbed = false;
             $.each(this.part.children(), function (jdx, actrl) {
+                addtotab=undefined;
                 if ($(actrl).is("[newtab=\"true\"]")) {
                     wastabbed = true;
                     if ( active) {
@@ -674,7 +674,7 @@ var listmakerCG = Class.extend({
                     var ncg = false;
                     if ( $(actrl).attr("type") == "list" ) {
                         ncg = new listCG(ctxname,cname,$(actrl), realtime)
-                        } else if ( $(actrl).attr("type") == "grouplist" ) {
+                    } else if ( $(actrl).attr("type") == "grouplist" ) {
                             ncg = new grouplistCG(ctxname,cname,$(actrl), realtime)
                     } else if ( $(actrl).attr("type") == "choice" ) {
                         ncg = new choiceCG(ctxname,cname,$(actrl), realtime)
@@ -685,35 +685,30 @@ var listmakerCG = Class.extend({
                         if (this.statevalue) {
                             ncg.setStateValue(self.statevalue)
                         }
-                        tabmsg+=ncg.render(classes);
-                        locontrols.push(ncg)
+                        addtotab+=ncg.render(classes);
+                        if ( addtotab != undefined ) {
+                            tabmsg+=addtotab
+                            locontrols.push(ncg)
+                        }
                     }
                 } else if ( $(actrl).is("control") ) {
                     var nco = false;
                     if ( $(actrl).attr("type") == "slider" ) {
                         nco = new sliderControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if  ( $(actrl).attr("type") == "knob" ) {
                         nco = new knobControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "spinner" ) {
                         nco = new spinnerControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "switch" ) {
                         nco = new switchControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "time" ) {
                         nco = new timeControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "time range" ) {
                         nco = new timerangeControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "date" ) {
                         nco = new dateControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else if   ( $(actrl).attr("type") == "text" ) {
                         nco = new textControl(ctxname,cname,$(actrl),realtime)
-                        tabmsg+=nco.render(classes);
                     } else {
                         console.log("Unknown control type " + $(actrl).attr("type") )
                     }
@@ -721,9 +716,13 @@ var listmakerCG = Class.extend({
                         if (this.statevalue) {
                             ncg.setStateValue(self.statevalue)
                         }
-                        locontrols.push(nco);
-                        if ( self.key === undefined ) {
-                            self.key = nco.part.attr("name");
+                        addtotab = nco.render(classes)
+                        if ( addtotab != undefined ) {
+                            tabmsg+=addtotab
+                            locontrols.push(nco);
+                            if ( self.key === undefined ) {
+                                self.key = nco.part.attr("name");
+                            }
                         }
                     }
                 }
