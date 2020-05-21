@@ -61,6 +61,7 @@ class Daikin(HVAC):
        "mode" and "temperature" capabilities"""
 
     def __init__(self):
+        super().__init__()
         self.brand = "Daikin"
         self.model = "Generic"
         self.capabilities = {"mode": ["off", "cool", "fan", "dry"],
@@ -77,7 +78,7 @@ class Daikin(HVAC):
         self.FBODY = b'\x88\x5b\xe4\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\xa3\x00\x10'
 
 
-    def set_temp(self, temp):
+    def set_temperature(self, temp):
         if temp < self.capabilities["temperature"][0]:
             temp = self.capabilities["temperature"][0]
         elif temp > self.capabilities["temperature"][-1]:
@@ -85,7 +86,7 @@ class Daikin(HVAC):
             temp = 27
         self.to_set["temperature"] = temp
 
-    def code_temp(self):
+    def code_temperature(self):
         if "temperature" in self.to_set:
             temp = self.to_set["temperature"]
             if "mode" in self.to_set and self.to_set["mode"] == "fan":
@@ -188,6 +189,8 @@ class Daikin(HVAC):
         self.to_set["mode"] = mode
         if mode == "fan":
             self.to_set["temperature"] = 25
+        if mode == "off":
+            self.to_set = {"mode": "off"}
 
     def code_mode(self):
         if "mode" in self.to_set:
@@ -218,7 +221,7 @@ class Daikin(HVAC):
         frames = []
         packet = bytearray(self.FBODY)
         #Note that set mod must be last for it replaces values
-        for f in [self.code_temp, self.code_fan, self.code_swing, self.code_powerfull, self.code_mode]:
+        for f in [self.code_temperature, self.code_fan, self.code_swing, self.code_powerfull, self.code_mode]:
             mask,replace = f()
             if replace:
                 packet = bytearray([ y or x for x,y in zip(packet,mask)])
@@ -356,11 +359,11 @@ if __name__ == '__main__':
 
     device = FTMPV2S()
     frames = []
-    device.set_temp(opts.temp)
-    device.set_mode(opts.mode)
+    device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
     device.set_powerfull(opts.powerfull)
+    device.set_mode(opts.mode)
 
     frames = device.build_ircode()
 

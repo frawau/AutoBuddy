@@ -73,7 +73,7 @@ proxy_module_commands = {}
 
 
 def cssColour(self):
-    return "#00ee00"
+    return "#ffffff"
 
 
 def proxy_process(self, msg, type="autobuddy"):
@@ -122,7 +122,9 @@ def proxy_process(self, msg, type="autobuddy"):
                     self.hvac = bridgectl.get_hvac(hdef)
                     bridgectl.match_model(self.name,hdef)
                 else:
-                    for k,v in mvalue:
+                    lokv = [(k,v) for k,v in mvalue.items()]
+                    lokv.sort(key=lambda x: (x[0]=="mode" and "zzzzzz" or  x[0])) #Make sure mode is done last
+                    for k,v in lokv:
                         if k in self.hvac.capabilities:
                             if isinstance(v,dict) and 'bu-cvalue' in v:
                                 val = v['bu-cvalue']
@@ -131,7 +133,8 @@ def proxy_process(self, msg, type="autobuddy"):
                         try:
                             self.hvac.set_value(k,val)
                         except:
-                            bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.hvac.mode))
+                            bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.hvac.model))
+
                     frames = self.hvac.build_ircode()
                     val=[]
                     for f in frames:
@@ -141,7 +144,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                     "content_type": "command",
                                     "content": {"command": "send",
                                                 "target": "remotec",
-                                                "value":{"ctype" : "ir", "code": val, "timing": self.get_timing(),
+                                                "value":{"ctype" : "ir", "code": val, "timing": self.hvac.get_timing(),
                                                         "sender": bridgectl.type + "." +self.name, "command": "set" }}})
         return None
     else:
@@ -154,7 +157,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                     "content": {"event": "action",
                                                 "target": msg["subject"],
                                                 "value": value["command"]}})
-                    self.update_status()
+                    self.hvac.update_status()
                     self.sendStatus()
                 return True
 
@@ -181,7 +184,7 @@ def proxy_process(self, msg, type="autobuddy"):
                               e,
                               e.__traceback__))
             except:
-                print("Oops")
+                print("Oops {}".format(e))
 
         return True
 
@@ -190,9 +193,13 @@ def sendInfo(self):
     try:
         msg=""
         prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("model","Model"),("learnir","Can use IR"),("learnrf","Can use RF")]:
+        for x,lbl in [("model","Model")]:
             if getattr(self,x) is not None:
                 msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
+                prefix=""
+        if self.hvac:
+            for x,v in [self.hvac.status.items()]:
+                msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>"+str(v)+"</dd>"
                 prefix=""
         devid = self.name
         if msg:
@@ -214,7 +221,7 @@ def sendInfo(self):
 def sendStatus(self):
     status = {}
 
-    if getattr(self,"hvac") is None:
+    if getattr(self,"hvac",None) is None:
         status["model"] = "notset"
         status["temperature"] = 0
         iconsts={"bu-fill": {"fill":self.cssColour()},
@@ -260,7 +267,10 @@ def sendStatus(self):
                 for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
                     iconsts[s+d] = {"opacity": 1}
                     iconsts[s+"not-"+d] = {"opacity": 0}
-
+        if self.hvac.functions == []:
+            xx= self.hvac.available_functions()
+        for x in self.hvac.functions:
+            status[x]='yes'
 
     self.controller.sending({"subject": self.controller.type,
                                 "content_type": "event",
@@ -463,7 +473,7 @@ class HVACBridge(bl.BuddyBridge):
                         hvac.controller = self
                         hvac.gateway = b['gateway']
                         hvac.info={}
-                        self.hvac = None
+                        hvac.hvac = None
                         hvac.learnir = ('learn_ir' in b['commands']  and 'yes') or 'no'
                         hvac.learnrf = ('learn_rf' in b['commands']  and 'yes') or 'no'
                         self.proxy_config['gateway'][hvac.name] = b['gateway']
@@ -531,17 +541,13 @@ class HVACBridge(bl.BuddyBridge):
                             doremove = True
                             if hvac.name in self.proxy_config["gateway"]:
                                 del(self.proxy_config["gateway"][hvac.name])
+                                del(self.proxy_config["model"][hvac.name])
                             break
                         sidx += 1
 
                     if doremove:
                         del self.devices[sidx]
-                        self.sending({"subject": "control" + "." + self.subtype,
-                                    "content_type": "request",
-                                    "content": {"request": "save configuration",
-                                                "target": self.type,
-                                                "config name":self.config["subtype"]+"-hvac",
-                                                "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+                        self.save_config()
         else:
             if self.log:
                 self.log.warning(
@@ -712,7 +718,7 @@ iconstr = """
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
             <path class="bu-fill bu-tens-0 bu-tens-1 bu-tens-2 bu-tens-3 bu-tens-4 bu-tens-not-5 bu-tens-not-6 bu-tens-7 bu-tens-8 bu-tens-9"
             d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1"/>
-            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-not-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
+            <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
                 d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1"/>
             <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-not-3 bu-tens-not-4 bu-tens-not-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
             d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
@@ -728,7 +734,7 @@ iconstr = """
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1"  />
             <path class="bu-fill bu-naught-0 bu-naught-1 bu-naught-2 bu-naught-3 bu-naught-4 bu-naught-not-5 bu-naught-not-6 bu-naught-7 bu-naught-8 bu-naught-9"
             d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1"  />
-            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-not-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
+            <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
             d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1" />
             <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-not-3 bu-naught-not-4 bu-naught-not-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
             d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
@@ -747,7 +753,7 @@ iconstr = """
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
             <path class="bu-fill bu-deci-0 bu-deci-1 bu-deci-2 bu-deci-3 bu-deci-4 bu-deci-not-5 bu-deci-not-6 bu-deci-7 bu-deci-8 bu-deci-9"
             d="M 194,75.38513 L 209.5,90.59709 L 209.5,135.59708 L 194,151.11487 L 178.5,135.59708 L 178.5,90.59709 L 194,75.38513 z" opacity="1" />
-            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-not-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
+            <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
             d="M 190.79731,236.05743 L 175.58534,251.55743 L 116.58535,251.55743 L 101.06756,236.05743 L 116.58535,220.55743 L 175.58534,220.55743 L 190.79731,236.05743 z" opacity="1" />
             <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-not-3 bu-deci-not-4 bu-deci-not-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
             d="M 98,157.44257 L 113.5,172.65453 L 113.5,217.65452 L 98,233.1723 L 82.5,217.65452 L 82.5,172.65453 L 98,157.44257 z" opacity="1" />
@@ -757,7 +763,7 @@ iconstr = """
     </g>
     <g  class="bu-mode" transform="scale(0.50 0.50) translate(500, 0)" >
         <g transform="translate(32 0)" >
-            <path class="bu-cool bu-not-fan bu-not-heat bu-not-auto bu-not-feel"
+            <path class="bu-cool bu-not-fan bu-not-heat bu-not-auto bu-not-feel bu-not-dry"
                   d="M440.3 345.2l-33.8-19.5 26-7c8.2-2.2 13.1-10.7
                   10.9-18.9l-4-14.9c-2.2-8.2-10.7-13.1-18.9-10.9l-70.8 19-63.9-37 63.8-36.9
                   70.8 19c8.2 2.2 16.7-2.7 18.9-10.9l4-14.9c2.2-8.2-2.7-16.7-10.9-18.9l-26-7
@@ -777,14 +783,14 @@ iconstr = """
                   36.2 19 70.8c2.2 8.2 10.7 13.1 18.9 10.9l14.9-4c8.2-2.2 13.1-10.7 10.9-18.9l-7-26
                   33.8 19.5c7.4 4.3 16.8 1.7 21.1-5.7l15.5-26.8c4.3-7.3 1.8-16.8-5.6-21z" opacity="1"/>
         </g>
-        <path class="bu-fan bu-not-cool bu-not-heat bu-not-auto bu-not-feel"
+        <path class="bu-fan bu-not-cool bu-not-heat bu-not-auto bu-not-feel bu-not-dry"
                 d="M352.57 128c-28.09 0-54.09 4.52-77.06 12.86l12.41-123.11C289 7.31 279.81-1.18
                 269.33.13 189.63 10.13 128 77.64 128 159.43c0 28.09 4.52 54.09 12.86 77.06L17.75 224.08C7.31
                 223-1.18 232.19.13 242.67c10 79.7 77.51 141.33 159.3 141.33 28.09 0 54.09-4.52 77.06-12.86l-12.41
                 123.11c-1.05 10.43 8.11 18.93 18.59 17.62 79.7-10 141.33-77.51 141.33-159.3
                 0-28.09-4.52-54.09-12.86-77.06l123.11 12.41c10.44 1.05 18.93-8.11
                 17.62-18.59-10-79.7-77.51-141.33-159.3-141.33zM256 288a32 32 0 1 1 32-32 32 32 0 0 1-32 32z" opacity="0" />
-        <path class="bu-heat bu-not-cool bu-not-fan bu-not-auto bu-not-feel"
+        <path class="bu-heat bu-not-cool bu-not-fan bu-not-auto bu-not-feel bu-not-dry"
               d="M323.56 51.2c-20.8 19.3-39.58 39.59-56.22 59.97C240.08 73.62 206.28
               35.53 168 0 69.74 91.17 0 209.96 0 281.6 0 408.85 100.29 512 224 512s224-103.15
               224-230.4c0-53.27-51.98-163.14-124.44-230.4zm-19.47 340.65C282.43 407.01 255.72 416 226.86 416
@@ -797,7 +803,7 @@ iconstr = """
                   448c-61.75 0-112-50.25-112-112 0-8.84 7.16-16 16-16s16 7.16 16 16c0 44.11 35.89 80 80 80 8.84
                   0 16 7.16 16 16s-7.16 16-16 16z" opacity="0" />
         </g>
-        <path class="bu-auto bu-feel bu-not-cool bu-not-heat bu-not-fan" transform="scale(-1, 1) translate(-512, 0)"
+        <path class="bu-auto bu-feel bu-not-cool bu-not-heat bu-not-fan bu-not-dry" transform="scale(-1, 1) translate(-512, 0)"
               d="M184.561 261.903c3.232 13.997-12.123
               24.635-24.068 17.168l-40.736-25.455-50.867 81.402C55.606 356.273 70.96 384 96.012 384H148c6.627 0 12 5.373
               12 12v40c0 6.627-5.373 12-12 12H96.115c-75.334 0-121.302-83.048-81.408-146.88l50.822-81.388-40.725-25.448c-12.081-7.547-8.966-25.961

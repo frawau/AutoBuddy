@@ -33,6 +33,7 @@ import ssl
 import logging
 import random
 import string
+import struct
 import datetime as dt
 import asyncio as aio
 import aiobroadlink as aiobl
@@ -233,7 +234,10 @@ async def do_send_code(self, code, req_from, command):
     global bridgectl
 
     async with self.accesslock:
-        resu = await self.conn.send_code(bytes.fromhex(code))  or False
+        if isinstance(code,str):
+            resu = await self.conn.send_code(bytes.fromhex(code))  or False
+        else:
+            resu = await self.conn.send_code(code)  or False
         #resu = await self.conn.send_code(base64.b64decode(code))
         resu = True if resu else False
     bridgectl.sending({"subject": req_from,
@@ -694,6 +698,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
             remotec.present = False
             remotec.infoval={}
             remotec.accesslock = aio.Lock()
+            remotec.commands = ['send_ir']   #By default
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",

@@ -65,6 +65,7 @@ class Panasonic(HVAC):
        "mode" and "temperature" capabilities"""
 
     def __init__(self):
+        super().__init__()
         self.brand = "Panasonic"
         self.model = "Generic"
         self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
@@ -79,8 +80,9 @@ class Panasonic(HVAC):
         #Specify wether the bits order has to be swapped
         self.is_msb = False
         self.base_temp = 16
+        self.functions = []
 
-    def set_temp(self, temp):
+    def set_temperature(self, temp):
         if temp < self.capabilities["temperature"][0]:
             temp = self.capabilities["temperature"][0]
         elif temp > self.capabilities["temperature"][-1]:
@@ -88,7 +90,7 @@ class Panasonic(HVAC):
             temp = 27
         self.to_set["temperature"] = temp
 
-    def code_temp(self):
+    def code_temperature(self):
         if "temperature" in self.to_set:
             temp = self.to_set["temperature"]
             if "mode" in self.to_set and self.to_set["mode"] == "fan":
@@ -105,6 +107,8 @@ class Panasonic(HVAC):
         self.to_set["mode"] = mode
         if mode == "fan":
             self.to_set["temperature"] = 27
+        if mode == "off":
+            self.to_set = {"mode": "off"}
 
     def code_mode(self):
         if "mode" in self.to_set:
@@ -288,7 +292,7 @@ class Panasonic(HVAC):
         if "mode" not in self.to_set and self.status["mode"] == "fan":
             self.to_set["temperature"] = 27
         frames = [FHEADER + F1BODY]
-        f2 = FHEADER + self.code_mode() + self.code_temp() + FILLER
+        f2 = FHEADER + self.code_mode() + self.code_temperature() + FILLER
         f2 += (self.code_fan()[0] + self.code_swing()[0]).to_bytes(1,'big')
         f2 += F2COMMON1
         f2 += self.code_profile()
@@ -428,13 +432,13 @@ if __name__ == '__main__':
 
     device = PanaPX2T5()
     frames = []
-    device.set_temp(opts.temp)
-    device.set_mode(opts.mode)
+    device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
     device.set_purifier(opts.nanoex)
     device.set_odourwash(opts.odour)
     device.set_economy(opts.economy)
+    device.set_mode(opts.mode)
 
     frames = device.build_ircode()
 

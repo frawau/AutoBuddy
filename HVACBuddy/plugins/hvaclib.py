@@ -44,6 +44,23 @@ def bit_reverse(i, n=8):
 
 class HVAC(object):
 
+    def __init__(self):
+        self.brand = "Generic"
+        self.model = "Generic"
+        self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
+                             "temperature": [x for x in range(18,30)]
+                             }
+        #For functions that require their own frames
+        self.xtra_capabilities = {}
+        self.status = {"mode": "auto",
+                       "temperature": 25}
+
+        self.to_set = {}
+        #Specify wether the bits order has to be swapped
+        self.is_msb = False
+        #Names of 'functions' used by this object
+        self.functions = []
+
     def get_timing(self):
         return {"start frame": STARFRAME,
                   "end frame": ENDFRAME,
@@ -87,11 +104,11 @@ class HVAC(object):
             newname += h.hexdigest()
             if newname not in lof:
                 lof[newname] = v
-
+        self.functions = lof.keys()
         return lof
 
     def update_status(self):
-        for x,y in self.to_set:
+        for x,y in self.to_set.items():
             self.status[x] = y
         self.to_set = {}
 

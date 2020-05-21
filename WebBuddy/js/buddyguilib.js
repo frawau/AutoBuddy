@@ -246,9 +246,9 @@ var listCG = Class.extend({
                 var ctxname = this.ctxname;
                 var tabstr=undefined;
                 var active=true;
-                var addtotab=undefined;
+                var addtotab="";
                 $.each(this.part.children(), function (jdx, actrl) {
-                    addtotab=undefined;
+                    addtotab="";
                     if ($(actrl).is("[newtab=\"true\"]")) {
                         if ( active ) {
                             active=false;
@@ -281,7 +281,7 @@ var listCG = Class.extend({
                                 ncg.setStateValue(self.statevalue)
                             }
                             addtotab=ncg.render(classes);
-                            if ( addtotab != undefined ) {
+                            if ( addtotab ) {
                                 tabmsg+=addtotab;
                                 locontrols.push(ncg);
                             }
@@ -312,7 +312,7 @@ var listCG = Class.extend({
                                 nco.setStateValue(self.statevalue)
                             }
                             addtotab = nco.render(classes)
-                            if ( addtotab != undefined ) {
+                            if ( addtotab ) {
                                 tabmsg+=addtotab
                                 locontrols.push(nco);
                                 if ( self.key === undefined ) {
@@ -367,7 +367,7 @@ var listCG = Class.extend({
             $.each(this.locontrols, function (idx, actrl) {
                 var zz = {};
                 var aval = actrl.getValue();
-                for ( key in aval ) { //Just in case the object is empty/undefined
+                if ( aval != {} && aval != undefined ) { //Just in case the object is empty/undefined
                     if ( actrl.widget_name || ( $.isPlainObject(aval) && actrl.part.attr("name") in aval && Object.keys(aval).length <= 1)) {
                         zz=$.extend(resu,aval)
                     } else {
@@ -375,7 +375,6 @@ var listCG = Class.extend({
                     }
 
                     zz=$.extend(resu,zz);
-                    break
                 }
             })
         }
@@ -647,11 +646,11 @@ var listmakerCG = Class.extend({
             }
             tabmsg += ">"
             var tabstr=undefined;
-            var addtotab=undefined;
+            var addtotab="";
             var active=true;
             var wastabbed = false;
             $.each(this.part.children(), function (jdx, actrl) {
-                addtotab=undefined;
+                addtotab="";
                 if ($(actrl).is("[newtab=\"true\"]")) {
                     wastabbed = true;
                     if ( active) {
@@ -686,7 +685,7 @@ var listmakerCG = Class.extend({
                             ncg.setStateValue(self.statevalue)
                         }
                         addtotab+=ncg.render(classes);
-                        if ( addtotab != undefined ) {
+                        if ( addtotab ) {
                             tabmsg+=addtotab
                             locontrols.push(ncg)
                         }
@@ -717,7 +716,7 @@ var listmakerCG = Class.extend({
                             ncg.setStateValue(self.statevalue)
                         }
                         addtotab = nco.render(classes)
-                        if ( addtotab != undefined ) {
+                        if ( addtotab ) { //It is a string so it is ok
                             tabmsg+=addtotab
                             locontrols.push(nco);
                             if ( self.key === undefined ) {
