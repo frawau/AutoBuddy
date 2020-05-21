@@ -1041,11 +1041,14 @@ var choiceCG = Class.extend({
         //size is an array with 2 values,
         this.size = size;
         $("#"+this.jsid).on("changed.bs.select", this.proxyChange);
-        var thisval = this.part.find("#"+this.jsid +" > default").text();
-        if ( ! thisval ) {
-            thisval=$(this.part.children()[0]).attr("value")
+        var dval = this.statevalue[this.part.attr("name")]
+        if ( dval === undefined) {
+            dval = this.part.find("#"+this.jsid +" > default").text();
         }
-        $("#"+this.jsid).selectpicker('val', thisval);
+        if ( ! dval ) {
+            dval=$(this.part.children()[0]).attr("value")
+        }
+        $("#"+this.jsid).selectpicker('val', dval);
         this.onChange();
         $("#"+this.jsid).data("buguiObj",this);
     },
@@ -1230,7 +1233,7 @@ var choiceCG = Class.extend({
 
 var sliderControl = Class.extend({
     init: function (ctxname, pname,part, realtime) {
-        // Build a panel
+        // Build a slider
         // Elt is the object on behalf of which we do this
         // Def is a parsed XML documents
         this.ctxname = ctxname;
@@ -1258,9 +1261,11 @@ var sliderControl = Class.extend({
             tabmsg += "<input id=\""+this.jsid+ "\" type=\"text\" ";
             tabmsg += "data-slider-min=\""+(this.part.find("start").text() || "0") +"\" data-slider-max=\""+this.part.find("end").text() || "100";
             tabmsg += "\" data-slider-step=\""+(this.part.find("increment").text() || "1");
-            var dval = this.part.find("default").text();
-
-            if ( dval != undefined ) {
+            var dval = this.statevalue[this.part.attr("name")]
+            if ( dval === undefined) {
+                dval = this.part.find("default").text();
+            }
+            if ( dval ) {
                 tabmsg += "\" data-slider-value=\""+dval+"\" ";
             } else {
                     tabmsg += "\" data-slider-value=\""+(this.part.find("start").text() || "0")+"\" ";
@@ -1346,7 +1351,7 @@ var sliderControl = Class.extend({
 
 var switchControl = Class.extend({
     init: function (ctxname, pname,part, realtime) {
-        // Build a panel
+        // Build a switch widget
         // Elt is the object on behalf of which we do this
         // Def is a parsed XML documents
         this.ctxname = ctxname;
@@ -1372,7 +1377,10 @@ var switchControl = Class.extend({
             tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>"
             tabmsg +="<input type=\"checkbox\" id=\""+this.jsid+"\" ";
             var self = this;
-            var dval = this.part.find("default").text();
+            var dval = this.statevalue[this.part.attr("name")]
+            if ( dval === undefined) {
+                dval = this.part.find("default").text();
+            }
             var wascheck = false;
             $.each(this.part.children().filter("value"), function (idx, aval) {
                 var  val=$(aval);
@@ -1491,8 +1499,11 @@ var spinnerControl = Class.extend({
             tabmsg += ">";
             tabmsg += "<label class=\"bu-label\" for=\""+this.jsid+"\">"+(this.part.attr("label") || this.part.attr("name"))+"</label>";
             tabmsg +="<input type=\"text\"  id=\""+this.jsid+"\" class=\"form-control text-center\"";
-            var spvalue = this.part.find("default").text() || this.part.find("start").text();
-            tabmsg += "\" value=\""+(spvalue || "0")+"\" ";
+            var dval = this.statevalue[this.part.attr("name")]
+            if ( dval === undefined) {
+                dval = this.part.find("default").text() || this.part.find("start").text();
+            }
+            tabmsg += "\" value=\""+(dval || "0")+"\" ";
             tabmsg += " class=\"bu-spinner bu-spinner-for-"+this.jsid+"\"  /></span>";
         }
 
@@ -1610,7 +1621,10 @@ var textControl = Class.extend({
                  tabmsg +="text";
             }
             tabmsg +="\" id=\""+this.jsid+"\" class=\"form-control\"";
-            var spvalue = this.part.find("default").text();
+            var dval = this.statevalue[this.part.attr("name")]
+            if ( dval === undefined) {
+                dval = this.part.find("default").text();
+            }
             if ( this.part.attr("length") ) {
                 tabmsg +=" maxlength=\""+this.part.attr("length")+"\""
             }
@@ -1620,9 +1634,12 @@ var textControl = Class.extend({
     },
 
     activate: function( size ) {
-        var spvalue = this.part.find("default").text();
-        if ( spvalue ) {
-            $("#"+this.jsid).val(spvalue);
+        var dval = this.statevalue[this.part.attr("name")]
+        if ( dval === undefined) {
+            dval = this.part.find("default").text();
+        }
+        if ( dval ) {
+            $("#"+this.jsid).val(dval);
         } else {
             $("#"+this.jsid).val("");
         }
