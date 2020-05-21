@@ -243,6 +243,7 @@ def sendStatus(self):
     else:
         status["model"] = self.hvac.model
         iconsts={"bu-fill": {"fill":self.cssColour()}}
+        skipit = self.hvac.status["mode"] == "off"
         for f,v in self.hvac.status.items():
             status[f] = v
             if f == "mode":
@@ -252,6 +253,12 @@ def sendStatus(self):
                     iconsts["bu-power"] = {"fill": "black"}
                     iconsts["bu-auto"] = {"opacity": 0}
                     iconsts["bu-not-auto"] = {"opacity": 0}
+                    iconsts["bu-auto"] = {"opacity": 0.3},
+                    iconsts["bu-not-auto"] = {"opacity": 0},
+                    iconsts["bu-fan-highest"] = {"opacity": 0.3},
+                    iconsts["bu-fan-not-highest"] = {"opacity": 0},
+                    iconsts["bu-swing-auto"] = {"opacity": 0.3},
+                    iconsts["bu-swing-not-auto"] = {"opacity": 0},
                     for s in ["bu-tens-", "bu-naught-", "bu-deci-"]:
                         iconsts[s+"0"] = {"opacity": 0}
                         iconsts[s+"not-0"] = {"opacity": 1}
@@ -260,25 +267,28 @@ def sendStatus(self):
                     iconsts["bu-not-"+v] = {"opacity": 0}
                     iconsts["bu-power"] = {"fill": "blue"}
             elif f == "fan":
-                if v not in ["highest", "high", "medium","low","lowest"]:
-                    iconsts["bu-fan-highest"] = {"opacity": 0.5}
-                    iconsts["bu-fan-not-highest"] = {"opacity": 0}
-                else:
-                    iconsts["bu-fan-"+v] = {"opacity": 1}
-                    iconsts["bu-fan-not-"+v] = {"opacity": 0}
+                if not skipit:
+                    if v not in ["highest", "high", "medium","low","lowest"]:
+                        iconsts["bu-fan-highest"] = {"opacity": 0.5}
+                        iconsts["bu-fan-not-highest"] = {"opacity": 0}
+                    else:
+                        iconsts["bu-fan-"+v] = {"opacity": 1}
+                        iconsts["bu-fan-not-"+v] = {"opacity": 0}
             elif f == "swing":
-                if v not in ["auto", "auto high", "auto low", "90", "60", "45","30","15"]:
-                    v = "auto"
-                iconsts["bu-swing-"+v] = {"opacity": 1}
-                iconsts["bu-swing-not-"+v] = {"opacity": 0}
+                if not skipit:
+                    if v not in ["auto", "auto high", "auto low", "90", "60", "45","30","15"]:
+                        v = "auto"
+                    iconsts["bu-swing-"+v] = {"opacity": 1}
+                    iconsts["bu-swing-not-"+v] = {"opacity": 0}
             elif f == "temperature":
-                if float(v)>=100:
-                    v = float(v)/10
+                if not skipit:
+                    if float(v)>=100:
+                        v = float(v)/10
 
-                v = str(int(float(v)*10+0.5))
-                for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
-                    iconsts[s+d] = {"opacity": 1}
-                    iconsts[s+"not-"+d] = {"opacity": 0}
+                    v = str(int(float(v)*10+0.5))
+                    for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
+                        iconsts[s+d] = {"opacity": 1}
+                        iconsts[s+"not-"+d] = {"opacity": 0}
         if self.hvac.functions == []:
             xx= self.hvac.available_functions()
         for x in self.hvac.functions:
