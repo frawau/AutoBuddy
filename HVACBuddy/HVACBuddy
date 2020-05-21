@@ -253,8 +253,8 @@ def sendStatus(self):
                     iconsts["bu-auto"] = {"opacity": 0}
                     iconsts["bu-not-auto"] = {"opacity": 0}
                     for s in ["bu-tens-", "bu-naught-", "bu-deci-"]:
-                    iconsts[s+"0"] = {"opacity": 0}
-                    iconsts[s+"not-0"] = {"opacity": 1}
+                        iconsts[s+"0"] = {"opacity": 0}
+                        iconsts[s+"not-0"] = {"opacity": 1}
                 else:
                     iconsts["bu-"+v] = {"opacity": 1}
                     iconsts["bu-not-"+v] = {"opacity": 0}
