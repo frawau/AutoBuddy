@@ -141,13 +141,13 @@ class Daikin(HVAC):
                 mode = False
 
         mask = bytearray(b'\x00'*18)
-        if mode:
+        if mode == "on":
             mask[8] = 0xf0
         else:
             mask[8] = 0x00
         return mask, False
 
-    def set_powerfull(self,mode=False):
+    def set_powerfull(self,mode="off"):
         if "powerfull" not in self.capabilities:
             return
         if mode not in self.capabilities["powerfull"]:
@@ -169,7 +169,7 @@ class Daikin(HVAC):
             mask[13] = 0x80
         return mask, True
 
-    def set_comfort(self,mode=False):
+    def set_comfort(self,mode="off"):
         if "comfort" not in self.xtra_capabilities:
             return
         if mode not in self.xtra_capabilities["comfort"]:
@@ -258,14 +258,14 @@ class FTMPV2S(Daikin):
         self.capabilities = {"mode": ["off", "cool", "fan", "dry"],
                              "temperature": [x for x in range(18,32)],
                              "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
-                             "swing": [False, True],
-                             "powerfull": [False, True]
+                             "swing": ["off", "on"],
+                             "powerfull": ["off", "on"]
                              }
         self.status = {"mode": "cool",
                        "temperature": 25,
                        "fan": "auto",
-                       "swing": False,
-                       "powerfull": False}
+                       "swing": "off",
+                       "powerfull": "off"}
 
 
 

@@ -225,7 +225,7 @@ class Panasonic(HVAC):
 
         return b'\x00'
 
-    def set_purifier(self,mode=False):
+    def set_purifier(self,mode="off"):
         if "purifier" not in self.capabilities:
             return
         if mode not in self.capabilities["purifier"]:
@@ -242,12 +242,12 @@ class Panasonic(HVAC):
             else:
                 mode = None
 
-        if mode == True: # int values could cause a problem....
+        if mode == "on":
             return b'\x20'
         else:
             return b'\x00'
 
-    def set_odourwash(self,mode=False):
+    def set_odourwash(self,mode="off"):
         if "odourwash" not in self.xtra_capabilities:
             return
         if mode not in self.xtra_capabilities["odourwash"]:
@@ -263,7 +263,7 @@ class Panasonic(HVAC):
             frames += [FODOUR]
         return frames
 
-    def set_economy(self,mode=False):
+    def set_economy(self,mode="off"):
         if "economy" not in self.xtra_capabilities:
             return
         if mode not in self.xtra_capabilities["economy"]:
@@ -324,18 +324,18 @@ class PanaPX2T5(Panasonic):
                              "temperature": [x for x in range(16,32)],
                              "fan": ["auto", "highest", "medium", "lowest"],
                              "swing": ["auto", "auto high", "auto low", "90", "60", "45", "30"],
-                             "purifier": [False,True],
+                             "purifier": ["off","on"],
                              }
         #For functions that require their own frames
-        self.xtra_capabilities = {"economy": [False,True],
-                                  "odourwash": [False, True]}
+        self.xtra_capabilities = {"economy": ["off","on"],
+                                  "odourwash": ["off", "on"]}
         self.status = {"mode": "auto",
                        "temperature": 25,
                        "fan": "auto",
                        "swing": "auto",
-                        "purifier": False,
-                        "economy": False,
-                        "odourwash": False}
+                        "purifier": "off",
+                        "economy": "off",
+                        "odourwash": "off"}
 
 
 class PluginObject(object):

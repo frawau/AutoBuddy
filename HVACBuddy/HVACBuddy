@@ -131,6 +131,8 @@ def proxy_process(self, msg, type="autobuddy"):
                             else:
                                 val = v
                         try:
+                            if isinstance(val,str) and val.lower() in ["true","false"]:
+                                val = val.lower() == "true"
                             self.hvac.set_value(k,val)
                         except:
                             bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.hvac.model))
@@ -236,21 +238,31 @@ def sendStatus(self):
                  "bu-fan-highest":{"opacity": 0.5},
                  "bu-fan-not-highest":{"opacity": 0},
                  "bu-swing-auto":{"opacity": 0.5},
-                 "bu-swing-not-auto":{"opacity": 0}}
+                 "bu-swing-not-auto":{"opacity": 0},
+                 "bu-power":{"opacity": 1, "fill":"black"},}
     else:
         status["model"] = self.hvac.model
         iconsts={"bu-fill": {"fill":self.cssColour()}}
         for f,v in self.hvac.status.items():
             status[f] = v
             if f == "mode":
-                if v not in ["auto", "feel", "cool", "dry", "heat", "fan"]:
+                if v not in ["auto", "feel", "cool", "dry", "heat", "fan","off"]:
                     v = "auto"
-                iconsts["bu-"+v] = {"opacity": 1}
-                iconsts["bu-not-"+v] = {"opacity": 0}
+                if v == "off":
+                    iconsts["bu-power"] = {"fill": "black"}
+                    iconsts["bu-auto"] = {"opacity": 0}
+                    iconsts["bu-not-auto"] = {"opacity": 0}
+                    for s in ["bu-tens-", "bu-naught-", "bu-deci-"]:
+                    iconsts[s+"0"] = {"opacity": 0}
+                    iconsts[s+"not-0"] = {"opacity": 1}
+                else:
+                    iconsts["bu-"+v] = {"opacity": 1}
+                    iconsts["bu-not-"+v] = {"opacity": 0}
+                    iconsts["bu-power"] = {"fill": "blue"}
             elif f == "fan":
                 if v not in ["highest", "high", "medium","low","lowest"]:
                     iconsts["bu-fan-highest"] = {"opacity": 0.5}
-                    iconsts["bu-fan-not-hishest"] = {"opacity": 0}
+                    iconsts["bu-fan-not-highest"] = {"opacity": 0}
                 else:
                     iconsts["bu-fan-"+v] = {"opacity": 1}
                     iconsts["bu-fan-not-"+v] = {"opacity": 0}
@@ -781,7 +793,7 @@ iconstr = """
                   6.2 16.4 6.2 22.6 0l19.7-19.7V496c0 8.8 7.2 16 16 16h32c8.8 0 16-7.2 16-16v-40.4l19.7
                   19.7c6.2 6.2 16.4 6.2 22.6 0l11.3-11.3c6.2-6.2 6.2-16.4 0-22.6L256 387.7v-77.5l62.8
                   36.2 19 70.8c2.2 8.2 10.7 13.1 18.9 10.9l14.9-4c8.2-2.2 13.1-10.7 10.9-18.9l-7-26
-                  33.8 19.5c7.4 4.3 16.8 1.7 21.1-5.7l15.5-26.8c4.3-7.3 1.8-16.8-5.6-21z" opacity="1"/>
+                  33.8 19.5c7.4 4.3 16.8 1.7 21.1-5.7l15.5-26.8c4.3-7.3 1.8-16.8-5.6-21z" opacity="0"/>
         </g>
         <path class="bu-fan bu-not-cool bu-not-heat bu-not-auto bu-not-feel bu-not-dry"
                 d="M352.57 128c-28.09 0-54.09 4.52-77.06 12.86l12.41-123.11C289 7.31 279.81-1.18
@@ -830,6 +842,9 @@ iconstr = """
         <rect class="bu-swing-45 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-30 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-45, 246 75)" opacity="1" />
         <rect class="bu-swing-30 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-45 bu-swing-not-15" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-60, 246 75)" opacity="1" />
         <rect class="bu-swing-15 bu-swing-auto bu-swing-autohigh bu-swing-autolow bu-swing-not-90 bu-swing-not-75 bu-swing-not-60 bu-swing-not-45 bu-swing-not-30" x="90" y="70" width="130" height="10" style="fill:black;" transform="rotate(-75, 246 75)" opacity="1" />
+    </g>
+    <g class="bu-onoff" transform="translate(50,220) scale(0.25 0.25)" >
+        <path class="bu-power" d="M400 54.1c63 45 104 118.6 104 201.9 0 136.8-110.8 247.7-247.5 248C120 504.3 8.2 393 8 256.4 7.9 173.1 48.9 99.3 111.8 54.2c11.7-8.3 28-4.8 35 7.7L162.6 90c5.9 10.5 3.1 23.8-6.6 31-41.5 30.8-68 79.6-68 134.9-.1 92.3 74.5 168.1 168 168.1 91.6 0 168.6-74.2 168-169.1-.3-51.8-24.7-101.8-68.1-134-9.7-7.2-12.4-20.5-6.5-30.9l15.8-28.1c7-12.4 23.2-16.1 34.8-7.8zM296 264V24c0-13.3-10.7-24-24-24h-32c-13.3 0-24 10.7-24 24v240c0 13.3 10.7 24 24 24h32c13.3 0 24-10.7 24-24z"/>
     </g>
 </svg>
 """
@@ -995,7 +1010,7 @@ if __name__ == "__main__":
             proxy_commands += """\n<item label="{}" value="{}" />\n""".format(p.brand.title()+" "+m,p.brand+"||"+m)
             ac = p.factory(m)
             for x,v in ac.available_functions().items():
-                print("Adding for {} : {}".format(x,v))
+                #print("Adding for {} : {}".format(x,v))
                 lof[x] = v
             del(ac)
     proxy_commands += "</controlgroup>"
@@ -1015,10 +1030,10 @@ if __name__ == "__main__":
                     <end>{}</end>
                     <increment>1</increment>
                 </control>""".format(s,e)
-            elif len(lof[i]) == 2 and True in lof[i] and False in lof[i]:
+            elif len(lof[i]) == 2 and "on" in lof[i] and "off" in lof[i]:
                 h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
-                v = """<value label="On">true</value>
-                     <value label="Off">false</value>
+                v = """<value label="On">on</value>
+                     <value label="Off">off</value>
                 </control>"""
             elif len(lof[i]) == 2:
                 h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
