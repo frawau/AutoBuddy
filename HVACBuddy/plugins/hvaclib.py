@@ -54,6 +54,7 @@ class HVAC(object):
         self.xtra_capabilities = {}
         self.status = {"mode": "auto",
                        "temperature": 25}
+        self.temperature_step = 1.0
 
         self.to_set = {}
         #Specify wether the bits order has to be swapped
@@ -83,7 +84,7 @@ class HVAC(object):
             newname="buf-"+x+"-"
             if x == "temperature":
                 #Special hare, we got a range
-                newname += "%d"%v[0] +"|"+"%d"%v[-1]
+                newname += "%d"%v[0] +"|"+"%d"%v[-1]+"__"+"%d"%(self.temperature_step*10)
                 lof[newname] = None
             else:
                 lov = [str(y) for y in v]
@@ -108,8 +109,11 @@ class HVAC(object):
         return lof
 
     def update_status(self):
+        #print("From {}".format(self.status))
+        #print("With {}".format(self.to_set))
         for x,y in self.to_set.items():
             self.status[x] = y
+        #print("To {}".format(self.status))
         self.to_set = {}
 
     def build_ircode(self):
@@ -119,4 +123,7 @@ class HVAC(object):
             for f in frames:
                 newframes.append(bytearray([bit_reverse(x) for x in f]))
             frames = newframes
+        #print("Frame with msb {} are:".format(self.is_msb))
+        #for f in frames:
+            #print(["0x%02x"%x for x in f])
         return frames
