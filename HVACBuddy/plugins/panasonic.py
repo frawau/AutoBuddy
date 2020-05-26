@@ -3,7 +3,7 @@
 #
 # Plugin to generate Panasonic AC IR commands
 #
-# This module without the work/code from:
+# This module is in part based on the work/code from:
 #      Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
 #      mat_fr     https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
 #      user two, mathieu, vincent
@@ -87,7 +87,6 @@ class Panasonic(HVAC):
             temp = self.capabilities["temperature"][0]
         elif temp > self.capabilities["temperature"][-1]:
             temp = self.capabilities["temperature"][-1]
-            temp = 27
         self.to_set["temperature"] = temp
 
     def code_temperature(self):

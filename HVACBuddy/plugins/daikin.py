@@ -3,7 +3,7 @@
 #
 # Plugin to generate Daikin AC IR commands as done by the ARC480A44
 #
-# This module without the work/code from:
+# This module  is in part based on the work/code from:
 #      Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
 #      mat_fr     https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
 #
@@ -83,7 +83,6 @@ class Daikin(HVAC):
             temp = self.capabilities["temperature"][0]
         elif temp > self.capabilities["temperature"][-1]:
             temp = self.capabilities["temperature"][-1]
-            temp = 27
         self.to_set["temperature"] = temp
 
     def code_temperature(self):
@@ -148,6 +147,7 @@ class Daikin(HVAC):
         return mask, False
 
     def set_powerfull(self,mode="off"):
+        #print("\n\nDaikin set powerfull {}\n\n".format(mode))
         if "powerfull" not in self.capabilities:
             return
         if mode not in self.capabilities["powerfull"]:
@@ -200,8 +200,18 @@ class Daikin(HVAC):
 
         mask = bytearray(b'\x00'*18)
         if mode == "off":
-            mask[5] = 0x0c
             mask[16] = 0x02
+            cmode = self.status["mode"]
+            if cmode == "off":
+                mask[5] = 0x0c
+            elif cmode == "dry":
+                mask[5] = 0x04
+            elif cmode == "fan":
+                mask[5] = 0x06
+            elif cmode == "heat":
+                mask[5] = 0x02
+            elif cmode == "auto":
+                mask[5] = 0x00
         elif mode == "dry":
             mask[5] = 0x84
             mask[6] = 0x03
@@ -261,7 +271,7 @@ class FTMPV2S(Daikin):
                              "swing": ["off", "on"],
                              "powerfull": ["off", "on"]
                              }
-        self.status = {"mode": "cool",
+        self.status = {"mode": "off",
                        "temperature": 25,
                        "fan": "auto",
                        "swing": "off",

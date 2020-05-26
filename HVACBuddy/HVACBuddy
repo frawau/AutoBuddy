@@ -117,6 +117,7 @@ def proxy_process(self, msg, type="autobuddy"):
         elif msg["content"]["command"] == "action":
             if "value" in msg["content"]:
                 mvalue = msg["content"]["value"]
+                #print("\n\n\nSetting things as {} fpr {}\n\n\n".format(mvalue,self.name))
                 if 'selectmodel' in mvalue:
                     hdef = mvalue['selectmodel']['bu-cvalue']
                     self.hvac = bridgectl.get_hvac(hdef)
@@ -125,17 +126,17 @@ def proxy_process(self, msg, type="autobuddy"):
                     lokv = [(k,v) for k,v in mvalue.items()]
                     lokv.sort(key=lambda x: (x[0]=="mode" and "zzzzzz" or  x[0])) #Make sure mode is done last
                     for k,v in lokv:
-                        if k in self.hvac.capabilities:
+                        if k in self.hvac.capabilities or k in self.hvac.xtra_capabilities:
                             if isinstance(v,dict) and 'bu-cvalue' in v:
                                 val = v['bu-cvalue']
                             else:
                                 val = v
-                        try:
-                            if isinstance(val,str) and val.lower() in ["true","false"]:
-                                val = val.lower() == "true"
-                            self.hvac.set_value(k,val)
-                        except:
-                            bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.hvac.model))
+                            try:
+                                if isinstance(val,str) and val.lower() in ["true","false"]:
+                                    val = val.lower() == "true"
+                                self.hvac.set_value(k,val)
+                            except:
+                                bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.name))
 
                     frames = self.hvac.build_ircode()
                     val=[]
@@ -565,8 +566,8 @@ class HVACBridge(bl.BuddyBridge):
                                 del(self.proxy_config["gateway"][hvac.name])
                                 del(self.proxy_config["model"][hvac.name])
                             break
-                        sidx += 1
 
+                        sidx += 1
                     if doremove:
                         del self.devices[sidx]
                         self.save_config()
@@ -734,7 +735,7 @@ iconstr = """
         <g transform="translate(-60 0)" >
             <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-5 bu-tens-6 bu-tens-7 bu-tens-8 bu-tens-9"
             d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1"/>
-            <path class="bu-fill bu-tens-not-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-not-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
+            <path class="bu-fill bu-tens-not-0 bu-tens-not-1 bu-tens-2 bu-tens-3 bu-tens-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-not-9"
             d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0"/>
             <path class="bu-fill bu-tens-0 bu-tens-not-1 bu-tens-not-2 bu-tens-not-3 bu-tens-4 bu-tens-5 bu-tens-6 bu-tens-not-7 bu-tens-8 bu-tens-9"
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
@@ -750,7 +751,7 @@ iconstr = """
         <g transform="translate(80 0)" >
             <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-5 bu-naught-6 bu-naught-7 bu-naught-8 bu-naught-9"
             d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1" />
-            <path class="bu-fill bu-naught-not-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-not-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
+            <path class="bu-fill bu-naught-not-0 bu-naught-not-1 bu-naught-2 bu-naught-3 bu-naught-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-not-9"
             d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0" />
             <path class="bu-fill bu-naught-0 bu-naught-not-1 bu-naught-not-2 bu-naught-not-3 bu-naught-4 bu-naught-5 bu-naught-6 bu-naught-not-7 bu-naught-8 bu-naught-9"
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1"  />
@@ -769,7 +770,7 @@ iconstr = """
         <g transform="translate(290 120) scale(0.5 0.5)" >
             <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-5 bu-deci-6 bu-deci-7 bu-deci-8 bu-deci-9"
             d="M 190.79731,72.5 L 175.58534,88 L 116.58535,88 L 101.06756,72.5 L 116.58535,57 L 175.58534,57 L 190.79731,72.5 z" opacity="1"/>
-            <path class="bu-fill bu-deci-not-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-not-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
+            <path class="bu-fill bu-deci-not-0 bu-deci-not-1 bu-deci-2 bu-deci-3 bu-deci-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-not-9"
             d="M 190.79731,154 L 175.58534,169.5 L 116.58535,169.5 L 101.06756,154 L 116.58535,138.5 L 175.58534,138.5 L 190.79731,154 z" opacity="0"/>
             <path class="bu-fill bu-deci-0 bu-deci-not-1 bu-deci-not-2 bu-deci-not-3 bu-deci-4 bu-deci-5 bu-deci-6 bu-deci-not-7 bu-deci-8 bu-deci-9"
             d="M 98,75.38513 L 113.5,90.59709 L 113.5,135.59708 L 98,151.11487 L 82.5,135.59708 L 82.5,90.59709 L 98,75.38513 z" opacity="1" />
@@ -1024,7 +1025,12 @@ if __name__ == "__main__":
                 lof[x] = v
             del(ac)
     proxy_commands += "</controlgroup>"
-    #Now let's generate the xmln
+    #Now let's generate the xml
+    mode_xml = ""
+    temp_xml = ""
+    fan_xml = ""
+    swing_xml = ""
+    other_xml = ""
     lofn = [x for x in lof.keys()]
     for i in lofn:
         if i in inserted_xml:
@@ -1035,11 +1041,12 @@ if __name__ == "__main__":
             if f == "temperature":
                 h = '<control type="slider" name="{}" label="{}" onlyif="{}::yes">'
                 s, e = k.split("|")
+                e, step = e.split("__")
                 v = """
                     <start>{}</start>
                     <end>{}</end>
-                    <increment>1</increment>
-                </control>""".format(s,e)
+                    <increment>{}</increment>
+                </control>""".format(s,e,int(step)/10)
             elif len(lof[i]) == 2 and "on" in lof[i] and "off" in lof[i]:
                 h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
                 v = """<value label="On">on</value>
@@ -1059,14 +1066,32 @@ if __name__ == "__main__":
             generated_xml[k] = (h,v)
 
         h, v  = generated_xml[k]
-        proxy_commands += "\n" + h.format(f,f.title(),i) + "\n" + v
+        if f == "mode":
+            mode_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+        elif f == "temperature":
+            temp_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+        elif f == "fan":
+            fan_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+        elif f == "swing":
+            swing_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+        else:
+            other_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
         inserted_xml.add(i)
 
-    proxy_commands += proxy_command_end
+    proxy_commands += mode_xml + "\n" + \
+                        temp_xml + "\n" + \
+                            fan_xml + "\n" + \
+                                swing_xml + "\n" + \
+                                    other_xml + proxy_command_end
     #Clean up
     del(inserted_xml)
     del(generated_xml)
     del(lofn)
+    del(mode_xml)
+    del(temp_xml)
+    del(fan_xml)
+    del(swing_xml)
+    del(other_xml)
 
 
     loop = aio.get_event_loop()
