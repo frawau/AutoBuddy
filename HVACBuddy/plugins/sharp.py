@@ -27,7 +27,6 @@
 ##
 
 import struct
-from hashlib import blake2b
 
 try:
     from .hvaclib import HVAC

@@ -81,7 +81,8 @@ class LG(HVAC):
             temp = self.capabilities["temperature"][0]
         elif temp > self.capabilities["temperature"][-1]:
             temp = self.capabilities["temperature"][-1]
-        self.to_set["temperature"] = temp
+        if temp != self.status["temperature"]:
+            self.to_set["temperature"] = temp
 
     def code_temperature(self):
         if "temperature" in self.to_set:
@@ -170,11 +171,51 @@ class LG(HVAC):
                 return bytearray(b'\x88\x13\x14')
             elif mode == "off":
                 return bytearray(b'\x88\x13\x15')
+            elif mode == "0":
+                return bytearray(b'\x88\x13\x04')
+            elif mode == "15":
+                return bytearray(b'\x88\x13\x05')
+            elif mode == "30":
+                return bytearray(b'\x88\x13\x06')
+            elif mode == "45":
+                return bytearray(b'\x88\x13\x07')
+            elif mode == "60":
+                return bytearray(b'\x88\x13\x08')
             elif mode == "90":
                 return bytearray(b'\x88\x13\x09')
-            elif mode == "30":
-                return bytearray(b'\x88\x13\x04')
 
+        return bytearray()
+
+    def set_hswing(self, mode):
+        if "hswing" not in self.xtra_capabilities:
+            return
+        if mode not in self.xtra_capabilities["hswing"]:
+            return
+        if self.status["hswing"] != mode:
+            self.to_set["hswing"] = mode
+
+    def code_hswing(self):
+        if "hswing" in self.to_set:
+            mode = self.to_set["hswing"]
+
+            if mode in ["swing","on"]:
+                return bytearray(b'\x88\x13\x16')
+            elif mode == "off":
+                return bytearray(b'\x88\x13\x17')
+            elif mode == "left":
+                return bytearray(b'\x88\x13\x0b')
+            elif mode == "centre left":
+                return bytearray(b'\x88\x13\x0c')
+            elif mode == "centre":
+                return bytearray(b'\x88\x13\x0d')
+            elif mode == "centre right":
+                return bytearray(b'\x88\x13\x0e')
+            elif mode == "right":
+                return bytearray(b'\x88\x13\x0f')
+            elif mode == "swing left":
+                return bytearray(b'\x88\x13\x10')
+            elif mode == "swing right":
+                return bytearray(b'\x88\x13\x11')
         return bytearray()
 
     def set_powerfull(self,mode="off"):
@@ -264,6 +305,21 @@ class LG(HVAC):
 
         return bytearray()
 
+    def set_diagnostic(self):
+        if "diagnostic" not in self.xtra_capabilities:
+            return
+        if mode not in self.xtra_capabilities["diagnostic"]:
+            return
+        if self.status["diagnostic"] != mode:
+            self.to_set["diagnostic"] = mode
+
+    def code_cleaning(self):
+        if "diagnostic" in self.to_set:
+            mode = self.to_set["diagnostic"]
+            self.to_set["diagnostic"] = "off" #It is a request, not a toggle
+            if mode == "on":
+                return bytearray(b'\x88\xc0\xce')
+
     def set_mode(self,mode):
         if mode not in self.capabilities["mode"]:
             mode = "cool"
@@ -309,13 +365,18 @@ class LG(HVAC):
                 else:
                     packet = bytearray([x | y for x,y in zip(packet,mask)])
             frames += [packet]
-
-        for prop in self.xtra_capabilities:
-                #print("Looking at {} with {} and {}".format(prop,self.to_set,self.status))
-                if prop in self.to_set and self.to_set[prop] != self.status[prop]:
-                    f = getattr(self,"code_"+prop,None)
-                    if f:
-                        frames.append(f())
+        if "mode" in self.to_set:
+            mode = self.to_set["mode"]
+        else:
+            mode = self.status["mode"]
+        if mode != "off":
+            print("Mode is {} from {}".format(mode,self.to_set))
+            for prop in self.xtra_capabilities:
+                    #print("Looking at {} with {} and {}".format(prop,self.to_set,self.status))
+                    if prop in self.to_set and self.to_set[prop] != self.status[prop]:
+                        f = getattr(self,"code_"+prop,None)
+                        if f:
+                            frames.append(f())
         return frames
 
     def _build_ircode(self):
@@ -355,7 +416,7 @@ class AKB745(LG):
                              "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
                              }
         self.xtra_capabilities = {
-                             "swing": ["off", "swing", "90","30"],
+                             "swing": ["off", "swing", "90","0"],
                              "powerfull": ["off", "on"],
                              "purifier":["off", "on"],
                              "cleaning":["off", "on"],
@@ -372,12 +433,42 @@ class AKB745(LG):
                        "economy": "off"}
 
 
+class AKB745B(LG):
+
+    def __init__(self):
+        super().__init__()
+        self.model = "AKB745B"
+        self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
+                             "temperature": [x for x in range(16,30)],
+                             "auto_bias": [ "-2","-1","default", "+1", "+2"],
+                             "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
+                             }
+        self.xtra_capabilities = {
+                             "swing": ["off", "swing", "90","60","45","30","15","0"],
+                             "hswing": ["off", "swing", "left","centre left","centre","centre right","right","swing left","swing right"],
+                             "powerfull": ["off", "on"],
+                             "purifier":["off", "on"],
+                             "cleaning":["off", "on"],
+                             "economy":["off", "80", "60","40"],
+                             "diagnostic": ["off", "on"],
+                             }
+        self.status = {"mode": "off",
+                       "temperature": 25,
+                       "fan": "auto",
+                       "swing": "off",
+                       "auto_bias": "default",
+                       "powerfull": "off",
+                       "purifier": "off",
+                       "cleaning": "off",
+                       "economy": "off",
+                       "diagnostic": "off"}
+
 
 class PluginObject(object):
 
     def __init__(self):
         self.brand = "LG"
-        self.models = ["generic",  "AKB745"]
+        self.models = ["generic", "AKB745", "AKB745B"]
 
     def factory(self, model):
         if model not in self.models:
@@ -387,6 +478,8 @@ class PluginObject(object):
             return LG()
         elif model == "AKB745":
             return AKB745()
+        elif model == "AKB745B":
+            return AKB745B()
 
 
 
@@ -446,7 +539,7 @@ if __name__ == '__main__':
                         help="Mode to set. (default 'cool').")
     parser.add_argument("-f", "--fan",   choices=['auto','highest','high','middle','low','lowest'] , default='auto',
                         help="Fan mode. (default 'auto').")
-    parser.add_argument("-s", "--swing",   choices=['off','swing','90','30'] , default='off',
+    parser.add_argument("-s", "--swing",   choices=['off','swing','90','0'] , default='off',
                         help="Swing mode. (default 'off').")
     parser.add_argument("-e", "--economy",   choices=['off','80','60','40'] , default='off',
                         help="Economy mode. (default 'off').")
@@ -473,10 +566,10 @@ if __name__ == '__main__':
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
-    device.set_powerfull(opts.powerfull)
+    device.set_powerfull((opts.powerfull and "on") or "off")
     device.set_auto_bias(opts.bias)
     device.set_economy(opts.economy)
-    device.set_purifier(opts.purifier)
+    device.set_purifier((opts.purifier and "on") or "off")
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()

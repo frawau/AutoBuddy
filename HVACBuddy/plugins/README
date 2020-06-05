@@ -29,7 +29,7 @@ of function names occur. In most cases an AC unit will have the following
 
     mode: the operating mode. Values are expected to be amongst
           "off"   turned off (This is mandatory)
-          "auto"  automatic mode sometines known as "feel", ...
+          "auto"  automatic mode sometines known as "feel", "ai", ...
           "cool"  Cooling
           "heat"  Heating
           "dry"   dehumidifying
@@ -39,6 +39,10 @@ of function names occur. In most cases an AC unit will have the following
                   are 2 distinct ranges for cooling or heating,
                   the union should be used here.
 
+                  The attribute 'temperature_step' can be used to
+                  specify fractioanl temperature e.g. 0.5, 0.1
+
+
     fan: The air flow power. Values are expecterd to be amongst
            "auto"   Automatic mode
            lowest   The lowest air flow setting
@@ -47,13 +51,14 @@ of function names occur. In most cases an AC unit will have the following
            high
            highest
 
-           When there are only 3 modes, highest, medium and lowest should be used
+           When there are only 3 modes, highest, medium and lowest should be used if possible
 
     swing: The use of the vertical orientation of the air flow..
-            It can be a switch on/off (values False and True) or more complex
+            It can be a switch on/off (values 'off' and 'on') or more complex
 
             auto  automatic (in many cases similar to the on/off switch function)
             90    Horizontal orientation
+            75
             60
             45
             30
@@ -63,6 +68,6 @@ of function names occur. In most cases an AC unit will have the following
 Many other functions are possible, but still some canonization is recommended.
 
 For instance, many manufactures trademarked their air purifying techonlogy: nanoe, nanoex (Panasonic),
-plasmacluster (Sharp),.... In this case it is recommended to use the name "purifier" fore that functionm
+plasmacluster (Sharp), plasma (LG).... In this case it is recommended to use the name "purifier" for that functionm
 
 TO BE CONTINUED
