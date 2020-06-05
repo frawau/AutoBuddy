@@ -175,7 +175,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                         "." +
                                         self.name,
                                         "value":"online",
-                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
+                                        "icon status": {"bu-not-present": {"opacity": "0"}}}})
 
                 self.initialized = True
             self.sendInfo()
@@ -228,19 +228,19 @@ def sendStatus(self):
         status["model"] = "notset"
         status["temperature"] = 0
         iconsts={"bu-fill": {"fill":self.cssColour()},
-                 "bu-tens-0":{"opacity": 0},
-                 "bu-tens-not-0":{"opacity": 1, "fill":self.cssColour()},
-                 "bu-naught-0":{"opacity": 0},
-                 "bu-naught-not-0":{"opacity": 1, "fill":self.cssColour()},
-                 "bu-deci-0":{"opacity": 0},
-                 "bu-deci-not-0":{"opacity": 1, "fill":self.cssColour()},
-                 "bu-auto":{"opacity": 0.5},
-                 "bu-not-auto":{"opacity": 0},
-                 "bu-fan-highest":{"opacity": 0.5},
-                 "bu-fan-not-highest":{"opacity": 0},
-                 "bu-swing-auto":{"opacity": 0.5},
-                 "bu-swing-not-auto":{"opacity": 0},
-                 "bu-power":{"opacity": 1, "fill":"black"},}
+                 "bu-tens-0":{"opacity": "0"},
+                 "bu-tens-not-0":{"opacity": "1", "fill":self.cssColour()},
+                 "bu-naught-0":{"opacity": "0"},
+                 "bu-naught-not-0":{"opacity": "1", "fill":self.cssColour()},
+                 "bu-deci-0":{"opacity": "0"},
+                 "bu-deci-not-0":{"opacity": "1", "fill":self.cssColour()},
+                 "bu-auto":{"opacity": "0.5"},
+                 "bu-not-auto":{"opacity": "0"},
+                 "bu-fan-highest":{"opacity": "0.5"},
+                 "bu-fan-not-highest":{"opacity": "0"},
+                 "bu-swing-auto":{"opacity": "0.5"},
+                 "bu-swing-not-auto":{"opacity": "0"},
+                 "bu-power":{"opacity": "1", "fill":"black"},}
     else:
         status["model"] = self.hvac.model
         iconsts={"bu-fill": {"fill":self.cssColour()}}
@@ -252,35 +252,35 @@ def sendStatus(self):
                     v = "auto"
                 if v == "off":
                     iconsts["bu-power"] = {"fill": "black"}
-                    iconsts["bu-auto"] = {"opacity": 0}
-                    iconsts["bu-not-auto"] = {"opacity": 0}
-                    iconsts["bu-auto"] = {"opacity": 0.3},
-                    iconsts["bu-not-auto"] = {"opacity": 0},
-                    iconsts["bu-fan-highest"] = {"opacity": 0.3},
-                    iconsts["bu-fan-not-highest"] = {"opacity": 0},
-                    iconsts["bu-swing-auto"] = {"opacity": 0.3},
-                    iconsts["bu-swing-not-auto"] = {"opacity": 0},
+                    iconsts["bu-auto"] = {"opacity": "0"}
+                    iconsts["bu-not-auto"] = {"opacity": "0"}
+                    iconsts["bu-auto"] = {"opacity": "0.3"},
+                    iconsts["bu-not-auto"] = {"opacity": "0"},
+                    iconsts["bu-fan-highest"] = {"opacity": "0.3"},
+                    iconsts["bu-fan-not-highest"] = {"opacity": "0"},
+                    iconsts["bu-swing-auto"] = {"opacity": "0.3"},
+                    iconsts["bu-swing-not-auto"] = {"opacity": "0"},
                     for s in ["bu-tens-", "bu-naught-", "bu-deci-"]:
-                        iconsts[s+"0"] = {"opacity": 0}
-                        iconsts[s+"not-0"] = {"opacity": 1}
+                        iconsts[s+"0"] = {"opacity": "0"}
+                        iconsts[s+"not-0"] = {"opacity": "1"}
                 else:
-                    iconsts["bu-"+v] = {"opacity": 1}
-                    iconsts["bu-not-"+v] = {"opacity": 0}
+                    iconsts["bu-"+v] = {"opacity": "1"}
+                    iconsts["bu-not-"+v] = {"opacity": "0"}
                     iconsts["bu-power"] = {"fill": "blue"}
             elif f == "fan":
                 if not skipit:
                     if v not in ["highest", "high", "medium","low","lowest"]:
-                        iconsts["bu-fan-highest"] = {"opacity": 0.5}
-                        iconsts["bu-fan-not-highest"] = {"opacity": 0}
+                        iconsts["bu-fan-highest"] = {"opacity": "0.5"}
+                        iconsts["bu-fan-not-highest"] = {"opacity": "0"}
                     else:
-                        iconsts["bu-fan-"+v] = {"opacity": 1}
-                        iconsts["bu-fan-not-"+v] = {"opacity": 0}
+                        iconsts["bu-fan-"+v] = {"opacity": "1"}
+                        iconsts["bu-fan-not-"+v] = {"opacity": "0"}
             elif f == "swing":
                 if not skipit:
                     if v not in ["auto", "auto high", "auto low", "90", "60", "45","30","15"]:
                         v = "auto"
-                    iconsts["bu-swing-"+v] = {"opacity": 1}
-                    iconsts["bu-swing-not-"+v] = {"opacity": 0}
+                    iconsts["bu-swing-"+v] = {"opacity": "1"}
+                    iconsts["bu-swing-not-"+v] = {"opacity": "0"}
             elif f == "temperature":
                 if not skipit:
                     if float(v)>=100:
@@ -288,8 +288,8 @@ def sendStatus(self):
 
                     v = str(int(float(v)*10+0.5))
                     for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
-                        iconsts[s+d] = {"opacity": 1}
-                        iconsts[s+"not-"+d] = {"opacity": 0}
+                        iconsts[s+d] = {"opacity": "1"}
+                        iconsts[s+"not-"+d] = {"opacity": "0"}
         if self.hvac.functions == []:
             xx= self.hvac.available_functions()
         for x in self.hvac.functions:
@@ -447,7 +447,7 @@ class HVACBridge(bl.BuddyBridge):
                                                 "." +
                                                 dev.name,
                                                 "value": "online",
-                                                "icon status": {"bu-fill": {"fill":dev.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                                                "icon status": {"bu-fill": {"fill":dev.cssColour()}, "bu-not-present": {"opacity": "0"}}}})
 
         elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             if msg["content"]["configuration"]:
@@ -509,7 +509,7 @@ class HVACBridge(bl.BuddyBridge):
                                                   "." +
                                                   hvac.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":hvac.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                                                  "icon status": {"bu-fill": {"fill":hvac.cssColour()}, "bu-not-present": {"opacity": "0"}}}})
                         self.sending({"subject": "control" + "." + self.subtype,
                               "content_type": "request",
                               "content": {"request": "save configuration",
@@ -528,7 +528,7 @@ class HVACBridge(bl.BuddyBridge):
                                               hvac.name,
                                               "value": "offline",
                                               "icon status": {"bu-fill": {"fill":hvac.cssColour()},
-                                                              "bu-not-present": {"opacity": 1}}}})
+                                                              "bu-not-present": {"opacity": "1"}}}})
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
@@ -666,7 +666,7 @@ class HVACBridge(bl.BuddyBridge):
                                                 "." +
                                                 proxy.name,
                                                 "value": "online",
-                                                "icon status": {"bu-not-present": {"opacity": 0}}}})
+                                                "icon status": {"bu-not-present": {"opacity": "0"}}}})
 
         else:
             for aproxy in loproxy:
@@ -695,7 +695,7 @@ class HVACBridge(bl.BuddyBridge):
                                                   "." +
                                                   hvac.name,
                                                   "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                                                  "icon status": {"bu-not-present": {"opacity": "1"}}}})
                 except:
                     pass
 
