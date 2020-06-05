@@ -28,7 +28,6 @@
 ##
 
 import struct
-from hashlib import blake2b
 
 try:
     from .hvaclib import HVAC
@@ -352,7 +351,7 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--fan",   choices=['auto','highest','high','middle','low','lowest'] , default='auto',
                         help="Fan mode. (default 'auto').")
     parser.add_argument("-s", "--swing", action="store_true", default=False,
-                        help="Set sawing")
+                        help="Set swing")
     parser.add_argument("-p", "--powerfull", action="store_true", default=False,
                         help="Set powerfull")
     parser.add_argument("-l", "--lirc", action="store_true", default=False,

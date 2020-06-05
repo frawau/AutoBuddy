@@ -107,6 +107,8 @@ def to_lirc(frames,timing):
                 else:
                     lircframe.append(timing["space 0"])
                 idx >>= 1
+        if "drop_bits" in timing:
+            lircframe = lircframe[:-2*timing["drop_bits"]]  #Each bit is a pulse and a space
         lircframe += timing["end frame"]
     return lircframe
 
