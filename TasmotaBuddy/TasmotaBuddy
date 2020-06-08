@@ -1,0 +1,927 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application is simply a bridge application for switches
+# using the Tasmota firmware
+#
+# Copyright (c) 2018 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import argparse
+import sys
+import traceback
+import json
+import logging
+import os
+import ssl
+#import colorsys
+import buddylib as bl
+import asyncio as aio
+from functools import partial
+from hbmqtt.client import MQTTClient, ClientException
+
+SUBTYPE = "tasmota"
+CERTFILE = "autobuddy.crt"
+__version__ = "0.10"
+
+INFIX="-bis-"
+PREINFIX="-"
+
+def intround(x):
+    return int(round(x))
+
+#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+tasmota_commands = """
+<buddyui version="0.1">
+    <command  name="tasmota">
+        <controlgroup type="list" name="power" label="Power" rteffect="1">
+        <control type="switch" name="power" label="Power" rteffect="1">
+            <value label="On">on</value>
+            <value label="Off">off</value>
+        </control>
+        </controlgroup>
+    </command>
+</buddyui>
+"""
+
+tasmota_config = """
+<buddyui version="0.1">
+    <configuration  name="tasmota">
+        <controlgroup type="list"  name="credential" label="Credentials">
+            <control name="user" label="User" type="text" length="32" />
+            <control name="password" label="Password" type="text" length="32" />
+        </controlgroup>
+        <controlgroup type="listmaker"  name="relay" label="Relay Use">
+            <control name="label" label="Label" type="text" length="16" />
+            <control name="entity" expand="device::switch::tasmota" label="Tasmota Device" type="text" length="16" />
+
+            <controlgroup type="choice" name="relay" label="Use Relay?">
+                <item value="yes" label="Yes use the relay." />
+                <item value="no" label="Do not use the relay." >
+                    <control type="switch" name="state" label="Relay State" rteffect="1">
+                        <value label="On">on</value>
+                        <value label="Off">off</value>
+                    </control>
+                </item>
+            </controlgroup>
+        </controlgroup>
+    </configuration>
+</buddyui>
+"""
+tasmota_config_default = {"credential":{"user":"","password":""},"relay":[]}
+
+
+
+def cssColour(switch):
+    try:
+        if switch.software_switch:
+            lorelay = {}
+            for x in switch.controller.tasmota_config["relay"]:
+                lorelay[x["entity"]["bu-cvalue"].replace(switch.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
+            return (lorelay[switch.name]['state'] and "#500ce8") or 'transparent'
+        else:
+            return (switch.power and "#500ce8") or 'transparent'
+    except Exception as e:
+        print("\n\n\nTasmota : Error {}\n\n\n".format(e))
+    return "#500ce8"
+    #return'#%02x%02x%02x' % tuple([int((x * 255) + 0.5) for x in colorsys.hsv_to_rgb(tasmota_config_default["colour"]["hue"] / 360.0,
+                                                                                     #tasmota_config_default[
+                                                                                     #"colour"][
+        #"saturation"] / 100.0,
+        #tasmota_config_default["colour"]["value"] / 100.0)])
+
+
+def tasmota_process(self, msg, type="autobuddy"):
+    if type == "autobuddy":
+        if msg["content"]["command"] == "nickname":
+            # print msg
+            self.nickname = msg["content"]["value"]
+            self.controller.sending(
+                {"subject": "control" + "." + self.controller.type,
+                    "content_type": "request",
+                    "content": {"request": "nickname",
+                                "target": self.controller.type + "." + self.name,
+                                #"token": self.controller.target,
+                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+        elif msg["content"]["command"] == "status":
+            # Not gone the way of the dodo
+            try:
+                self.controller.sending({"subject": self.controller.type,
+                                        "content_type": "event",
+                                        "content": {"event": "status",
+                                                    "target": self.controller.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status":
+                                                    {"bu-fill": {"fill": cssColour(self)}, "bu-not-present": {
+                                                    "opacity": 0}},
+                                                    "value": {"power":{"power":self.power and "on" or "off"}}}})
+            except: #Most probably is known but we lost pairing
+                pass
+        elif msg["content"]["command"] == "deletion":
+            try:
+                self.controller.sending(
+                    {"subject": "control" + "." + self.controller.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": self.controller.type,
+                                    "value": self.name}})
+            except:
+                #Deleting non active devices
+                bridgectl.sending(
+                    {"subject": "control" + "." + bridgectl.type,
+                        "content_type": "request",
+                        "content": {"request": "deletion",
+                                    "target": bridgectl.type,
+                                    "value": self.name}})
+
+        elif msg["content"]["command"] == "power":
+            self.power = msg["content"]["value"]["power"].lower() == "on"
+            if not self.software_switch:
+                aio.ensure_future((self.controller.mqtt_client.publish(
+                    self.controller.config['mqttprefix']+"cmnd/"+self.name.split("_")[0].replace(INFIX,PREINFIX)+"/POWER"+self.name.split("_")[-1],
+                    self.power and b"ON" or b"OFF")))
+            bridgectl.sending({"subject": msg["subject"],
+                            "content_type": "event",
+                            "content": {"event": "power",
+                                        "target": msg["subject"],
+                                        "value": msg["content"]["value"]}})
+        return None
+    else:
+        if msg["name"] != self.name.split("_")[0]:
+            return False
+        sidx=self.name.split("_")[-1]
+        try:
+            if msg["type"] == "tele":
+                if msg["command"] in ["STATE", "INFO1", "INFO2", "INFO3"]:
+                    if sidx == "1":
+                        loval=[("Module","Module"),("Version","Version"),("Uptime","Up Time"),("Vcc","Voltage"),("POWER"+sidx,"Relay Power"),("RestartReason", "Last restart"),
+                               ("POWER","Relay Power"),("Wifi:SSId","SSID"),("Wifi:APMac","AP Mac Address"),("IPAddress","IP Address")]
+                    else:
+                        loval=[("Module","Module"),("Version","Version"),("Uptime","Up Time"),("Vcc","Voltage"),("POWER"+sidx,"Relay Power")
+                               ,("Wifi:SSId","SSID"),("Wifi:APMac","AP Mac Address"),("IPAddress","IP Address")]
+                    for x,y in loval:
+                        try:
+                            if x.split(":")[0] in msg["value"]:
+                                if ":" in x:
+                                    tmpx=msg["value"]
+                                    for z in x.split(":")[:-1]:
+                                        tmpx=tmpx[z]
+
+                                    self.info[y] = tmpx[x.split(":")[-1]]
+                                else:
+                                    self.info[y] = msg["value"][x]
+                        except:
+                            pass
+
+
+
+                    tsmsg=""
+                    prefix="<div><dl class=\"dl-horizontal\">"
+                    powerdone = False
+                    for x  in [x for y,x in loval]:
+                        if x in self.info:
+                            if x == "Relay Power":
+                                if powerdone:
+                                    continue
+                                powerdone = True
+                            tsmsg+=prefix+"<dt>"+x+":</dt><dd>"+str(self.info[x])+"</dd>"
+                            prefix=""
+                    if tsmsg:
+                        tsmsg+="</dl></div>"
+                        self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "info",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "value": tsmsg }})
+
+                elif msg["command"]=="LWT" and msg["value"]=="Offline":
+                    self.present = False
+                    self.controller.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.controller.type +
+                                                  "." +
+                                                  self.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-fill": {"fill": cssColour(self)}, "bu-not-present": {"opacity": 1}}}})
+
+            elif msg["type"] == "cmnd":
+                if msg["command"].startswith("POWER") and self.name.split("_")[-1] == "".join(filter(str.isdigit,msg["command"])):
+                    self.power= not self.power
+                    if not self.software_switch:
+                        aio.ensure_future((self.controller.mqtt_client.publish(
+                            self.controller.config['mqttprefix']+"cmnd/"+msg["name"]+"/POWER"+self.name.split("_")[-1],
+                            self.power and b"ON" or b"OFF")))
+                    self.controller.sending({"subject": self.controller.type,
+                        "content_type": "event",
+                        "content": {"event": "power",
+                                    "target": self.controller.type +
+                                    "." +
+                                    self.name,
+                                    "value": {"power": self.power and "on" or "off" }}})
+                    self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"fill": cssColour(self)}, "bu-not-present": {
+                                                "opacity": 0}},
+                                                "value": {"power": {"power": self.power and "on" or "off"}}}})
+
+            elif msg["type"] == "stat":
+                if msg["command"] == "POWER"+self.name.split("_")[-1] and not self.software_switch:
+                    self.power = msg["value"]=="ON"
+                    self.controller.sending({"subject": self.controller.type,
+                                    "content_type": "event",
+                                    "content": {"event": "status",
+                                                "target": self.controller.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":
+                                                {"bu-fill": {"fill": cssColour(self)}, "bu-not-present": {
+                                                "opacity": 0}},
+                                                "value": {"power":{"power":self.power and "on" or "off"}}}})
+                pass
+        except Exception as e:
+            try:
+                self.controller.log.warning(
+                    "Bloody process problem",
+                    exc_info=(type(e),
+                              e,
+                              e.__traceback__))
+            except:
+                print("Oops")
+
+        return True
+
+
+
+
+# Hop we go....
+bl.switch._process = tasmota_process
+
+
+class TasmotaBridge(bl.BuddyBridge):
+
+    """
+    This is the bridge application. It will check for the current list  of tasmota
+    It will report any new bulb
+    """
+
+    def __init__(self, loop, future, config, log):
+        super(TasmotaBridge, self).__init__(loop, future, config, log)
+        self.mqtt_client = None
+        self.mqtt_future = None
+        self.tasmota_config = tasmota_config_default
+        self.shuttingdown = False
+
+    def process_command(self, msg):
+        if msg["content"]["command"] == "update config":
+            if msg["content"]["target"] == self.target:
+                for k, v in msg["content"]["value"].items():
+                    tasmota_config_default[k] = v
+                self.sending({"subject": "control" + "." + self.subtype,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.type,
+                                          "value": bl.encrypt(tasmota_config_default, self.config["buddykey"])}})
+
+
+        else:
+            for atasmota in self.devices:
+                atasmota.process(msg)
+
+    def process_response(self, msg):
+        # if msg["content"]["token"] != self.target:
+            # if self.log:
+                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+            # else:
+                # print ("Token not matching {} vs
+                # {}".format(msg["content"]["token"],self.target))
+        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            # Getting the config
+            if msg["content"]["configuration"]:
+                try:
+                    storedconfig = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The config stored is {}".format(storedconfig))
+                except:
+                    storedconfig = {}
+                    savenew = True
+                    # log
+                    if self.log:
+                        self.log.warning("Config is mangled")
+                    else:
+                        print("Config is mangled")
+
+                for x in storedconfig:
+                    self.tasmota_config[x] = storedconfig[x]
+
+
+
+            self.config["database"] = msg["content"]["database"]
+            if "configonly" in self.config and self.config["configonly"]:
+                self.state = "wait config save"
+            else:
+                self.state = "active"
+                self.build()
+            # if savenew or ("configonly" in self.config and self.config["configonly"]):
+                # self.sending({"subject":"control" + "." + self.subtype,
+                                #"content_type": "request",
+                                #"content": {"request":"save configuration",
+                                            #"target":self.target,
+                                            #"value":bl.encrypt(tasmota_config_default,self.config["buddykey"])}})
+
+        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+            if self.state == "active" and msg["content"]["status"] != "done":
+                # log
+                if self.log:
+                    self.log.warning("Warning: Configuration was not saved.")
+                else:
+                    print("Warning: Configuration was not saved.")
+            else:
+                self.sending({"subject": "control" + "." + self.target,
+                              "content_type": "request",
+                              "content": {"request": "functions",
+                                          "target": self.type,
+                                          "subtype": self.subtype,
+                                          #"token": self.target,
+                                          "value": {"configs": [tasmota_config, tasmota_config_default]}}})
+                self.sending({"subject": self.config["restricted"],
+                              "content_type": "restricted event",
+                              "content": {"event": "config updated",
+                                          "target": self.target,
+                                          "value": tasmota_config_default}})
+                # Now update all the tasmota present
+                lorelay = {}
+                for x in self.tasmota_config["relay"]:
+                    lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
+                for tasmota in self.devices:
+                    if tasmota.name in lorelay:
+                        tasmota.software_switch = lorelay[tasmota.name]["soft"]
+                        if tasmota.software_switch:
+                            aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+tasmota.name.split("_")[0]+"/Power"+tasmota.name.split("_")[-1],lorelay[tasmota.name]["state"] and b'1' or b'0'))
+                        else:
+                            aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+tasmota.name.split("_")[0]+"/Power"+tasmota.name.split("_")[-1],b''))
+                    else:
+                        tasmota.software_switch = False
+                        aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+tasmota.name.split("_")[0]+"/Power"+tasmota.name.split("_")[-1],b''))
+                    if tasmota.present:
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  tasmota.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill": cssColour(tasmota)}, "bu-not-present": {"opacity": 0}}}})
+
+        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+            if msg["content"]["configuration"]:
+                try:
+                    storedprop = bl.decrypt(
+                        msg["content"]["configuration"],
+                        self.config["buddykey"])
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored is {}".format(storedprop))
+                except:
+                    storedprop = {}
+                    if self.config["debug"]:
+                        self.log.debug(
+                            "The property stored cannot be decrypted.")
+                for k, v in storedprop.items():
+                    tasmota_config_default[k] = v
+
+            if not(msg["content"]["configuration"] and storedprop):
+                # First time around... was never saved that property.. let's do
+                # it
+                self.sending({"subject": "control" + "." + self.type,
+                              "content_type": "request",
+                              "content": {"request": "save configuration",
+                                          "target": self.subtype,
+                                          #"token": self.target,
+                                          "value": bl.encrypt(tasmota_config_default, self.config["buddykey"])}})
+        elif self.state == "active":
+            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+                sess = bl.getSession(self.config["database"])
+                switch = sess.query(bl.switch).filter_by(
+                    name=msg["subject"].split(".")[-1]).one()
+
+                self.sending({"subject": self.type,
+                              "content_type": "event",
+                              "content": {"event": "new device",
+                                          "target": self.type +
+                                          "." +
+                                          switch.name,
+                                          "value": {"type": self.type, "subtype": self.subtype,
+                                                    "name": switch.name, "nickname": switch.nickname}}})
+                bidx = 0
+                notseen = True
+                for b in self.pending:
+                    if b == switch.name:
+                        switch.present = True
+                        switch.conn = b
+                        switch.controller = self
+                        switch.info={}
+                        switch.power=True
+                        switch.software_switch = False
+                        for x in self.tasmota_config["relay"]:
+                            if b == x["entity"] and x["relay"]["bu-cvalue"]=="no":
+                                switch.software_switch=True
+                                break
+                        self.devices.append(switch)
+                        self.pending = self.pending[
+                            :bidx] + self.pending[
+                                bidx + 1:]
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  switch.name,
+                                                  "value": "online",
+                                                  "icon status": {"bu-fill": {"fill": cssColour(switch)}, "bu-not-present": {"opacity": 0}}}})
+
+                        notseen = False
+                        break
+                    bidx += 1
+                if notseen:
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              switch.name,
+                                              "value": "offline",
+                                              "icon status": {"bu-fill": {"fill": cssColour(switch)},
+                                                              "bu-not-present": {"opacity": 1}}}})
+                sess.close()
+            elif msg["content"]["response"] == "nickname":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    for switch in self.devices:
+                        if switch.name == msg["subject"].split(".")[-1]:
+                            switch.nickname = msg["content"]["value"]
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "nickname",
+                                                      "target": self.type +
+                                                      "." +
+                                                      switch.name,
+                                                      "value": switch.nickname}})
+                            break
+
+            elif msg["content"]["response"] == "deletion":
+                if msg["content"]["status"] == "done":
+                    if self.log:
+                        self.log.debug(msg)
+                    sidx = 0
+                    doremove = False
+                    for switch in self.devices:
+                        if switch.name == msg["subject"].split(".")[-1]:
+                            self.sending({"subject": self.type,
+                                          "content_type": "event",
+                                          "content": {"event": "deletion",
+                                                      "target": self.type +
+                                                      "." +
+                                                      switch.name,
+                                                      "value": switch.name}})
+                            doremove = True
+                            break
+                        sidx += 1
+
+                    if doremove:
+                        del self.devices[sidx]
+        else:
+            if self.log:
+                self.log.warning(
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+            else:
+                print (
+                    "Unknown response {} {} {}".format(msg["subject"],
+                                                       msg["content_type"],
+                                                       msg["content"]))
+
+    def build(self):
+        self.sending({"subject": "control" + "." + self.target,
+                      "content_type": "request",
+                      "content": {"request": "functions",
+                                  "target": self.type,
+                                  "subtype": self.subtype,
+                                  #"token": self.target,
+                                  "value": {"functions": tasmota_commands, "configs": [tasmota_config, tasmota_config_default]}}})
+
+        self.sending({"subject": self.config["restricted"],
+                      "content_type": "restricted event",
+                      "content": {"event": "config updated",
+                                  "target": self.target,
+                                  "value": tasmota_config_default}})
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(
+            bl.switch).filter_by(
+                subtype=self.subtype).all(
+        )
+        for switch in self.devices:
+            switch.present = False
+            switch.info={}
+            switch.power=True
+            switch.software_switch = False
+            self.sending({"subject": self.type,
+                          "content_type": "event",
+                          "content": {"event": "presence",
+                                      "target": self.type + "." + switch.name,
+                                      "value": "offline",
+                                      "icon status": {"bu-fill": {"fill": cssColour(switch)}, "bu-not-present": {"opacity": 1}}}})
+
+
+        # No tasmota is present yet
+        self.mqtt_future = aio.ensure_future(self.mqtt_reader())
+
+    async def mqtt_reader(self):
+        mqttconfig = {
+            'keep_alive': 10,
+            'ping_delay': 5,
+            'default_qos': 0,
+            'default_retain': False,
+            'auto_reconnect': False,
+            'reconnect_max_interval': 5,
+            'reconnect_retries': 10,
+            'topics': {
+                self.config["mqttprefix"]+'cmnd/#': { 'qos': 1}
+            }
+        }
+        self.mqtt_client = MQTTClient(config=mqttconfig)
+        connected = False
+        while not connected:
+            try:
+                self.log.debug("DEBUG MQTT connectiong.")
+                if "credential" in self.tasmota_config and "user" in self.tasmota_config["credential"] and  self.tasmota_config["credential"]["user"]:
+                    await self.mqtt_client.connect('mqtt://{}:{}@{}:{}/'.format(self.tasmota_config["credential"]["user"],
+                                                                                self.tasmota_config["credential"]["password"],
+                                                                                self.config["mqtthost"],self.config["mqttport"]))
+                else:
+                    await self.mqtt_client.connect('mqtt://{}:{}/'.format(self.config["mqtthost"],self.config["mqttport"]))
+                await self.mqtt_client.subscribe([
+                    (self.config["mqttprefix"]+'tele/#', 1),
+                    (self.config["mqttprefix"]+'cmnd/#', 1),
+                    (self.config["mqttprefix"]+'stat/#', 1)
+                ])
+                connected=True
+            except:
+                self.log.debug("DEBUG MQTT could not connect to broker.")
+                await aio.sleep(5)
+                connected=False
+                continue
+            try:
+                while True:
+                    #try:
+                    message = await self.mqtt_client.deliver_message()
+                    #except aio.TimeoutError:
+                        #continue
+                    self.handle_mqtt(message.publish_packet)
+                #yield from C.unsubscribe(['$SYS/broker/uptime', '$SYS/broker/load/#'])
+                #yield from C.disconnect()
+            except ClientException as ce:
+                self.log.debug("\n\n\nClient exception: %s\n\n" % ce)
+                try:
+                    await self.mqtt_client.disconnect()
+                except:
+                    pass
+                connected = False
+            except Exception as ce:
+                self.log.debug("\n\n\nOther exception: %s\n\n" % ce)
+                if self.shuttingdown:
+                    return
+                connected = False
+
+
+    def handle_mqtt(self,packet):
+        # Check if it is a new one
+        #try:
+        prefix,ttype, dev, cmd = packet.variable_header.topic_name.split("/")
+
+        try:
+            payload=json.loads("".join([chr(z) for z in packet.payload.data]))
+        except:
+            payload="".join([chr(z) for z in packet.payload.data])
+        self.log.debug("\n\nDEBUG MQTT:  %s %s %s => %s" % (ttype, dev, cmd, str(payload)))
+        #Deal with LWT messages:
+        if ttype == "tele" and cmd == "LWT" and payload=="Online":
+            #Request full state
+            aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+dev+"/STATE", b'0'))
+            #configure ButtonTopic
+            if INFIX not in dev:
+                aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+dev+"/ButtonTopic", bytes(dev.replace(PREINFIX,INFIX),"utf-8")))
+        elif ttype == "stat" and cmd.startswith("RESULT") and "SleepMode" in payload:
+            for key in payload:
+                if key.startswith("POWER"):
+                    if key == "POWER":
+                        post="_1"
+                    else:
+                        post="_"+"".join(filter(str.isdigit,key))
+                    self.register(dev+post)
+        else:
+            if cmd.startswith("POWER") and INFIX not in dev and ttype == "cmnd":
+                return
+            if INFIX in dev:
+                dev = dev.replace(INFIX,PREINFIX)
+            if cmd == "POWER":
+                cmd="POWER1"
+            for switch in self.devices:
+                switch._process({"name":dev,"type":ttype,"command":cmd,"value":payload},"tasmota")
+        #except:
+            #pass
+
+
+
+
+    def register(self, atasmota):
+        notseen = True
+        lorelay = {}
+        for x in self.tasmota_config["relay"]:
+            lorelay[x["entity"]["bu-cvalue"].replace(self.type+".","")]= {"soft":x["relay"]["bu-cvalue"]=="no","state":x["relay"].get("state","off")=="on"}
+        for tasmota in self.devices:
+            ispresent = False
+
+            if atasmota == tasmota.name:
+                tasmota.controller = self
+                ispresent = True
+                if ispresent != tasmota.present:
+                    tasmota.present = ispresent
+                    self.sending({"subject": self.type,
+                                  "content_type": "event",
+                                  "content": {"event": "presence",
+                                              "target": self.type +
+                                              "." +
+                                              tasmota.name,
+                                              "value":
+                                              ispresent and "online" or "offline",
+                                              "icon status": {"bu-not-present": {"opacity": (not ispresent and 1) or 0}}}})
+                    if tasmota.name in lorelay:
+                        tasmota.software_switch = lorelay[tasmota.name]["soft"]
+                        if tasmota.software_switch:
+                            aio.ensure_future(self.mqtt_client.publish(self.config['mqttprefix']+"cmnd/"+tasmota.name.split("_")[0]+"/Power"+tasmota.name.split("_")[-1],lorelay[tasmota.name]["state"] and b'1' or b'0'))
+                notseen = False
+                break
+        if notseen:
+            self.pending.append(atasmota)
+            self.sending({"subject": "control" + "." + self.type,
+                          "content_type": "request",
+                          "content": {"request": "creation",
+                                      "target": self.type,
+                                          # Here we need the type
+                                      #"token": self.target,
+                                      "value": {"name": atasmota, "nickname": atasmota, "subtype": self.subtype}}})
+
+    def unregister(self, atasmota):
+        if atasmota in self.pending:
+            self.pending.remove(atasmota)
+        else:
+            for switch in self.devices:
+                try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
+                    if switch.name == atasmota:
+                        switch.present = False
+                        self.sending({"subject": self.type,
+                                      "content_type": "event",
+                                      "content": {"event": "presence",
+                                                  "target": self.type +
+                                                  "." +
+                                                  switch.name,
+                                                  "value": "offline",
+                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                except:
+                    pass
+
+aboutstr = """<p>TasmotaBuddy is a bridge talking to WiFi switches running <a href="https://github.com/arendst/Tasmota-Tasmota">Tasmona</a> firmware
+communicating over MQTT. To work, the "Full Topic" must configured as "{}%prefix%/%topic%" The icon used is based on one made by Freepik from www.flaticon.com </p>
+<p class=\"bu-copyright\">&copy; 2018 Fran&ccedil;ois Wautier</p>
+"""
+iconstr = """
+<svg class="bu-device-icon" width="60" height="60" viewBox="0 0 537.63 537.63" xmlns="http://www.w3.org/2000/svg">
+<g>
+    <circle class="bu-fill" cx="250" cy="144" r="127" stroke="none" fill="white" />
+    <path class="bu-shape" d="M124.795,144.021c0-69.472,56.528-126.018,126.018-126.018s126.018,56.546,126.018,126.018
+        c0,11.432-1.513,22.737-4.537,33.611l17.355,4.789c3.439-12.44,5.185-25.348,5.185-38.4C394.834,64.611,330.222,0,250.813,0
+        S106.792,64.611,106.792,144.02c0,40.902,17.499,80.022,47.995,107.314l12.008-13.393
+        C140.097,214.051,124.795,179.81,124.795,144.021z" />
+    <rect class="bu-shape" x="230" y="122" width="42" height="160" fill="white" stroke="none"  />
+    <rect class="bu-shape" x="284" y="212" width="42" height="62" fill="white" stroke="none"  />
+    <path class="bu-shape bu-hand" d="M394.834,252.038c-0.001,0-0.001,0-0.002,0v-0.001c0-19.857-16.148-36.005-36.005-36.005
+        c-7.41,0-14.302,2.25-20.032,6.101c-4.925-14.023-18.289-24.104-33.976-24.104c-6.556,0-12.701,1.769-18.001,4.841v-58.849
+        c0-19.857-16.148-36.005-36.005-36.005c-19.857,0-36.005,16.148-36.005,36.005v144.926c-20.513,4.181-36.006,22.359-36.006,44.101
+        c0,25.114,9.452,49.075,26.626,67.456c17.661,18.903,27.382,43.08,27.382,68.14v26.428c0,10.082,5.401,24.124,31.199,33.611
+        c15.681,5.761,36.564,8.947,58.815,8.947c41.532,0,90.013-11.144,90.012-42.557v-47.167c0-12.476,1.603-25.69,4.879-40.38
+        c8.695-39.155,13.124-79.355,13.124-119.483C430.839,268.186,414.691,252.038,394.834,252.038z M400.126,403.619
+        c-3.565,15.986-5.293,30.46-5.293,44.286v47.167c0,13.538-32.297,24.556-72.01,24.556s-72.01-11.018-72.01-24.556v-26.428
+        c0-29.633-11.45-58.203-32.243-80.454c-14.024-15.014-21.765-34.583-21.765-55.142c0-11.733,7.527-21.739,18.003-25.455v34.456
+        h18.001V144.021c0-9.938,8.084-18.003,18.003-18.003c9.92,0,18.003,8.066,18.003,18.003v89.974c0,0.013-0.001,0.026-0.001,0.039
+        h0.001v36.005h18.003v-36.024c0.011-9.929,8.089-17.984,18.002-17.984c9.92,0,18.003,8.066,18.003,18.003v17.964
+        c0,0.013-0.001,0.026-0.001,0.039h0.001v18.002h18.001v-18.002h0.001c0-9.938,8.084-18.003,18.003-18.003
+        c9.92,0,18.003,8.066,18.003,18.003v36.005h18.001V270.15c9.316,0.249,18.004,8.013,18.004,17.892
+        C412.836,326.838,408.551,365.742,400.126,403.619z" fill="black" opacity="1" fill-rule="nonzero"/>
+    <path class="bu-not-present" d="M268.5,270m-235,0a235,235 0 1,1 470,0a235,235 0 1,1 -470,0M90,447.63L447.63,90"
+        stroke="#a94442" stroke-width="60" fill="none" opacity="1" />
+</g>
+</svg>
+"""
+
+cfgdefault = {
+    "type": "switch",
+     "subtype": SUBTYPE,
+     "host": "localhost",
+     "port": 8745,
+     "credential": "",
+     "ssl": "",
+     "restricted": "guibridge",
+     "mqtthost": "localhost",
+     "mqttport": 1883,
+     "mqttprefix": "autobuddy/"}
+
+
+def configure():
+    parser = argparse.ArgumentParser(description="Track tasmota buttons..")
+    # version="%prog " + __version__ + "/" + bl.__version__)
+    parser.add_argument("-t", "--type", default=cfgdefault["type"],
+                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
+    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
+                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument("-a", "--host", default=cfgdefault["host"],
+                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
+    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
+                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
+    parser.add_argument("-P", "--mqttport", type=int, default=cfgdefault["mqttport"],
+                        help="The port used by the mqtt broker (default \"%s\")." % cfgdefault["mqttport"])
+    parser.add_argument("-n", "--mqtthost", default=cfgdefault["mqtthost"],
+                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqtthost"])
+    parser.add_argument("-f", "--mqttprefix", default=cfgdefault["mqttprefix"],
+                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqttprefix"])
+    parser.add_argument("-c", "--config", default="/etc/autobuddy/tasmota.cfg", type=argparse.FileType('r'),
+                        help="Config file to use (default \"/etc/autobuddy/tasmota.cfg\")")
+    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
+                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
+    parser.add_argument("-d", "--debug", action="count", default=0,
+                        help="Log debug information (default False)")
+    parser.add_argument("-S", "--ssl", default="",
+                        help="The directory where the file %s can be found." % (CERTFILE))
+    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
+                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+                        help="Log warning messages")
+    parser.add_argument("-C", "--configonly", default="",
+                        help="Exit after the the configuration has been saved")
+
+    try:
+        opts = parser.parse_args()
+    except Exception as e:
+        parser.error("Error: " + str(e))
+
+    if opts.debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    elif opts.verbose:
+        logging.basicConfig(
+            level=logging.WARNING,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    else:
+        logging.basicConfig(
+            level=logging.CRITICAL,
+            format='%(levelname)7s: %(message)s',
+            stream=sys.stderr,
+        )
+    tasmotalog = logging.getLogger('')
+    tasmotacfg = {"debug": opts.debug}
+    try:
+    # if True:
+        try:
+            cfgdata = json.load(opts.config)
+            opts.config.close()
+        except:
+            cfgdata = {}
+            tasmotalog.warning("Config file could not be opened.")
+
+        # Definition
+        for attr in cfgdefault:
+            if opts.__getattribute__(attr) != cfgdefault[attr]:
+                tasmotacfg[attr] = opts.__getattribute__(attr)
+            elif attr in cfgdata:
+                tasmotacfg[attr] = cfgdata[attr]
+            else:
+                tasmotacfg[attr] = opts.__getattribute__(attr)
+            if opts.debug:
+                tasmotalog.debug("The %s is %s." % (attr,tasmotacfg[attr]))
+
+
+        if tasmotacfg["ssl"] and not (os.path.isfile(tasmotacfg["ssl"] + "/" + CERTFILE)):
+            tasmotalog.critical("Encryption: Could not find {} .".format(
+                tasmotacfg["ssl"] + "/" + CERTFILE))
+            sys.exit()
+        if opts.debug:
+            if tasmotacfg["ssl"]:
+                tasmotalog.debug(
+                    "The ssl certificates can be found in %s" %
+                    tasmotacfg["ssl"])
+            else:
+                tasmotalog.debug("The connection is not encrypted")
+
+        if "buddykey" in cfgdata:
+            tasmotacfg["buddykey"] = cfgdata["buddykey"]
+
+        if opts.configonly:
+
+            if "buddykey" not in tasmotacfg:
+                if opts.debug:
+                    tasmotalog.debug("Generating random key")
+                tasmotacfg["buddykey"] = bl.keygen()
+            try:
+                del(tasmotacfg["debug"])
+            except:
+                pass
+            with open(opts.configonly, "w") as cfile:
+                json.dump(tasmotacfg, cfile)
+            os.chmod(opts.configonly, 384)  # 0600
+            sys.exit()
+
+    except Exception as e:
+        tasmotalog.error("Error: %r" % e)
+        sys.exit(-2)
+
+    return (tasmotalog, tasmotacfg)
+
+
+if __name__ == "__main__":
+    log, config = configure()
+    log.info("Configured")
+    loop = aio.get_event_loop()
+    if config["debug"]:
+        loop.set_debug(True)
+
+    if config["ssl"]:
+        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
+                                                cafile=config["ssl"] + '/' + CERTFILE)
+
+        sslcontext.check_hostname = False
+    else:
+        sslcontext = None
+    connFuture = aio.Future()
+    fac = loop.create_connection(
+        partial(TasmotaBridge,
+                loop,
+                connFuture,
+                config,
+                log),
+        config["host"],
+     config["port"],
+     ssl=sslcontext)
+    conn, bridgectl = loop.run_until_complete(fac)
+    loop.call_soon(
+        bridgectl.configrequest,
+        {"about": {"TasmotaBuddy": aboutstr.format(config["mqttprefix"])},
+         "display": {config["subtype"]: iconstr}})
+
+    try:
+        loop.run_until_complete(connFuture)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+        loop.run_until_complete(bridgectl.mqtt_client.unsubscribe([
+                    'tele/#','cmnd/#','stat/#']))
+        loop.run_until_complete(bridgectl.mqtt_client.disconnect())
+        bridgectl.shuttingdown = True
+        bridgectl.mqtt_future.cancel()
+        loop.run_until_complete(aio.sleep(3))
+        conn.close()
+        loop.close()
