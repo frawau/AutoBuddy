@@ -22,6 +22,7 @@ var buddyPanel = Class.extend({
         this.realtime = realtime || false;
         this.locontrols = [];
         this.statevalue = {};
+        this.status_update = undefined;
     },
 
     render: function ( what ) {
@@ -75,6 +76,10 @@ var buddyPanel = Class.extend({
                         if ( ncg ) {
                             if (self.statevalue) {
                                 ncg.setStateValue(self.statevalue)
+                            }
+                            if (self.status_update) {
+                                ncg.status_update = self.status_update;
+
                             }
                             tabmsg+=ncg.render();
                             locontrols.push(ncg)
@@ -279,6 +284,9 @@ var listCG = Class.extend({
                         if ( ncg ) {
                             if (self.statevalue) {
                                 ncg.setStateValue(self.statevalue)
+                            }
+                            if (self.status_update) {
+                                ncg.status_update = self.status_update;
                             }
                             addtotab=ncg.render(classes);
                             if ( addtotab ) {
@@ -684,6 +692,9 @@ var listmakerCG = Class.extend({
                         if (this.statevalue) {
                             ncg.setStateValue(self.statevalue)
                         }
+                        if (self.status_update) {
+                            ncg.status_update = self.status_update;
+                        }
                         addtotab+=ncg.render(classes);
                         if ( addtotab ) {
                             tabmsg+=addtotab
@@ -1001,6 +1012,7 @@ var choiceCG = Class.extend({
         this.subchoices=[];
         this.aboveclasses = "";
         this.statevalue = {};
+        this.updatedbychoice = false;
     },
 
     render: function (classes) {
@@ -1073,6 +1085,16 @@ var choiceCG = Class.extend({
         this.afterme=this.jsid+"_budiv";
         this.locontrols=[];
         var newval = $("#"+this.jsid).find("option:selected").val();
+        if ( this.status_update ) {
+            if ( $.isEmptyObject(this.statevalue) || this.updatedbychoice ) {
+                var thisstate = this.status_update(newval);
+                if ( thisstate ) {
+                    this.statevalue = thisstate;
+                    this.updatedbychoice = true;
+                }
+            }
+        }
+
         $.each(this.itemlist[newval], function (jdx, actrl) {
 
             if ( $(actrl).is("controlgroup") ) {
@@ -1087,6 +1109,13 @@ var choiceCG = Class.extend({
                     ncg = new listmakerCG(self.newctxname,self.part.attr('name'),$(actrl), self.realtime)
                 }
                 if ( ncg ) {
+                    if (self.status_update) {
+                        ncg.status_update = self.status_update;
+                        if (self.statevalue) {
+                            ncg.statevalue = self.statevalue;
+                            ncg.updatedbychoice = true;
+                        }
+                    }
                     $("#"+self.afterme).after(ncg.render(self.aboveclasses+ " " + self.jsid+"_added"));
                     if ( $(actrl).attr("type") == "choice" ) {
                         self.afterme = ncg.jsid+"_budiv";

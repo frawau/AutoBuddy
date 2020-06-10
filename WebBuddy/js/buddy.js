@@ -573,6 +573,7 @@ function module_config_bis(e) {
     } else {
         buddy.cmd_panel = new buddyPanel("config",bu_parse_xml(buddy.configs[etype][estype][0]).find( "buddyui" ),false);
         buddy.cmd_panel.tgt = etype+"."+estype;
+        buddy.cmd_panel.status_update = status_update;
     }
     var msg = buddy.cmd_panel.render("configuration");
 
@@ -820,6 +821,20 @@ function explore_events() {
     bootbox.alert(msg);
 }
 
+function status_update(id) {
+    var resu = undefined;
+    if ( id != undefined ) {
+        var loitems = id.split(".");
+        for (var idx = 0; idx < loitems.length; idx++) {
+            val = loitems[idx]
+            if ( deviceById[val] != undefined ) {
+                resu = deviceById[val].status;
+                break
+            }
+        }
+    }
+    return resu
+}
 
 // ES6 Alert. Using backquote for multi-lines
 // Lifted from FontAwesome
