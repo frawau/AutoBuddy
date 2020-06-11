@@ -30,7 +30,6 @@ sys.path.append(BUDDYLOCATION+"/Buddylib")
 
 from collections import defaultdict
 from getpass import getpass
-import buddylib as bl
 from urllib.request import urlopen
 
 debug=False
@@ -78,7 +77,7 @@ os.system('clear')
 print("\n\nWelcome to AutoBuddy configuration tool.")
 if iamsuper:
     print ("It looks like you are running with root privileges. Good!")
-    print ("Be forwarned though, we will be setting your time zone, install some needed")
+    print ("Be forewarned though, we will be setting your time zone, install some needed")
     print ("packages and will access PostgreSQL by masquerading as user 'postgres'.")
     print ("If you do not want this, or if you think it won't work, get out now and run")
     print ("this config tool as an unpriviledged users.")
@@ -227,22 +226,21 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
-        print("\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools")
-        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux hbmqtt SpeechRecognition\n")
+        print("\tsudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-pyaudio i2c-tools\\\n\t\t\t\tlibffi-dev libssl-dev")
+        print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux aiobroadlink hbmqtt SpeechRecognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapis\\\n\t\t\t\tpython3-pyaudio i2c-tools"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
-        remindmeattheend+="\nIf using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n"
+        remindmeattheend+="\tsudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapi\\\n\t\t\t\tpython3-pyaudio i2c-tools libffi-dev libssl-dev"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux aiobroadlink hbmqtt SpeechRecognition\n\n"
     else:
-        print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian with apt for this to work")
+        print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian/Ubuntu with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["apt","-y","install","postgresql","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-googleapi","python3-googlecloudapis","python3-pyaudio","i2c-tools"])
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux","hbmqtt", "SpeechRecognition"])
+            subprocess.run(["apt","-y","install","postgresql","tmux","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-pyaudio","i2c-tools", "libffi-dev", "libssl-dev"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux","hbmqtt", "SpeechRecognition", "aiobroadlink"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
-            print("\nRemember...If using VoiceBuddy, you will also need the speech_recognition library from https://github.com/frawau/speech_recognition\n\n")
+
         choice = input(" Press '<enter>' to continue")
         os.system('clear')
 else:
@@ -254,17 +252,19 @@ else:
         print ("On a Debian/Ubuntu type of distribution, the following command should be run:\n")
         print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux\n\n"
+        remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux aiobroadlink\n\n"
     else:
         print("\n\n\n\nNow we shall install/update the packages we need.")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux"])
+            subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux", "aiobroadlink"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
         choice = input(" Press '<enter>' to continue")
         os.system('clear')
+
+import buddylib as bl
 
 print("\n\n\n\nNow we shall install all the bits needed and packaged in a tar file.")
 choice = input(" Press '<enter>' to proceed")
@@ -307,6 +307,61 @@ if os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     os.system('clear')
 
     print ("\n\n\n\n Password was set.\n\n")
+    choice = input(" Press '<enter>' to continue")
+
+autobuddyip = None
+try:
+    p1 = subprocess.Popen(["ip", "addr"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["grep", "inet "], stdin = p1.stdout, stdout=subprocess.PIPE)
+    p1.stdout.close()
+    p3 = subprocess.Popen(["awk", "{ print $2}"], stdin = p2.stdout, stdout=subprocess.PIPE)
+    p2.stdout.close()
+    p4 = subprocess.Popen(["sed", "/127.0.0.1/d"], stdin = p3.stdout, stdout=subprocess.PIPE)
+    p3.stdout.close()
+    p5 = subprocess.Popen(["sed", "s+/.*$++"], stdin = p4.stdout, stdout=subprocess.PIPE)
+    p4.stdout.close()
+    loip = p5.communicate()[0].decode('utf-8').split('\n')
+    loip = [ x for x in loip if x]
+    if len(loip) == 1:
+        autobuddyip = loip[0]
+    elif len(loip):
+        while autobuddyip is None:
+            os.system('clear')
+            print("We need to know the IP address for the interface you will be using AutoBuddy on.")
+            print("We found {} addresses:\n".format(len(loip)))
+            idx = 1
+            for addr in loip:
+                print("\t[{}]:\t{}".format(idx,addr))
+                idx+=1
+            print("\t[{}]:\tEnter address manually.\n".format(idx))
+            choice = input(" Enter your choice: ")
+            try:
+                choice=int(choice)
+            except:
+                print("Error: Please type in the number corresponding to your choice")
+                choice = input(" Press '<enter>' to continue")
+                continue
+            if choice == idx:
+                autobuddyip = ""
+            else:
+                if choice > idx:
+                    print("Error: {} is not a valid choice".format(choice))
+                    print("Error: Please type in the number corresponding to your choice")
+                    choice = input(" Press '<enter>' to continue")
+                    continue
+                autobuddyip = loip[choice -1]
+except:
+    pass
+
+if not autobuddyip:
+    regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+    while not autobuddyip:
+        autobuddyip = input("Enter the IP address => ").strip()
+        result = regex.match(autobuddyip)
+        if not result:
+            os.system('clear')
+            print("{} ios not a valid IPv4 address".format(autobuddyip))
+            autobuddyip = None
 
 mainstation = True
 print("\nBefore we really start, I have an important question.")
@@ -445,7 +500,7 @@ if mainstation:
 
 else:
     print ("\n\nSince this is a peripheral station, we need to know where the main station is\nand we need to know the credential to use.")
-    print ("\nWhat is the host bane or IP address of the device running ControlBuddy?")
+    print ("\nWhat is the hostnane or IP address of the device running ControlBuddy?")
     choice=None
     regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
     while not choice:
@@ -495,11 +550,17 @@ dowemoswitch = False
 dowemomotion = False
 domqtt = False
 dosonoff = False
+dotasmota = False
 doshellybulb = False
 doshellyswitch = False
 doshellyroller = False
 domosquito = False
 doshellyupdates = True
+doshellydwsesnsor = False
+dobroadlinkrc = False
+dodrape = False
+dohvac = False
+doproxies = False
 
 
 print("Finaly, we need to know which optional modules you want to run.")
@@ -650,17 +711,29 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dowemomotion=True
 
 
-print("\n\nSonoffBuddy allows you to receive power events from your Sonoff switches running the Tasmota firmware.")
+print("\n\nSonoffBuddy allows you to receive power events from your Sonoff switches running the old  Tasmota firmware.")
 
 choice = input("\n  Do you want to run it? [yes/NO] : ")
 if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     dosonoff = True
     if not domqtt:
         domqtt = True
-        print("Since you will be using SonoffBuddy, you will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
-        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-        choice = input(" Press '<enter>' to continue")
+    print("Since you will be using SonoffBuddy, you will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
+
+print("\n\nTasmotaBuddy allows you to receive power events from your switches running the new Tasmota firmware.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dotasmota = True
+    if not domqtt:
+        domqtt = True
+    print("Since you will be using TasmotaBuddy, you will need to set the device \"full d topic\" to:\n\tautobuddy/%prefix%/%topic%/\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
 
 print("\n\nShellySwitchBuddy allows you control and monitor Shelly switches.")
 
@@ -669,10 +742,10 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doshellyswitch = True
     if not domqtt:
         domqtt = True
-        print("Since you will be using ShellySwitchBuddy, you will need to set the device to use MQTT.\n")
-        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-        choice = input(" Press '<enter>' to continue")
+    print("Since you will be using ShellySwitchBuddy, you will need to set the device to use MQTT.\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
 
 print("\n\nShellyBulbBuddy allows you to control and monitor your Shelly bulbs.")
 
@@ -681,10 +754,10 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doshellybulb = True
     if not domqtt:
         domqtt = True
-        print("Since you will be using ShellyBulbBuddy, you will need to set the device to use MQTT.\n")
-        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-        choice = input(" Press '<enter>' to continue")
+    print("Since you will be using ShellyBulbBuddy, you will need to set the device to use MQTT.\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
 
 print("\n\nShellyRollerBuddy allows you control and monitor Shelly switches that have been configured as roller.\nNote that the MQTT prefix must be changed to shellyroller.")
 
@@ -693,10 +766,38 @@ if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
     doshellyroller = True
     if not domqtt:
         domqtt = True
-        print("Since you will be using ShellyRollerBuddy, you will need to set the device to use MQTT.\n")
-        print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
-        print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
-        choice = input(" Press '<enter>' to continue")
+    print("Since you will be using ShellyRollerBuddy, you will need to set the device to use MQTT.\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local. You must configure your device to use")
+    print("a custom MQTT prefix starting with 'shellyroller-'.")
+    choice = input(" Press '<enter>' to continue")
+
+print("\n\nShellyDWBuddy allows you to control and monitor your Shelly Door/Window sensors.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    doshellydwsesnsor = True
+    if not domqtt:
+        domqtt = True
+    print("Since you will be using ShellyDWBuddy, you will need to set the device to use MQTT.\n")
+    print("You will also need to configure a user and password for MQTTBuddy/mosquito and match the user and password values in you devices.")
+    print("Lastly, you must configure your devices to use MQTT/mosquito on AutoBuddy.local")
+    choice = input(" Press '<enter>' to continue")
+
+print("\n\nBroadlinkRCBuddy allows you to control Broadlink's line of remote control devices. Both IR and RF are supported.")
+
+choice = input("\n  Do you want to run it? [yes/NO] : ")
+if choice.strip().lower() in ["y", "ye", "yes","let's do this","ok"]:
+    dobroadlinkrc = True
+    if not doproxies:
+        doproxies = True
+    print("Since you will be using BroadlinkRCBuddy, you will be able to use proxied devices.\n")
+    print("Those will be automatically configured.")
+    choice = input(" Press '<enter>' to continue")
+
+
+
+mosquittohost='localhost'
 
 if domqtt:
     print("\n\nThe choices you have made require that you use an MQTT broker. You have 2 choices: \"mosquitto\" (recommended) or \"MQTTBuddy\"")
@@ -704,6 +805,29 @@ if domqtt:
     choice = input("\n  Do you want to run MQTTBuddy? [yes/NO] : ")
     if choice.strip().lower() not in ["y", "ye", "yes","let's do this","ok"]:
         domosquito=True
+        choice=None
+        regex = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+        while not choice:
+            print ("\nWhat is the hostname or IP address of the device running ControlBuddy [localhost]?")
+            choice=input("MQTT host => ").strip()
+            if choice == "":
+                break
+            result = regex.match(choice)
+            if not result:
+                try:
+                    _ = socket.gethostbyname(choice)
+                    mosquittohost = choice
+                except:
+                    os.system('clear')
+                    print("{} is not a known hostname".format(choice))
+                    choice=None
+            else:
+                mosquittohost=choice
+        print("We will use the MQTT server at {}".format(mosquittohost))
+        choice = input(" Press '<enter>' to continue")
+
+
+os.system('clear')
 
 #Let's summarize
 print("\nYou have decided:")
@@ -791,6 +915,16 @@ if doshellyroller:
     print("\tto run ShellyRollerBuddy")
 else:
     print("\tnot to run ShellyRollerBuddy")
+
+if doshellydwsesnsor:
+    print("\tto run ShellyDWBuddy")
+else:
+    print("\tnot to run ShellyDWBuddy")
+
+if dobroadlinkrc:
+    print("\tto run BroadlinkRCBuddy and proxied devices")
+else:
+    print("\tnot to run BroadlinkRCBuddy")
 
 if doflic and dopresencebt:
     print("\nNote: Given you are using both BuddyFlic and using Bluetooth for presence, you must have 2 Bluetooth adapters.\n")
@@ -1431,7 +1565,7 @@ mycfg["ssl"]=certdir
 mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "autobuddy"
-mycfg["mqtthost"] = "localhost"
+mycfg["mqtthost"] = mosquittohost
 mycfg["mqttport"] = 1883
 fn=BUDDYLOCATION+"/.buddyconfig/sonoff.cfg"
 with open(fn,"w") as cfile:
@@ -1458,6 +1592,45 @@ if dosonoff:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n SonoffBuddy "+fn
 
+#TasmotaBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "switch"
+mycfg["subtype"] = "tasmota"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+mycfg["mqttprefix"] = "autobuddy"
+mycfg["mqtthost"] = mosquittohost
+mycfg["mqttport"] = 1883
+fn=BUDDYLOCATION+"/.buddyconfig/tasmota.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/TasmotaBuddy/TasmotaBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 25
+"""
+mycmd+=BUDDYLOCATION+"/TasmotaBuddy/TasmotaBuddy -c "+fn
+mycmd+="\n    sleep 6\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-tasmota"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dotasmota:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n TasmotaBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n TasmotaBuddy "+fn
+
+
+
 #ShellySwitchBuddy
 mycfg={}
 mycfg["host"]= brokerlocation
@@ -1468,7 +1641,7 @@ mycfg["ssl"]=certdir
 mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "shellies/"
-mycfg["mqtthost"] = "localhost"
+mycfg["mqtthost"] = mosquittohost
 mycfg["mqttport"] = 1883
 if doshellyswitch:
     mycfg["update"]=doshellyupdates
@@ -1509,7 +1682,7 @@ mycfg["ssl"]=certdir
 mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "shellies/"
-mycfg["mqtthost"] = "localhost"
+mycfg["mqtthost"] = mosquittohost
 mycfg["mqttport"] = 1883
 if doshellybulb:
     mycfg["update"]=doshellyupdates
@@ -1550,7 +1723,7 @@ mycfg["ssl"]=certdir
 mycfg["restricted"] = GUIBRIDGETYPE
 mycfg["buddykey"] = keygen()
 mycfg["mqttprefix"] = "shellies/"
-mycfg["mqtthost"] = "localhost"
+mycfg["mqtthost"] = mosquittohost
 mycfg["mqttport"] = 1883
 if doshellyroller:
     mycfg["update"]=doshellyupdates
@@ -1580,6 +1753,151 @@ if doshellyswitch:
 else:
     bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellyRollerBuddy "+fn
 
+#ShellyDWBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "sensor"
+mycfg["subtype"] = "shelly"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+mycfg["mqttprefix"] = "shellies/"
+mycfg["mqtthost"] = mosquittohost
+mycfg["mqttport"] = 1883
+if doshellydwsesnsor:
+    mycfg["update"]=doshellyupdates
+    doshellyupdates = False
+fn=BUDDYLOCATION+"/.buddyconfig/shellysensor.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/ShellyBuddy/ShellyDWBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 25
+"""
+mycmd+=BUDDYLOCATION+"/ShellyBuddy/ShellyDWBuddy -c "+fn
+mycmd+="\n    sleep 6\ndone\n"
+fn=BUDDYLOCATION+"/.run/70-shellysensor"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doshellyswitch:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n ShellyDWBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n ShellyDWBuddy "+fn
+
+
+#BroadlinkRCBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "remotec"
+mycfg["subtype"] = "broadlink"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["ip"] = autobuddyip
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/broadlinkrc.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/BroadlinkBuddy/BroadlinkRCBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 18
+"""
+mycmd+=BUDDYLOCATION+"/BroadlinkBuddy/BroadlinkRCBuddy -c "+fn
+mycmd+="\n    sleep 5\ndone\n"
+fn=BUDDYLOCATION+"/.run/20-broadlinkrc"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if dobroadlinkrc:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n BroadlinkRCBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n BroadlinkRCBuddy "+fn
+
+
+#DrapeBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "drape"
+mycfg["subtype"] = "proxy"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/drape.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/DrapeBuddy/DrapeBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 35
+"""
+mycmd+=BUDDYLOCATION+"/DrapeBuddy/DrapeBuddy -c "+fn
+mycmd+="\n    sleep 3\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-drape"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doproxies:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n DrapeBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n DrapeBuddy "+fn
+
+
+#HVACBuddy
+mycfg={}
+mycfg["host"]= brokerlocation
+mycfg["type"] = "hvac"
+mycfg["subtype"] = "proxy"
+mycfg["credential"] = credential
+mycfg["ssl"]=certdir
+mycfg["restricted"] = GUIBRIDGETYPE
+mycfg["buddykey"] = keygen()
+fn=BUDDYLOCATION+"/.buddyconfig/hvac.cfg"
+with open(fn,"w") as cfile:
+    json.dump(mycfg,cfile)
+os.chmod(fn,0o600)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(BUDDYLOCATION+"/HVACBuddy/HVACBuddy",0o775)
+mycmd="""#!/bin/bash
+export PYTHONPATH="""
+mycmd+=BUDDYLOCATION+"/Buddylib"
+mycmd+="""
+while [ 1 ]; do
+sleep 35
+"""
+mycmd+=BUDDYLOCATION+"/HVACBuddy/HVACBuddy -c "+fn
+mycmd+="\n    sleep 3\ndone\n"
+fn=BUDDYLOCATION+"/.run/40-hvac"
+with open(fn,"w") as cfile:
+    cfile.write(mycmd)
+os.chown(fn,currentowner.st_uid,currentowner.st_gid)
+os.chmod(fn,0o750)
+if doproxies:
+    bustartcmd+="\n    tmux new-window -t AutoBuddy -d -n HVACBuddy "+fn
+else:
+    bustartcmd+="\n    #tmux new-window -t AutoBuddy -d -n HVACBuddy "+fn
 
 #MQTTBuddy
 mycfg={}
@@ -1683,14 +2001,15 @@ if not iamsuper:
     remindmeattheend+="\nYou must permit access to bluetooth adapter with:\n"
 
 for fname in glob.glob(BUDDYLOCATION + "/FlicBuddy/flicd/flicd.*") :
+    interp = os.path.realpath(sys.executable)
     if iamsuper:
         subprocess.run(["/sbin/setcap", "cap_net_admin=ep", fname])
-        subprocess.run(["/sbin/setcap", "cap_net_bind_service=+ep", "/usr/bin/python3.5"])
-        subprocess.run(["/sbin/setcap", "cap_net_raw=+ep", "/usr/bin/python3.5"])
+        subprocess.run(["/sbin/setcap", "cap_net_bind_service=+ep", interp])
+        subprocess.run(["/sbin/setcap", "cap_net_raw=+ep", interp])
     else:
         remindmeattheend+="\tsudo /sbin/setcap cap_net_admin=ep" + fname +"\n"
-        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_bind_service=+ep' /usr/bin/python3.5\n"
-        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_raw=+ep' /usr/bin/python3.5\n"
+        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_bind_service=+ep' " + interp + "\n"
+        remindmeattheend+="\tsudo /sbin/setcap 'cap_net_raw=+ep' " + interp + "\n"
 
 if mainstation:
     if not psqldbok:
