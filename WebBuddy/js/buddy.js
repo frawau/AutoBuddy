@@ -828,7 +828,18 @@ function status_update(id) {
         for (var idx = 0; idx < loitems.length; idx++) {
             val = loitems[idx]
             if ( deviceById[val] != undefined ) {
-                resu = deviceById[val].status;
+                //we only need the values for keys starting with 'buf-'
+                resu = {};
+                var notfound = true;
+                Object.entries(deviceById[val].status).forEach(([k,v]) => {
+                    if (k.startsWith('buf-')) {
+                        resu[k]=v;
+                        notfound = false;
+                    }
+                })
+                if ( notfound ) {
+                    resu = undefined
+                }
                 break
             }
         }
