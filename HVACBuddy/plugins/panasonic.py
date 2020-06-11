@@ -73,7 +73,7 @@ class Panasonic(HVAC):
                              }
         #For functions that require their own frames
         self.xtra_capabilities = {}
-        self.status = {"mode": "auto",
+        self.status = {"mode": "off",
                        "temperature": 25}
 
         self.to_set = {}
@@ -328,7 +328,7 @@ class PanaPX2T5(Panasonic):
         #For functions that require their own frames
         self.xtra_capabilities = {"economy": ["off","on"],
                                   "odourwash": ["off", "on"]}
-        self.status = {"mode": "auto",
+        self.status = {"mode": "off",
                        "temperature": 25,
                        "fan": "auto",
                        "swing": "auto",
