@@ -226,23 +226,27 @@ if not os.path.isfile(BUDDYLOCATION+"/.autobuddyneedconfig"):
     if not iamsuper:
         print ("\nAutoBuddy requires a number of packages to be installed in order to work.")
         print ("On a Debian/Ubuntu type of distribution, the following 2 commands should be run:\n")
-        print("\tsudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-pyaudio i2c-tools\\\n\t\t\t\tlibffi-dev libssl-dev")
+        print("\tsudo apt -y install build-essential postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-pyaudio i2c-tools\\\n\t\t\t\tlibffi-dev libssl-dev")
         print("\tsudo pip3 install --upgrade aiolifx aioxiaomi aioarping aiobtname aioblescan aiohttp aiocoap aiozeroconf aiodns aioouimeaux aiobroadlink hbmqtt SpeechRecognition\n")
         remindmeattheend+="\nMake sure the needed packages are installed:\n\n"
-        remindmeattheend+="\tsudo apt -y install postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapi\\\n\t\t\t\tpython3-pyaudio i2c-tools libffi-dev libssl-dev"
+        remindmeattheend+="\tsudo apt -y install build-essential postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapi\\\n\t\t\t\tpython3-pyaudio i2c-tools libffi-dev libssl-dev"
         remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux aiobroadlink hbmqtt SpeechRecognition\n\n"
     else:
         print("\n\n\n\nNow we shall install the packages we need... You had better be on Debian/Ubuntu with apt for this to work")
         choice = input(" Press '<enter>' to proceed")
         try:
-            subprocess.run(["apt","-y","install","postgresql","tmux","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-pyaudio","i2c-tools", "libffi-dev", "libssl-dev"])
+            subprocess.run(["apt","-y","install","build-essential","postgresql","tmux","python3-pip","python3-sqlalchemy","python3-crypto","python3-psycopg2","python3-ephem","python3-dateutil","python3-bitstring","python3-pyaudio","i2c-tools", "libffi-dev", "libssl-dev"])
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+            remindmeattheend+="\nSomething went wrong. Make sure the needed packages are installed:\n\n"
+            remindmeattheend+="\tsudo apt -y install build-essential postgresql tmux python3-sqlalchemy python3-crypto python3-psycopg2 \\\n\t\t\t\tpython3-ephem python3-dateutil python3-bitstring python3-pip python3-googleapi python3-googlecloudapi\\\n\t\t\t\tpython3-pyaudio i2c-tools libffi-dev libssl-dev"
         try:
             subprocess.run(["pip3","install","--upgrade","aiobtname","aioarping","aiolifx", "aioxiaomi", "aioblescan", "aiozeroconf", "aiohttp","aiocoap","aiodns", "aioouimeaux","hbmqtt", "SpeechRecognition", "aiobroadlink"])
             print("Allright, it looks like we are done.")
         except:
             print("Something wrong just happened....Let's continue anyway. Danger is my middle name")
+            remindmeattheend+="\nSomething went wrong. Make sure the needed packages are installed:\n\n"
+            remindmeattheend+="\n\tsudo pip3 install -U aiolifx aioxiaomi aioarping aiobtname aiozeroconf aiohttp aiocoap aiodns aioouimeaux aiobroadlink hbmqtt SpeechRecognition\n\n"
 
         choice = input(" Press '<enter>' to continue")
         os.system('clear')
