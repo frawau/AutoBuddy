@@ -366,7 +366,7 @@ if __name__ == '__main__':
     except Exception as e:
         parser.error("Error: " + str(e))
 
-    device = FTMPV2S()
+    device = Smash2()
     frames = []
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)

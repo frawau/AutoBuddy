@@ -429,7 +429,7 @@ if __name__ == '__main__':
     except Exception as e:
         parser.error("Error: " + str(e))
 
-    device = PanaPX2T5()
+    device = PanaCassette()
     frames = []
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
