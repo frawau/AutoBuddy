@@ -259,11 +259,11 @@ class Daikin(HVAC):
         return bit_reverse(crc&0xff).to_bytes(1,'big')
 
 
-class FTMPV2S(Daikin):
+class Smash2(Daikin):
 
     def __init__(self):
         super().__init__()
-        self.model = "FTM-PV2S"
+        self.model = "Smash 2"
         self.capabilities = {"mode": ["off", "cool", "fan", "dry"],
                              "temperature": [x for x in range(18,32)],
                              "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
@@ -282,7 +282,7 @@ class PluginObject(object):
 
     def __init__(self):
         self.brand = "Daikin"
-        self.models = ["generic",  "FTMPV2S"]
+        self.models = ["generic",  "Smash 2"]
 
     def factory(self, model):
         if model not in self.models:
@@ -290,8 +290,8 @@ class PluginObject(object):
 
         if model == "generic":
             return Daikin()
-        elif model == "FTMPV2S":
-            return FTMPV2S()
+        elif model == "Smash 2":
+            return Smash2()
 
 
 

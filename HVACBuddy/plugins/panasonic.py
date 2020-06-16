@@ -313,12 +313,12 @@ class Panasonic(HVAC):
 
 
 
-class PanaPX2T5(Panasonic):
+class PanaCassette(Panasonic):
     """PX2T5 amd similar Panasonic HVAC object."""
 
     def __init__(self):
         super().__init__()
-        self.model = "PX2T5"
+        self.model = "4 Way Cassette"
         self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
                              "temperature": [x for x in range(16,32)],
                              "fan": ["auto", "highest", "medium", "lowest"],
@@ -341,7 +341,7 @@ class PluginObject(object):
 
     def __init__(self):
         self.brand = "Panasonic"
-        self.models = ["generic",  "PX2T5"]
+        self.models = ["generic",  "4 Way Cassette"]
 
     def factory(self, model):
         if model not in self.models:
@@ -349,8 +349,8 @@ class PluginObject(object):
 
         if model == "generic":
             return Panasonic()
-        elif model == "PX2T5":
-            return PanaPX2T5()
+        elif model == "4 Way Cassette":
+            return PanaCassette()
 
 
 

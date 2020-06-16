@@ -338,7 +338,7 @@ class Sharp(HVAC):
                   "space 1": SPACE1}
 
 
-class AHPHX(Sharp):
+class JTech(Sharp):
 
     def __init__(self):
         super().__init__()
@@ -467,7 +467,7 @@ class PluginObject(object):
 
     def __init__(self):
         self.brand = "Sharp"
-        self.models = ["generic",  "AHPHX"]
+        self.models = ["generic",  "J-Tech"]
 
     def factory(self, model):
         if model not in self.models:
@@ -475,8 +475,8 @@ class PluginObject(object):
 
         if model == "generic":
             return Sharp()
-        elif model == "AHPHX":
-            return AHPHX()
+        elif model == "J-Tech":
+            return JTech()
 
 
 

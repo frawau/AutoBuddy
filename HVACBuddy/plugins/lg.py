@@ -405,11 +405,11 @@ class LG(HVAC):
                   "space 1": SPACE1,
                   "drop_bits": 4}
 
-class AKB745(LG):
+class InverterV(LG):
 
     def __init__(self):
         super().__init__()
-        self.model = "AKB745"
+        self.model = "Inverter V"
         self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
                              "temperature": [x for x in range(16,30)],
                              "auto_bias": [ "-2","-1","default", "+1", "+2"],
@@ -418,7 +418,6 @@ class AKB745(LG):
         self.xtra_capabilities = {
                              "swing": ["off", "swing", "90","0"],
                              "powerfull": ["off", "on"],
-                             "purifier":["off", "on"],
                              "cleaning":["off", "on"],
                              "economy":["off", "80", "60","40"],
                              }
@@ -428,16 +427,15 @@ class AKB745(LG):
                        "swing": "off",
                        "auto_bias": "default",
                        "powerfull": "off",
-                       "purifier": "off",
                        "cleaning": "off",
                        "economy": "off"}
 
 
-class AKB745B(LG):
+class DualInverter(LG):
 
     def __init__(self):
         super().__init__()
-        self.model = "AKB745B"
+        self.model = "Dual Imverter"
         self.capabilities = {"mode": ["off", "auto", "cool", "fan", "dry"],
                              "temperature": [x for x in range(16,30)],
                              "auto_bias": [ "-2","-1","default", "+1", "+2"],
@@ -468,7 +466,7 @@ class PluginObject(object):
 
     def __init__(self):
         self.brand = "LG"
-        self.models = ["generic", "AKB745", "AKB745B"]
+        self.models = ["generic", "Inverter V", "Dual Inverter"]
 
     def factory(self, model):
         if model not in self.models:
@@ -476,10 +474,10 @@ class PluginObject(object):
 
         if model == "generic":
             return LG()
-        elif model == "AKB745":
-            return AKB745()
-        elif model == "AKB745B":
-            return AKB745B()
+        elif model == "Inverter V":
+            return InverterV()
+        elif model == "Dual Inverter":
+            return DualInverter()
 
 
 
