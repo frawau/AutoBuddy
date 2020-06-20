@@ -302,6 +302,25 @@ def shelly_process(self, msg, type="autobuddy"):
                                                   "colour":{"hue": hue, "saturation": sat, "value": val, "white":white},
                                                   }}})
             self.sendInfo()
+        elif msg["subject"] == "input":
+            self.switch = msg['value'] in [1, '1', 'on', 'ON', 'On',True]
+            bridgectl.sending({"subject": bridgectl.type,
+                            "content_type": "event",
+                            "content": {"event": "switch",
+                                        "target": bridgectl.type +
+                                        "." +
+                                        self.name,
+                                        "value": (self.switch and "on") or "off"}})
+            self.sendInfo()
+        elif msg["subject"] == "longpush":
+            if msg['value'] in [1, '1', 'on', 'ON', 'On',True]:
+                bridgectl.sending({"subject": bridgectl.type,
+                                "content_type": "event",
+                                "content": {"event": "click",
+                                            "target": bridgectl.type +
+                                            "." +
+                                            self.name,
+                                            "value": "long"}})
         #except Exception as e:
             #try:
                 #bridgectl.log.warning(
@@ -319,7 +338,7 @@ def sendInfo(self):
     try:
         msg=""
         prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("power","Light On")]:
+        for x,lbl in [("power","Light On"),("switch","Switch Position")]:
             if getattr(self,x) is not None:
                 msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
                 prefix=""
@@ -525,6 +544,7 @@ class ShellyBridge(bl.BuddyBridge):
                         light.blue = 10
                         light.gain = 20
                         light.busy = aio.Lock()
+                        light.switch = False
                         light.interrupt_busy = False
                         self.devices.append(light)
                         self.pending.remove(b)
@@ -633,6 +653,7 @@ class ShellyBridge(bl.BuddyBridge):
             light.green = 10
             light.blue = 10
             light.gain = 20
+            light.switch = False
             light.busy = aio.Lock()
             light.interrupt_busy = False
             self.sending({"subject": self.type,
@@ -812,7 +833,7 @@ class ShellyBridge(bl.BuddyBridge):
             self.pending.remove(ashelly)
         else:
             for light in self.devices:
-                try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
+                try:  # HAve to protect, in some rare cases, switch does not have a name attribute yet
                     if light.name == ashelly:
                         light.present = False
                         self.sending({"subject": self.type,

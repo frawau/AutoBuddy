@@ -114,16 +114,30 @@ def shelly_process(self, msg, type="autobuddy"):
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
             # try:
-            bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "status",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "icon status":
-                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                                "opacity": 0}},
-                                                "value": {"power":{"power":self.power and "on" or "off"}}}})
+            if self.software_switch:
+                bridgectl.sending({"subject": bridgectl.type,
+                                        "content_type": "event",
+                                        "content": {"event": "status",
+                                                    "target": bridgectl.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status":
+                                                    {"bu-fill": {"fill":(self.switch and cssColour()) or "transparent"}, "bu-not-present": {
+                                                    "opacity": 0}},
+                                                    "value": {"power":{"power":self.power and "on" or "off"},
+                                                              "switch": self.switch and "on" or "off" }}})
+            else:
+                bridgectl.sending({"subject": bridgectl.type,
+                                        "content_type": "event",
+                                        "content": {"event": "status",
+                                                    "target": bridgectl.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status":
+                                                    {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                    "opacity": 0}},
+                                                    "value": {"power":{"power":self.power and "on" or "off"},
+                                                              "switch": self.switch and "on" or "off" }}})
             # except: #Most probably is known but we lost pairing
                 # pass
         elif msg["content"]["command"] == "deletion":
@@ -182,24 +196,42 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "target": bridgectl.type +
                                                 "." +
                                                 self.name,
-                                                "icon status":
-                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": { "opacity": 0}},
+                                                "icon status":{"bu-not-present": { "opacity": 0}},
                                                 "value": {msg["xtra"][0] : msg["value"] }}})
             else:
-                if not self.software_switch:
-                    self.initialized = True
+                if self.power != (msg["value"] == "on"):
                     self.power = msg["value"] == "on"
+                    if not self.software_switch:
+                        bridgectl.sending({"subject": bridgectl.type,
+                                        "content_type": "event",
+                                        "content": {"event": "power",
+                                                    "target": bridgectl.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status":
+                                                    {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                    "opacity": 0}},
+                                                    "value": {"power":self.power and "on" or "off"}}})
+                    else:
+                        bridgectl.sending({"subject": bridgectl.type,
+                                        "content_type": "event",
+                                        "content": {"event": "power",
+                                                    "target": bridgectl.type +
+                                                    "." +
+                                                    self.name,
+                                                    "icon status": { "bu-not-present": {"opacity": 0}},
+                                                    "value": {"power":self.power and "on" or "off"}}})
+
+
                     bridgectl.sending({"subject": bridgectl.type,
                                     "content_type": "event",
                                     "content": {"event": "status",
                                                 "target": bridgectl.type +
                                                 "." +
                                                 self.name,
-                                                "icon status":
-                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
-                                                "opacity": 0}},
-                                                "value": {"power": {"power": self.power and "on" or "off"}}}})
-                self.sendInfo()
+                                                "value": {"power": {"power": self.power and "on" or "off"},
+                                                                    "switch": self.switch and "on" or "off"}}})
+                    self.sendInfo()
 
         elif msg["subject"] == "longpush":
             #We don't really care about the relay. It is manage by the hardware
@@ -216,27 +248,29 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "value": "long"}})
 
         elif msg["subject"] == "input":
-            if self.software_switch:
-                #Toggle the relay
-                if not self.initialized or self.power != (msg["value"] == 1):
-                    #if not self.initialized:
-                        #print("\n\nFirst time for {} with {}\n\n".format(self.name,msg))
-                    self.initialized = True
-                    self.power = msg["value"] == 1
-                    #aio.ensure_future((bridgectl.mqtt_client.publish(
-                        #bridgectl.config['mqttprefix']+ self.name.split("_")[0]+"/relay/"+self.name.split("_")[-1]+"/command",
-                        #self.power and b"off" or b"on")))
-
+            if self.switch != (msg["value"] == 1):
+                self.switch = (msg["value"] == 1)
+                if self.software_switch:
                     bridgectl.sending({"subject": bridgectl.type,
                                     "content_type": "event",
-                                    "content": {"event": "power",
+                                    "content": {"event": "switch",
                                                 "target": bridgectl.type +
                                                 "." +
                                                 self.name,
                                                 "icon status":
-                                                {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": {
+                                                {"bu-fill": {"fill":(self.switch and cssColour()) or "transparent"}, "bu-not-present": {
                                                 "opacity": 0}},
-                                                "value": {"power":self.power and "on" or "off"}}})
+                                                "value": (self.switch and "on") or "off"}})
+                else:
+                    bridgectl.sending({"subject": bridgectl.type,
+                                    "content_type": "event",
+                                    "content": {"event": "switch",
+                                                "target": bridgectl.type +
+                                                "." +
+                                                self.name,
+                                                "icon status":{"bu-not-present": {"opacity": 0}},
+                                                "value": (self.switch and "on") or "off"}})
+
         elif msg["subject"] == "temperature":
             #We don't really care about the relay. It is manage by the hardware
             devid = self.name.split("_")[0]
@@ -247,8 +281,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                         "target": bridgectl.type +
                                         "." +
                                         self.name,
-                                        "icon status":
-                                        {"bu-fill": {"fill":(self.power and cssColour()) or "transparent"}, "bu-not-present": { "opacity": 0}},
+                                        "icon status":{"bu-not-present": { "opacity": 0}},
                                         "value": {"temperature" : msg["value"] }}})
         elif msg["subject"] == "overtemperature":
             #We don't really care about the relay. It is manage by the hardware
@@ -447,7 +480,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "." +
                                                   shelly.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":(shelly.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 0}}}})
+                                                  "icon status": {"bu-not-present": {"opacity": 0}}}})
 
         elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
             if msg["content"]["configuration"]:
@@ -500,7 +533,8 @@ class ShellyBridge(bl.BuddyBridge):
                         except:
                             switch.info={}
                         switch.info = {}
-                        switch.power = True
+                        switch.power = False
+                        switch.switch = False
                         switch.software_switch = False
                         switch.longpush = False
                         switch.power_con = None
@@ -518,7 +552,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "." +
                                                   switch.name,
                                                   "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 0}}}})
+                                                  "icon status": {"bu-not-present": {"opacity": 0}}}})
 
                         #if switch.software_switch:
                             ##here we want detached switch and default to on or off
@@ -539,8 +573,7 @@ class ShellyBridge(bl.BuddyBridge):
                                               "." +
                                               switch.name,
                                               "value": "offline",
-                                              "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"},
-                                                              "bu-not-present": {"opacity": 1}}}})
+                                              "icon status": {"bu-not-present": {"opacity": 1}}}})
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
@@ -625,8 +658,8 @@ class ShellyBridge(bl.BuddyBridge):
                 switch.info=self.infos[switch.name.split("_")[0]]
             except:
                 switch.info={}
-            switch.power=True
-            switch.initialized = False
+            switch.power = False
+            switch.switch = False
             if switch.name in lorelay:
                 switch.software_switch = lorelay[switch.name]["soft"]
             else:
@@ -639,7 +672,7 @@ class ShellyBridge(bl.BuddyBridge):
                           "content": {"event": "presence",
                                       "target": self.type + "." + switch.name,
                                       "value": "offline",
-                                      "icon status": {"bu-fill": {"fill":(switch.power and cssColour()) or "transparent"}, "bu-not-present": {"opacity": 1}}}})
+                                      "icon status": {"bu-fill": {"fill":"transparent"}, "bu-not-present": {"opacity": 1}}}})
 
 
         # No shelly is present yet

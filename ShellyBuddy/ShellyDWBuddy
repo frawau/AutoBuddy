@@ -47,8 +47,7 @@ def intround(x):
 
 #<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
-shelly_commands = """
-"""
+shelly_commands = ""
 
 shelly_config = """
 <buddyui version="0.1">
