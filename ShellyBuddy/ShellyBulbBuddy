@@ -42,7 +42,14 @@ CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
 
-DEVLIST = ["shellybulb"]
+DEVLIST = ["shellybulb","ShellyVintage"]
+CAPAlist = {"shellybulb":["buf-colour","buf-white"],
+            "ShellyVintage": ["buf-whiteb"],
+            }
+MQTTcmd = {"shellybulb":"color",
+            "ShellyVintage": "light",
+            }
+HASMEAS = ["ShellyVintage"]
 
 def intround(x):
     return int(round(x))
@@ -65,7 +72,7 @@ shelly_commands = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup type="list" name="colour" label="Colour" rteffect="1">
+        <controlgroup type="list" name="colour" label="Colour" rteffect="1" onlyif="buf-colour::yes">
             <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
                 <control type="slider" name="hue" label="Hue" rteffect="1">
                     <start>0</start>
@@ -91,7 +98,7 @@ shelly_commands = """
                 <default>0</default>
             </control>
         </controlgroup>
-        <controlgroup  type="list" name="white" label="White" rteffect="1">
+        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="buf-white::yes">
             <control type="slider" name="value" label="Brightness" rteffect="1">
                 <start>0</start>
                 <end>100</end>
@@ -101,6 +108,20 @@ shelly_commands = """
                 <start>3000</start>
                 <end>6500</end>
                 <increment>100</increment>
+            </control>
+            <control  type="spinner" name="duration" label="Duration">
+                <start>0</start>
+                <end>600</end>
+                <increment>1</increment>
+                <postfix>secs</postfix>
+                <default>0</default>
+            </control>
+        </controlgroup>
+        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="buf-whiteb::yes">
+            <control type="slider" name="value" label="Brightness" rteffect="1">
+                <start>0</start>
+                <end>100</end>
+                <increment>1</increment>
             </control>
             <control  type="spinner" name="duration" label="Duration">
                 <start>0</start>
@@ -124,7 +145,7 @@ shelly_config = """
     </configuration>
 </buddyui>
 """
-shelly_config_default = {"credential":{"user":"","password":""}}
+shelly_config_default = {"credential":{"user":"","password":""},"bulb type":{}}
 shelly_module_commands = {}
 
 
@@ -265,6 +286,8 @@ def shelly_process(self, msg, type="autobuddy"):
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
             # try:
+            thissts =  {"power":{"power":self.power and "on" or "off"}}
+            thissts.update(self.status)
             bridgectl.sending({"subject": bridgectl.type,
                                     "content_type": "event",
                                     "content": {"event": "status",
@@ -274,7 +297,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                                 "icon status":
                                                 {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
                                                 "opacity": 0}},
-                                                "value": {"power":{"power":self.power and "on" or "off"}}}})
+                                                "value": thissts}})
             # except: #Most probably is known but we lost pairing
                 # pass
         elif msg["content"]["command"] == "deletion":
@@ -297,7 +320,7 @@ def shelly_process(self, msg, type="autobuddy"):
         elif msg["content"]["command"] == "power":
             self.power = msg["content"]["value"]["power"].lower() == "on"
             aio.ensure_future((bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name + "/color/0/command",
+                bridgectl.config['mqttprefix'] + self.name + "/"+ self.mqttcmd+"/0/command",
                 self.power and b"on" or b"off")))
             bridgectl.sending({"subject": msg["subject"],
                             "content_type": "event",
@@ -315,10 +338,15 @@ def shelly_process(self, msg, type="autobuddy"):
                                                         "brightness": msg["content"]["value"]["value"],
                                                         "temperature": msg["content"]["value"]["temperature"]}))
             else:
-                aio.ensure_future(bridgectl.mqtt_client.publish(
-                    bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
-                    json.dumps({"mode":"white","temp":msg["content"]["value"]["temperature"],
-                                "brightness":msg["content"]["value"]["value"]}).encode()))
+                if "temperature" in msg["content"]["value"]:
+                    aio.ensure_future(bridgectl.mqtt_client.publish(
+                        bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
+                        json.dumps({"mode":"white","temp":msg["content"]["value"]["temperature"],
+                                    "brightness":msg["content"]["value"]["value"]}).encode()))
+                else:
+                    aio.ensure_future(bridgectl.mqtt_client.publish(
+                        bridgectl.config['mqttprefix'] + self.name + "/light/0/set",
+                        json.dumps({"brightness":msg["content"]["value"]["value"]}).encode()))
                 bridgectl.sending({"subject": msg["subject"],
                                 "content_type": "event",
                                 "content": {"event": "white",
@@ -351,6 +379,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                             "value": msg["content"]["value"]}})
         return None
     else:
+        #bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
         #try:
         if not self.present:
             self.present = True
@@ -403,6 +432,56 @@ def shelly_process(self, msg, type="autobuddy"):
                                                   "colour":{"hue": hue, "saturation": sat, "value": val},
                                                   "white":{"temperature":self.temp, "value":self.brightness}}}})
             self.sendInfo()
+        elif msg["subject"] == "light":
+            sendstatus = False
+            sendinfo = False
+            if msg["value"] in ["on","off"]:
+                #We don't really care about the relay. It is manage by the hardware
+                self.power = msg["value"] == "on"
+                sendstatus = True
+                sendinfo = True
+
+            elif isinstance(msg["value"],dict) and "ison" in msg["value"]:
+                self.power = msg["value"]["ison"]
+                self.brightness = msg["value"]["brightness"]
+                sendstatus = True
+            elif  isinstance(msg["value"],dict) and "power" in msg["value"]:
+                sendinfo = True
+                self.power_meas = msg["value"]["power"]
+                bridgectl.sending({"subject": bridgectl.type,
+                                "content_type": "event",
+                                "content": {"event": "measurement",
+                                            "target": bridgectl.type +
+                                            "." +
+                                            self.name,
+                                            "icon status":{"bu-not-present": { "opacity": 0}},
+                                            "value": msg["value"]}})
+            elif  isinstance(msg["value"],dict) and "energy" in msg["value"]:
+                sendinfo = True
+                self.energy = msg["value"]["energy"]
+                bridgectl.sending({"subject": bridgectl.type,
+                                "content_type": "event",
+                                "content": {"event": "measurement",
+                                            "target": bridgectl.type +
+                                            "." +
+                                            self.name,
+                                            "icon status":{"bu-not-present": { "opacity": 0}},
+                                            "value": msg["value"]}})
+
+            if sendstatus:
+                bridgectl.sending({"subject": bridgectl.type,
+                                "content_type": "event",
+                                "content": {"event": "status",
+                                            "target": bridgectl.type +
+                                            "." +
+                                            self.name,
+                                            "icon status":
+                                            {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
+                                            "opacity": 0}},
+                                            "value": {"power": {"power": self.power and "on" or "off"},
+                                                    "white":{"value":self.brightness}}}})
+            if sendinfo:
+                self.sendInfo()
         #except Exception as e:
             #try:
                 #bridgectl.log.warning(
@@ -418,17 +497,19 @@ def shelly_process(self, msg, type="autobuddy"):
 def sendInfo(self):
     # Can be used in callback
     try:
-        msg=""
-        prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("power","Light On")]:
+        msg="<div><dl class=\"dl-horizontal\">"
+        msg+="<dt>Model:</dt><dd>"+self.name.split("-")[0]+"</dd>"
+        if self.name.split("-")[0] in HASMEAS:
+            loinfo = [("power","Light On"),("power_meas","Instant Power"),("energy","Energy Consumption")]
+        else:
+            loinfo = [("power","Light On")]
+        for x,lbl in loinfo:
             if getattr(self,x) is not None:
-                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
-                prefix=""
+                msg+="<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
         devid = self.name
         for x,lbl in [("mac","mac address"),("ip","ip address"),("fw_ver","firmware"),("new_fw","firmware upgradable")]:
             try:
-                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(self.controller.infos[devid][x])+"</dd>"
-                prefix=""
+                msg+="<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(self.controller.infos[devid][x])+"</dd>"
             except:
                 pass
         if msg:
@@ -625,8 +706,15 @@ class ShellyBridge(bl.BuddyBridge):
                         light.green = 10
                         light.blue = 10
                         light.gain = 20
+                        light.power_meas = 0
+                        light.energy = 0
                         light.busy = aio.Lock()
                         light.interrupt_busy = False
+                        light.status = {}
+                        ltype=light.name.split("-")[0]
+                        for x in CAPAlist[ltype]:
+                            light.status[x] = 'yes'
+                        light.mqttcmd = MQTTcmd[ltype]
                         self.devices.append(light)
                         self.pending.remove(b)
                         self.sending({"subject": self.type,
@@ -639,7 +727,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "icon status": {"bu-fill": {"fill":light.cssColour()}, "bu-not-present": {"opacity": 0}}}})
 
                         aio.ensure_future((self.mqtt_client.publish(
-                                self.config['mqttprefix']+ light.name +"/color/0/status/")))
+                                self.config['mqttprefix']+ light.name +"/"+light.mqttcmd+"/0/status/")))
                         notseen = False
                         break
                 if notseen:
@@ -735,8 +823,16 @@ class ShellyBridge(bl.BuddyBridge):
             light.green = 10
             light.blue = 10
             light.gain = 20
+            light.power_meas = 0
+            light.energy = 0
             light.busy = aio.Lock()
             light.interrupt_busy = False
+            light.status = {}
+            ltype=light.name.split("-")[0]
+            for x in CAPAlist[ltype]:
+                light.status[x] = 'yes'
+            light.mqttcmd = MQTTcmd[ltype]
+
             self.sending({"subject": self.type,
                           "content_type": "event",
                           "content": {"event": "presence",
@@ -862,7 +958,11 @@ class ShellyBridge(bl.BuddyBridge):
             for light in self.devices:
                 #self.log.debug("Comparing {} to {}".format(dev,light.name))
                 if dev == light.name:
-                    light._process({"subject":obj,"value":payload},"shelly")
+                    if obj == "light" and len(mtopic)>4 and mtopic[4] in ["power","energy"]:
+                        thispayload = {mtopic[4]: payload}
+                    else:
+                        thispayload = payload
+                    light._process({"subject":obj,"value":thispayload},"shelly")
                     unseen = False
                     break
         if unseen:
