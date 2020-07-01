@@ -129,7 +129,7 @@ def shelly_process(self, msg, type="autobuddy"):
                                     "." +
                                     self.name,
                                     "value":"online",
-                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+                                    "icon status": {"bu-fill": {"fill":cssColour()},"bu-not-present": {"opacity": 0}}}})
 
         if msg["subject"] == "sensor":
             #bridgectl.log.debug("Message is {}".format(msg))
@@ -138,8 +138,9 @@ def shelly_process(self, msg, type="autobuddy"):
                     iconsts={}
                     if msg["xtra"] == "state":
                         self.state = msg["value"]
-                        iconsts = {"bu-door-open":{"opacity": 1 if self.state=="open" else 0, "fill":cssColour()},
-                                   "bu-door-close":{"opacity": 1 if self.state=="close" else 0, "fill":cssColour()}}
+                        iconsts = { "bu-fill": {"fill":cssColour()},
+                                    "bu-door-open":{"opacity": 1 if self.state=="open" else 0, "fill":cssColour()},
+                                    "bu-door-close":{"opacity": 1 if self.state=="close" else 0, "fill":cssColour()}}
                     elif msg["xtra"] == "battery":
                         self.battery = msg["value"]
                     elif msg["xtra"] == "tilt":
@@ -629,7 +630,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                 "." +
                                                 shelly.name,
                                                 "value": "online",
-                                                "icon status": {"bu-not-present": {"opacity": 0}}}})
+                                                "icon status": {"bu-fill": {"fill":cssColour()},"bu-not-present": {"opacity": 0}}}})
 
         else:
             if ashelly not in self.pending:
@@ -657,7 +658,7 @@ class ShellyBridge(bl.BuddyBridge):
                                                   "." +
                                                   sensor.name,
                                                   "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                                                  "icon status": {"bu-fill": {"fill":cssColour()},"bu-not-present": {"opacity": 1}}}})
                 except:
                     pass
 
