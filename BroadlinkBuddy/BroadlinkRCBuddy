@@ -587,6 +587,7 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                     if mac_to_name(adev.name) == remotec.name:
                         remotec.conn = adev
                         remotec.accesslock = aio.Lock()
+                        remotec.present = True
                         if adev.dev == "RM PRO":
                             remotec.commands = ["learn_ir", "send_ir", "learn_rf", "send_rf"]
                         else:

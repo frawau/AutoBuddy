@@ -6,29 +6,23 @@ You can also check out these videos: [installation (part 1)](https://drive.googl
 
 # Raspberry Pi Installation
 
-RPi3 and RPi2 are supported.
+RPi4, RPi3 and RPi2 are supported. Other Ubuntu/Debian system should work as well.
 
-It is not recommended to use Wifi with RPi3. In any case, you'll need a wired network connection for this installation.
+The easiest way to run AutoBuddy is
 
-Download the image from [this link at Google Drive](https://drive.google.com/file/d/0B-JicGkaZAeXSElCby1LdDgzVGM/view?usp=sharing)
+Create a directory
 
-Write the image to an SD card the usual way
+    mkdir AutoBuddy
 
-    xzcat rpi3-autobuddy.img.xz | dd of=/dev/sdX
+Make sure git is installed
 
-with X the actual device e.g. sdb, sdc, ...
-
-Boot the RPi and connect to it using ssh;
-
-    ssh autobuddy@autobuddy.local
-
-The password is "autobuddy" (without the quotes)
+    sudo apt install git
 
 
-Update AutoBuddy
+Clone AutoBuddy
 
     cd Autobuddy
-    git pull
+    git clone https://github.com/frawau/AutoBuddy
     cd ..
 
 
@@ -36,16 +30,19 @@ Configure
 
     sudo AutoBuddy/ConfigBuddy/ConfigBuddy
 
-answer the questions and reboot.
+answer the questions, go get a beer or something and then reboot.
 
 Access WebBuddy at
 
-    https://autobuddy.local:8090
+    https://<my server>:8090
 
 If it complains about an unsafe connection, ignore and trust the self-signed certificates
 then login as user "admin" with password "password"
 
-Have fun and let us know what you like or don't like..
+First thing to do is check your location in Menu / Configure / System Configuration
+
+Have fun and let us know what you like or don't like. You can ask questions by sendding
+an email to help at autobuddy.tech
 
 # Installation
 
@@ -68,7 +65,7 @@ If you plan on using KodiBuddy the python3-aiohttp package won't work, you need 
 On a Ubuntu/Debian distro, you can test that Postgres is running OK by doing, in a terminal:
 
     sudo bash
-          Type your passwordif asked to
+          Type your password if asked to
     su postgres
     psql
 
