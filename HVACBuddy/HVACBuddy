@@ -42,18 +42,19 @@ CERTFILE = "autobuddy.crt"
 __version__ = "0.10"
 
 
-
 def intround(x):
     return int(round(x))
 
-#Used to have different animation names
+
+# Used to have different animation names
 def animname():
     res = ""
     for x in range(4):
         res += random.choice(string.ascii_letters)
     return res
 
-#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+# <controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
 proxy_commands = """
 <buddyui version="0.1">
@@ -61,14 +62,14 @@ proxy_commands = """
         <controlgroup  type="grouplist" name="action" label="Set" rteffect="1">
         <controlgroup type="choice" name="selectmodel" label="Select Model" onlyif="model::notset">
 """
-proxy_command_end="""
+proxy_command_end = """
         </controlgroup>
     </command>
 </buddyui>
 """
 
 proxy_config = ""
-proxy_config_default = {"gateway": {}, 'capabilities': {}, "model":{}, "status":{}}
+proxy_config_default = {"gateway": {}, "capabilities": {}, "model": {}, "status": {}}
 proxy_module_commands = {}
 
 
@@ -78,177 +79,235 @@ def cssColour(self):
 
 def proxy_process(self, msg, type="autobuddy"):
     bridgectl = self.controller
-    #bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
+    # bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
     if type == "autobuddy":
         if msg["content"]["command"] == "nickname":
             # print msg
             self.nickname = msg["content"]["value"]
             bridgectl.sending(
-                {"subject": "control" + "." + bridgectl.type,
+                {
+                    "subject": "control" + "." + bridgectl.type,
                     "content_type": "request",
-                    "content": {"request": "nickname",
-                                "target": bridgectl.type + "." + self.name,
-                                #"token": bridgectl.target,
-                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+                    "content": {
+                        "request": "nickname",
+                        "target": bridgectl.type + "." + self.name,
+                        # "token": bridgectl.target,
+                        "value": {
+                            "name": self.name,
+                            "nickname": msg["content"]["value"],
+                        },
+                    },
+                }
+            )
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
             # try:
             self.sendStatus()
-            #iconsts={"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {"opacity": 0}}
-            #iconsts["animation"]  = self.genAnim(self.position,self.position)
-            #bridgectl.sending({"subject": bridgectl.type,
-                                    #"content_type": "event",
-                                    #"content": {"event": "status",
-                                                #"target": bridgectl.type +
-                                                #"." +
-                                                #self.name,
-                                                #"icon status": iconsts,
-                                                #"value": {"position": self.position }}})
             # except: #Most probably is known but we lost pairing
-                # pass
+            # pass
         elif msg["content"]["command"] == "deletion":
             bridgectl.sending(
-                {"subject": "control" + "." + bridgectl.type,
+                {
+                    "subject": "control" + "." + bridgectl.type,
                     "content_type": "request",
-                    "content": {"request": "deletion",
-                                "target": bridgectl.type,
-                                "value": self.name}})
+                    "content": {
+                        "request": "deletion",
+                        "target": bridgectl.type,
+                        "value": self.name,
+                    },
+                }
+            )
 
         elif msg["content"]["command"] == "action":
             if "value" in msg["content"]:
                 mvalue = msg["content"]["value"]
-                #print("\n\n\nSetting things as {} fpr {}\n\n\n".format(mvalue,self.name))
-                if 'selectmodel' in mvalue:
-                    hdef = mvalue['selectmodel']['bu-cvalue']
+                # print("\n\n\nSetting things as {} fpr {}\n\n\n".format(mvalue,self.name))
+                if "selectmodel" in mvalue:
+                    hdef = mvalue["selectmodel"]["bu-cvalue"]
                     self.hvac = bridgectl.get_hvac(hdef)
-                    bridgectl.match_model(self.name,hdef)
+                    bridgectl.match_model(self.name, hdef)
                 else:
-                    lokv = [(k,v) for k,v in mvalue.items()]
-                    lokv.sort(key=lambda x: (x[0]=="mode" and "zzzzzz" or  x[0])) #Make sure mode is done last
-                    for k,v in lokv:
-                        if k in self.hvac.capabilities or k in self.hvac.xtra_capabilities:
-                            if isinstance(v,dict) and 'bu-cvalue' in v:
-                                val = v['bu-cvalue']
+                    lokv = [(k, v) for k, v in mvalue.items()]
+                    lokv.sort(
+                        key=lambda x: (x[0] == "mode" and "zzzzzz" or x[0])
+                    )  # Make sure mode is done last
+                    for k, v in lokv:
+                        if (
+                            k in self.hvac.capabilities
+                            or k in self.hvac.xtra_capabilities
+                        ):
+                            if isinstance(v, dict) and "bu-cvalue" in v:
+                                val = v["bu-cvalue"]
                             else:
                                 val = v
                             try:
-                                if isinstance(val,str) and val.lower() in ["true","false"]:
+                                if isinstance(val, str) and val.lower() in [
+                                    "true",
+                                    "false",
+                                ]:
                                     val = val.lower() == "true"
-                                self.hvac.set_value(k,val)
+                                self.hvac.set_value(k, val)
                             except:
-                                bridgectl.log.debug("Error: Should not happen, trying to set {} with {} for {}".format(k,val,self.name))
+                                bridgectl.log.debug(
+                                    "Error: Should not happen, trying to set {} with {} for {}".format(
+                                        k, val, self.name
+                                    )
+                                )
 
                     frames = self.hvac.build_ircode()
-                    val=[]
+                    val = []
                     for f in frames:
-                        val.append("".join(["%02x"%x for x in f]))
+                        val.append("".join(["%02x" % x for x in f]))
 
-                    bridgectl.sending({"subject": self.gateway,
-                                    "content_type": "command",
-                                    "content": {"command": "send",
-                                                "target": "remotec",
-                                                "value":{"ctype" : "ir", "code": val, "timing": self.hvac.get_timing(),
-                                                        "sender": bridgectl.type + "." +self.name, "command": "set" }}})
+                    bridgectl.sending(
+                        {
+                            "subject": self.gateway,
+                            "content_type": "command",
+                            "content": {
+                                "command": "send",
+                                "target": "remotec",
+                                "value": {
+                                    "ctype": "ir",
+                                    "code": val,
+                                    "timing": self.hvac.get_timing(),
+                                    "sender": bridgectl.type + "." + self.name,
+                                    "command": "set",
+                                },
+                            },
+                        }
+                    )
         return None
     else:
         try:
-            if msg["content_type"] == "event" and msg["content"]["event"] == "code sent":
+            if (
+                msg["content_type"] == "event"
+                and msg["content"]["event"] == "code sent"
+            ):
                 value = msg["content"]["value"]
-                if value["sender"] == bridgectl.type + "." + self.name and value["sent"]:
-                    bridgectl.sending({"subject": msg["subject"],
-                                    "content_type": "event",
-                                    "content": {"event": "action",
-                                                "target": msg["subject"],
-                                                "value": value["command"]}})
+                if (
+                    value["sender"] == bridgectl.type + "." + self.name
+                    and value["sent"]
+                ):
+                    bridgectl.sending(
+                        {
+                            "subject": msg["subject"],
+                            "content_type": "event",
+                            "content": {
+                                "event": "action",
+                                "target": msg["subject"],
+                                "value": value["command"],
+                            },
+                        }
+                    )
                     self.hvac.update_status()
                     self.sendStatus()
                 return True
 
-
-
             if not self.present:
                 self.present = True
-                bridgectl.sending({"subject": bridgectl.type,
-                            "content_type": "event",
-                            "content": {"event": "presence",
-                                        "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                        "value":"online",
-                                        "icon status": {"bu-not-present": {"opacity": "0"}}}})
+                bridgectl.sending(
+                    {
+                        "subject": bridgectl.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "presence",
+                            "target": bridgectl.type + "." + self.name,
+                            "value": "online",
+                            "icon status": {"bu-not-present": {"opacity": "0"}},
+                        },
+                    }
+                )
 
                 self.initialized = True
             self.sendInfo()
         except Exception as e:
             try:
                 bridgectl.log.warning(
-                    "Bloody process problem",
-                    exc_info=(type(e),
-                              e,
-                              e.__traceback__))
+                    "Bloody process problem", exc_info=(type(e), e, e.__traceback__)
+                )
             except:
                 print("Oops {}".format(e))
 
         return True
 
+
 def sendInfo(self):
     # Can be used in callback
     try:
-        msg=""
-        prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("model","Model")]:
-            if getattr(self,x) is not None:
-                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
-                prefix=""
+        msg = ""
+        prefix = '<div><dl class="dl-horizontal">'
+        for x, lbl in [("model", "Model")]:
+            if getattr(self, x) is not None:
+                msg += (
+                    prefix
+                    + "<dt>"
+                    + lbl.replace("_", " ").title()
+                    + ":</dt><dd>"
+                    + str(getattr(self, x))
+                    + "</dd>"
+                )
+                prefix = ""
         if self.hvac:
-            for x,v in [self.hvac.status.items()]:
-                msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>"+str(v)+"</dd>"
-                prefix=""
+            for x, v in [self.hvac.status.items()]:
+                msg += (
+                    prefix
+                    + "<dt>"
+                    + x.replace("_", " ").title()
+                    + ":</dt><dd>"
+                    + str(v)
+                    + "</dd>"
+                )
+                prefix = ""
         devid = self.name
         if msg:
-            msg+="</dl></div>"
-            self.controller.sending({"subject": self.controller.type,
-                                 "content_type": "event",
-                                 "content": {"event": "info",
-                                             "target": self.controller.type +
-                                             "." +
-                                             self.name,
-                                             "value": msg }})
+            msg += "</dl></div>"
+            self.controller.sending(
+                {
+                    "subject": self.controller.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "info",
+                        "target": self.controller.type + "." + self.name,
+                        "value": msg,
+                    },
+                }
+            )
     except Exception as e:
         self.controller.log.debug(
-            "Ooops could not send info",
-            exc_info=(type(e),
-                      e,
-                      e.__traceback__))
+            "Ooops could not send info", exc_info=(type(e), e, e.__traceback__)
+        )
+
 
 def sendStatus(self):
     status = {}
 
-    if getattr(self,"hvac",None) is None:
+    if getattr(self, "hvac", None) is None:
         status["model"] = "notset"
         status["temperature"] = 0
-        iconsts={"bu-fill": {"fill":self.cssColour()},
-                 "bu-tens-0":{"opacity": "0"},
-                 "bu-tens-not-0":{"opacity": "1", "fill":self.cssColour()},
-                 "bu-naught-0":{"opacity": "0"},
-                 "bu-naught-not-0":{"opacity": "1", "fill":self.cssColour()},
-                 "bu-deci-0":{"opacity": "0"},
-                 "bu-deci-not-0":{"opacity": "1", "fill":self.cssColour()},
-                 "bu-auto":{"opacity": "0.5"},
-                 "bu-not-auto":{"opacity": "0"},
-                 "bu-fan-highest":{"opacity": "0.5"},
-                 "bu-fan-not-highest":{"opacity": "0"},
-                 "bu-swing-auto":{"opacity": "0.5"},
-                 "bu-swing-not-auto":{"opacity": "0"},
-                 "bu-power":{"opacity": "1", "fill":"black"},}
+        iconsts = {
+            "bu-fill": {"fill": self.cssColour()},
+            "bu-tens-0": {"opacity": "0"},
+            "bu-tens-not-0": {"opacity": "1", "fill": self.cssColour()},
+            "bu-naught-0": {"opacity": "0"},
+            "bu-naught-not-0": {"opacity": "1", "fill": self.cssColour()},
+            "bu-deci-0": {"opacity": "0"},
+            "bu-deci-not-0": {"opacity": "1", "fill": self.cssColour()},
+            "bu-auto": {"opacity": "0.5"},
+            "bu-not-auto": {"opacity": "0"},
+            "bu-fan-highest": {"opacity": "0.5"},
+            "bu-fan-not-highest": {"opacity": "0"},
+            "bu-swing-auto": {"opacity": "0.5"},
+            "bu-swing-not-auto": {"opacity": "0"},
+            "bu-power": {"opacity": "1", "fill": "black"},
+        }
     else:
         status["model"] = self.hvac.model
-        iconsts={"bu-fill": {"fill":self.cssColour()}}
+        iconsts = {"bu-fill": {"fill": self.cssColour()}}
         skipit = self.hvac.status["mode"] == "off"
-        for f,v in self.hvac.status.items():
+        for f, v in self.hvac.status.items():
             status[f] = v
             if f == "mode":
-                if v not in ["auto", "feel", "cool", "dry", "heat", "fan","off"]:
+                if v not in ["auto", "feel", "cool", "dry", "heat", "fan", "off"]:
                     v = "auto"
                 if v == "off":
                     iconsts["bu-power"] = {"fill": "black"}
@@ -259,50 +318,61 @@ def sendStatus(self):
                     iconsts["bu-swing-auto"] = {"opacity": "0.3"}
                     iconsts["bu-swing-not-auto"] = {"opacity": "0"}
                     for s in ["bu-tens-", "bu-naught-", "bu-deci-"]:
-                        iconsts[s+"0"] = {"opacity": "0"}
-                        iconsts[s+"not-0"] = {"opacity": "1"}
+                        iconsts[s + "0"] = {"opacity": "0"}
+                        iconsts[s + "not-0"] = {"opacity": "1"}
                 else:
-                    iconsts["bu-"+v] = {"opacity": "1"}
-                    iconsts["bu-not-"+v] = {"opacity": "0"}
+                    iconsts["bu-" + v] = {"opacity": "1"}
+                    iconsts["bu-not-" + v] = {"opacity": "0"}
                     iconsts["bu-power"] = {"fill": "blue"}
             elif f == "fan":
                 if not skipit:
-                    if v not in ["highest", "high", "medium","low","lowest"]:
+                    if v not in ["highest", "high", "medium", "low", "lowest"]:
                         iconsts["bu-fan-highest"] = {"opacity": "0.5"}
                         iconsts["bu-fan-not-highest"] = {"opacity": "0"}
                     else:
-                        iconsts["bu-fan-"+v] = {"opacity": "1"}
-                        iconsts["bu-fan-not-"+v] = {"opacity": "0"}
+                        iconsts["bu-fan-" + v] = {"opacity": "1"}
+                        iconsts["bu-fan-not-" + v] = {"opacity": "0"}
             elif f == "swing":
                 if not skipit:
-                    if v not in ["auto", "auto high", "auto low", "90", "60", "45","30","15"]:
+                    if v not in [
+                        "auto",
+                        "auto high",
+                        "auto low",
+                        "90",
+                        "60",
+                        "45",
+                        "30",
+                        "15",
+                    ]:
                         v = "auto"
-                    iconsts["bu-swing-"+v] = {"opacity": "1"}
-                    iconsts["bu-swing-not-"+v] = {"opacity": "0"}
+                    iconsts["bu-swing-" + v] = {"opacity": "1"}
+                    iconsts["bu-swing-not-" + v] = {"opacity": "0"}
             elif f == "temperature":
                 if not skipit:
-                    if float(v)>=100:
-                        v = float(v)/10
+                    if float(v) >= 100:
+                        v = float(v) / 10
 
-                    v = str(int(float(v)*10+0.5))
-                    for d,s in zip(v,["bu-tens-", "bu-naught-", "bu-deci-"]):
-                        iconsts[s+d] = {"opacity": "1"}
-                        iconsts[s+"not-"+d] = {"opacity": "0"}
+                    v = str(int(float(v) * 10 + 0.5))
+                    for d, s in zip(v, ["bu-tens-", "bu-naught-", "bu-deci-"]):
+                        iconsts[s + d] = {"opacity": "1"}
+                        iconsts[s + "not-" + d] = {"opacity": "0"}
         if self.hvac.functions == []:
-            xx= self.hvac.available_functions()
+            xx = self.hvac.available_functions()
         for x in self.hvac.functions:
-            status[x]='yes'
+            status[x] = "yes"
 
-    self.controller.sending({"subject": self.controller.type,
-                                "content_type": "event",
-                                "content": {"event": "status",
-                                            "target": self.controller.type +
-                                            "." +
-                                            self.name,
-                                            "icon status": iconsts,
-                                            "value": status}})
-
-
+    self.controller.sending(
+        {
+            "subject": self.controller.type,
+            "content_type": "event",
+            "content": {
+                "event": "status",
+                "target": self.controller.type + "." + self.name,
+                "icon status": iconsts,
+                "value": status,
+            },
+        }
+    )
 
 
 # Hop we go....
@@ -325,18 +395,23 @@ class HVACBridge(bl.BuddyBridge):
         self.shuttingdown = False
         self.infos = {}
 
-
-    def match_model(self,dev,model):
-        self.proxy_config["model"][dev]=model
+    def match_model(self, dev, model):
+        self.proxy_config["model"][dev] = model
         self.save_config()
 
     def save_config(self):
-        self.sending({"subject": "control" + "." + self.subtype,
-                        "content_type": "request",
-                        "content": {"request": "save configuration",
-                                    "target": self.type,
-                                    "config name":config["subtype"]+"-hvac",
-                                    "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+        self.sending(
+            {
+                "subject": "control" + "." + self.subtype,
+                "content_type": "request",
+                "content": {
+                    "request": "save configuration",
+                    "target": self.type,
+                    "config name": config["subtype"] + "-hvac",
+                    "value": bl.encrypt(self.proxy_config, self.config["buddykey"]),
+                },
+            }
+        )
 
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
@@ -347,26 +422,35 @@ class HVACBridge(bl.BuddyBridge):
 
         elif msg["content"]["command"] == "new proxy device":
             ndev = msg["content"]["value"]
-            ndev['nickname'] = ndev['name']
+            ndev["nickname"] = ndev["name"]
             needname = True
             newname = ""
             while needname:
-                newname = "hvac-p"+uuid4().hex[:9]
+                newname = "hvac-p" + uuid4().hex[:9]
                 needname = False
                 for adev in self.devices:
                     if adev.name == newname:
                         needname = True
                         break
-            ndev['name'] = newname
+            ndev["name"] = newname
             self.pending.append(ndev)
-            self.sending({"subject": "control" + "." + self.type,
-                          "content_type": "request",
-                          "content": {"request": "creation",
-                                      "target": self.type,
-                                          # Here we need the type
-                                      #"token": self.target,
-                                      "value": {"name": newname, "nickname": ndev['nickname'], "subtype": self.subtype}}})
-
+            self.sending(
+                {
+                    "subject": "control" + "." + self.type,
+                    "content_type": "request",
+                    "content": {
+                        "request": "creation",
+                        "target": self.type,
+                        # Here we need the type
+                        # "token": self.target,
+                        "value": {
+                            "name": newname,
+                            "nickname": ndev["nickname"],
+                            "subtype": self.subtype,
+                        },
+                    },
+                }
+            )
 
         else:
             for aproxy in self.devices:
@@ -374,21 +458,24 @@ class HVACBridge(bl.BuddyBridge):
 
     def process_response(self, msg):
         # if msg["content"]["token"] != self.target:
-            # if self.log:
-                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            # else:
-                # print ("Token not matching {} vs
-                # {}".format(msg["content"]["token"],self.target))
-        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+        # if self.log:
+        # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+        # else:
+        # print ("Token not matching {} vs
+        # {}".format(msg["content"]["token"],self.target))
+        if (
+            self.state == "init"
+            and msg["content"]["response"] == "configuration"
+            and msg["subject"] == self.target
+        ):
             # Getting the config
             if msg["content"]["configuration"]:
                 try:
                     storedconfig = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
+                        msg["content"]["configuration"], self.config["buddykey"]
+                    )
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The config stored is {}".format(storedconfig))
+                        self.log.debug("The config stored is {}".format(storedconfig))
                 except:
                     storedconfig = {}
                     savenew = True
@@ -401,22 +488,17 @@ class HVACBridge(bl.BuddyBridge):
                 for x in storedconfig:
                     self.proxy_config[x] = storedconfig[x]
 
-
-
             self.config["database"] = msg["content"]["database"]
             if "configonly" in self.config and self.config["configonly"]:
                 self.state = "wait config save"
             else:
                 self.state = "active"
                 self.build()
-            # if savenew or ("configonly" in self.config and self.config["configonly"]):
-                # self.sending({"subject":"control" + "." + self.subtype,
-                                #"content_type": "request",
-                                #"content": {"request":"save configuration",
-                                            #"target":self.target,
-                                            #"value":bl.encrypt(self.proxy_config,self.config["buddykey"])}})
 
-        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+        elif (
+            msg["content"]["response"] == "save configuration"
+            and msg["subject"] == self.target
+        ):
             if self.state == "active" and msg["content"]["status"] != "done":
                 # log
                 if self.log:
@@ -424,109 +506,162 @@ class HVACBridge(bl.BuddyBridge):
                 else:
                     print("Warning: Configuration was not saved.")
             else:
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [proxy_config, {}]}}})
-                #self.sending({"subject": self.config["restricted"],
-                              #"content_type": "restricted event",
-                              #"content": {"event": "config updated",
-                                          #"target": self.target,
-                                          #"value": self.proxy_config}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.target,
+                        "content_type": "request",
+                        "content": {
+                            "request": "functions",
+                            "target": self.type,
+                            "subtype": self.subtype,
+                            # "token": self.target,
+                            "value": {"configs": [proxy_config, {}]},
+                        },
+                    }
+                )
+
                 # Now update all the proxied present
                 for dev in self.devices:
-                    self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "presence",
-                                                "target": self.type +
-                                                "." +
-                                                dev.name,
-                                                "value": "online",
-                                                "icon status": {"bu-fill": {"fill":dev.cssColour()}, "bu-not-present": {"opacity": "0"}}}})
+                    self.sending(
+                        {
+                            "subject": self.type,
+                            "content_type": "event",
+                            "content": {
+                                "event": "presence",
+                                "target": self.type + "." + dev.name,
+                                "value": "online",
+                                "icon status": {
+                                    "bu-fill": {"fill": dev.cssColour()},
+                                    "bu-not-present": {"opacity": "0"},
+                                },
+                            },
+                        }
+                    )
 
-        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+        elif (
+            msg["content"]["response"] == "configuration"
+            and msg["subject"] == self.target
+        ):
             if msg["content"]["configuration"]:
                 try:
                     storedprop = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
+                        msg["content"]["configuration"], self.config["buddykey"]
+                    )
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The property stored is {}".format(storedprop))
+                        self.log.debug("The property stored is {}".format(storedprop))
                 except:
                     storedprop = {}
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The property stored cannot be decrypted.")
+                        self.log.debug("The property stored cannot be decrypted.")
                 for k, v in storedprop.items():
                     self.proxy_config[k] = v
 
-            if not(msg["content"]["configuration"] and storedprop):
+            if not (msg["content"]["configuration"] and storedprop):
                 # First time around... was never saved that property.. let's do
                 # it
-                self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          "config name":config["subtype"]+"-hvac",
-                                          #"token": self.target,
-                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {
+                            "request": "save configuration",
+                            "target": self.type,
+                            "config name": config["subtype"] + "-hvac",
+                            # "token": self.target,
+                            "value": bl.encrypt(
+                                self.proxy_config, self.config["buddykey"]
+                            ),
+                        },
+                    }
+                )
         elif self.state == "active":
-            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+            if (
+                msg["content"]["response"] == "creation"
+                and msg["content"]["status"] == "done"
+            ):
                 sess = bl.getSession(self.config["database"])
-                hvac = sess.query(bl.hvac).filter_by(
-                    name=msg["subject"].split(".")[-1]).one()
-                self.sending({"subject": self.type,
-                              "content_type": "event",
-                              "content": {"event": "new device",
-                                          "target": self.type +
-                                          "." +
-                                          hvac.name,
-                                          "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": hvac.name, "nickname": hvac.nickname}}})
+                hvac = (
+                    sess.query(bl.hvac)
+                    .filter_by(name=msg["subject"].split(".")[-1])
+                    .one()
+                )
+                self.sending(
+                    {
+                        "subject": self.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "new device",
+                            "target": self.type + "." + hvac.name,
+                            "value": {
+                                "type": self.type,
+                                "subtype": self.subtype,
+                                "name": hvac.name,
+                                "nickname": hvac.nickname,
+                            },
+                        },
+                    }
+                )
                 notseen = True
-                for b in  [ x for x in self.pending]:
-                    if b['name'] == hvac.name:
+                for b in [x for x in self.pending]:
+                    if b["name"] == hvac.name:
                         hvac.present = True
                         hvac.controller = self
-                        hvac.gateway = b['gateway']
-                        hvac.info={}
+                        hvac.gateway = b["gateway"]
+                        hvac.info = {}
                         hvac.hvac = None
-                        hvac.learnir = ('learn_ir' in b['commands']  and 'yes') or 'no'
-                        hvac.learnrf = ('learn_rf' in b['commands']  and 'yes') or 'no'
-                        self.proxy_config['gateway'][hvac.name] = b['gateway']
+                        hvac.learnir = ("learn_ir" in b["commands"] and "yes") or "no"
+                        hvac.learnrf = ("learn_rf" in b["commands"] and "yes") or "no"
+                        self.proxy_config["gateway"][hvac.name] = b["gateway"]
                         self.devices.append(hvac)
                         self.pending.remove(b)
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  hvac.name,
-                                                  "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":hvac.cssColour()}, "bu-not-present": {"opacity": "0"}}}})
-                        self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          "config name":self.config["subtype"]+"-hvac",
-                                          #"token": self.target,
-                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + hvac.name,
+                                    "value": "online",
+                                    "icon status": {
+                                        "bu-fill": {"fill": hvac.cssColour()},
+                                        "bu-not-present": {"opacity": "0"},
+                                    },
+                                },
+                            }
+                        )
+                        self.sending(
+                            {
+                                "subject": "control" + "." + self.subtype,
+                                "content_type": "request",
+                                "content": {
+                                    "request": "save configuration",
+                                    "target": self.type,
+                                    "config name": self.config["subtype"] + "-hvac",
+                                    # "token": self.target,
+                                    "value": bl.encrypt(
+                                        self.proxy_config, self.config["buddykey"]
+                                    ),
+                                },
+                            }
+                        )
                         notseen = False
                         break
                 if notseen:
-                    self.sending({"subject": self.type,
-                                  "content_type": "event",
-                                  "content": {"event": "presence",
-                                              "target": self.type +
-                                              "." +
-                                              hvac.name,
-                                              "value": "offline",
-                                              "icon status": {"bu-fill": {"fill":hvac.cssColour()},
-                                                              "bu-not-present": {"opacity": "1"}}}})
+                    self.sending(
+                        {
+                            "subject": self.type,
+                            "content_type": "event",
+                            "content": {
+                                "event": "presence",
+                                "target": self.type + "." + hvac.name,
+                                "value": "offline",
+                                "icon status": {
+                                    "bu-fill": {"fill": hvac.cssColour()},
+                                    "bu-not-present": {"opacity": "1"},
+                                },
+                            },
+                        }
+                    )
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
@@ -535,13 +670,17 @@ class HVACBridge(bl.BuddyBridge):
                     for hvac in self.devices:
                         if hvac.name == msg["subject"].split(".")[-1]:
                             hvac.nickname = msg["content"]["value"]
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "nickname",
-                                                      "target": self.type +
-                                                      "." +
-                                                      hvac.name,
-                                                      "value": hvac.nickname}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "nickname",
+                                        "target": self.type + "." + hvac.name,
+                                        "value": hvac.nickname,
+                                    },
+                                }
+                            )
                             break
 
             elif msg["content"]["response"] == "deletion":
@@ -552,17 +691,21 @@ class HVACBridge(bl.BuddyBridge):
                     doremove = False
                     for hvac in self.devices:
                         if hvac.name == msg["subject"].split(".")[-1]:
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "deletion",
-                                                      "target": self.type +
-                                                      "." +
-                                                      hvac.name,
-                                                      "value": hvac.name}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "deletion",
+                                        "target": self.type + "." + hvac.name,
+                                        "value": hvac.name,
+                                    },
+                                }
+                            )
                             doremove = True
                             if hvac.name in self.proxy_config["gateway"]:
-                                del(self.proxy_config["gateway"][hvac.name])
-                                del(self.proxy_config["model"][hvac.name])
+                                del self.proxy_config["gateway"][hvac.name]
+                                del self.proxy_config["model"][hvac.name]
                             break
 
                         sidx += 1
@@ -572,44 +715,44 @@ class HVACBridge(bl.BuddyBridge):
         else:
             if self.log:
                 self.log.warning(
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
             else:
-                print (
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
+                print(
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
 
     def process_event(self, msg):
         if msg["content"]["event"] == "code sent":
             for dev in self.devices:
                 if dev.of_interest(msg["subject"]):
-                    return dev._process(msg,"proxy")
-
+                    return dev._process(msg, "proxy")
 
     def build(self):
-        self.sending({"subject": "control" + "." + self.target,
-                      "content_type": "request",
-                      "content": {"request": "functions",
-                                  "target": self.type,
-                                  "subtype": self.subtype,
-                                  #"token": self.target,
-                                  "value": {"functions": proxy_commands,
-                                            "module commands": proxy_module_commands,
-                                            "configs": [proxy_config, {}]}}})
-                                            #"configs": [proxy_config, self.proxy_config]}}})
-
-        #self.sending({"subject": self.config["restricted"],
-                      #"content_type": "restricted event",
-                      #"content": {"event": "config updated",
-                                  #"target": self.target,
-                                  #"value": self.proxy_config}})
-        sess = bl.getSession(self.config["database"])
-        self.devices = sess.query(
-            bl.hvac).filter_by(
-                subtype=self.subtype).all(
+        self.sending(
+            {
+                "subject": "control" + "." + self.target,
+                "content_type": "request",
+                "content": {
+                    "request": "functions",
+                    "target": self.type,
+                    "subtype": self.subtype,
+                    # "token": self.target,
+                    "value": {
+                        "functions": proxy_commands,
+                        "module commands": proxy_module_commands,
+                        "configs": [proxy_config, {}],
+                    },
+                },
+            }
         )
+
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(bl.hvac).filter_by(subtype=self.subtype).all()
         for hvac in self.devices:
             hvac.present = False
             hvac.controller = self
@@ -620,31 +763,39 @@ class HVACBridge(bl.BuddyBridge):
                 hvac.hvac = None
             hvac.gateway = self.proxy_config["gateway"][hvac.name]
             try:
-                hvac.learnir = ("learn_ir" in self.proxy_config["capabilities"][hvac.gateway] and 'yes' ) or 'no'
+                hvac.learnir = (
+                    "learn_ir" in self.proxy_config["capabilities"][hvac.gateway]
+                    and "yes"
+                ) or "no"
             except:
-                hvac.learnir = 'no'
+                hvac.learnir = "no"
             try:
-                hvac.learnrf = ("learn_rf" in self.proxy_config["capabilities"][hvac.gateway] and 'yes' ) or 'no'
+                hvac.learnrf = (
+                    "learn_rf" in self.proxy_config["capabilities"][hvac.gateway]
+                    and "yes"
+                ) or "no"
             except:
-                hvac.learnrf = 'no'
+                hvac.learnrf = "no"
 
-
-
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type + "." + hvac.name,
-                                      "value": "online",
-                                      "icon status": {}}})
-            #hvac.sendStatus()
-
+            self.sending(
+                {
+                    "subject": self.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "presence",
+                        "target": self.type + "." + hvac.name,
+                        "value": "online",
+                        "icon status": {},
+                    },
+                }
+            )
+            # hvac.sendStatus()
 
         sess.close()
 
-
     def register(self, loproxy):
         seen = False
-        aproxy = loproxy[0] #All the hvacs are created in tandem with the device
+        aproxy = loproxy[0]  # All the hvacs are created in tandem with the device
 
         for proxy in self.devices:
             if proxy.name == aproxy:
@@ -657,43 +808,61 @@ class HVACBridge(bl.BuddyBridge):
                     proxy.controller = self
                     if not proxy.present:
                         proxy.present = True
-                        self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "presence",
-                                                "target": self.type +
-                                                "." +
-                                                proxy.name,
-                                                "value": "online",
-                                                "icon status": {"bu-not-present": {"opacity": "0"}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + proxy.name,
+                                    "value": "online",
+                                    "icon status": {"bu-not-present": {"opacity": "0"}},
+                                },
+                            }
+                        )
 
         else:
             for aproxy in loproxy:
                 if aproxy not in self.pending:
                     self.pending.append(aproxy)
-                    self.sending({"subject": "control" + "." + self.type,
-                                "content_type": "request",
-                                "content": {"request": "creation",
-                                            "target": self.type,
-                                                # Here we need the type
-                                            #"token": self.target,
-                                            "value": {"name": aproxy, "nickname": aproxy, "subtype": self.subtype}}})
+                    self.sending(
+                        {
+                            "subject": "control" + "." + self.type,
+                            "content_type": "request",
+                            "content": {
+                                "request": "creation",
+                                "target": self.type,
+                                # Here we need the type
+                                # "token": self.target,
+                                "value": {
+                                    "name": aproxy,
+                                    "nickname": aproxy,
+                                    "subtype": self.subtype,
+                                },
+                            },
+                        }
+                    )
 
     def unregister(self, aproxy):
-        if aproxy.name in [x['name'] for x in self.pending]:
-            self.pending = [x for x in self.pending if x['name'] != aproxy.name]
+        if aproxy.name in [x["name"] for x in self.pending]:
+            self.pending = [x for x in self.pending if x["name"] != aproxy.name]
         else:
             for hvac in self.devices:
                 try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
                     if hvac.name == aproxy:
                         hvac.present = False
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  hvac.name,
-                                                  "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": "1"}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + hvac.name,
+                                    "value": "offline",
+                                    "icon status": {"bu-not-present": {"opacity": "1"}},
+                                },
+                            }
+                        )
                 except:
                     pass
 
@@ -702,26 +871,30 @@ class HVACBridge(bl.BuddyBridge):
             self.proxy_config["commands"][device] = {command: value}
         else:
             self.proxy_config["commands"][device][command] = value
-        self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          "config name":config["subtype"]+"-hvac",
-                                          #"token": self.target,
-                                          "value": bl.encrypt(self.proxy_config, self.config["buddykey"])}})
+        self.sending(
+            {
+                "subject": "control" + "." + self.subtype,
+                "content_type": "request",
+                "content": {
+                    "request": "save configuration",
+                    "target": self.type,
+                    "config name": config["subtype"] + "-hvac",
+                    # "token": self.target,
+                    "value": bl.encrypt(self.proxy_config, self.config["buddykey"]),
+                },
+            }
+        )
 
     def get_hvac(self, name):
         global plugs
 
-        brand,model = name.split("||")
+        brand, model = name.split("||")
         for x in plugs:
             if brand == x.brand:
-                newhvac =  x.factory(model)
-                #TODO Add persisted information
+                newhvac = x.factory(model)
+                # TODO Add persisted information
                 return newhvac
         return None
-
-
 
 
 aboutstr = """<p>HVACBuddy is a proxy between AutoBuddy and hvac devices controlled by a IR/RF remote control.</p>
@@ -859,45 +1032,96 @@ iconstr = """
 </svg>
 """
 
-#Here are the values for the icon animation,  order for closing. First is the hook second the curtain
-iconposition = [(32,0), (95, 65), (160, 130), (225, 195), (290, 260)]
-iconcurtwidth = (15, 65) #65 is a delta, real is 15+65 = 80
+# Here are the values for the icon animation,  order for closing. First is the hook second the curtain
+iconposition = [(32, 0), (95, 65), (160, 130), (225, 195), (290, 260)]
+iconcurtwidth = (15, 65)  # 65 is a delta, real is 15+65 = 80
 
 cfgdefault = {
     "type": "hvac",
-     "subtype": SUBTYPE,
-     "host": "localhost",
-     "port": 8745,
-     "credential": "",
-     "ssl": "",
-     "restricted": "guibridge"}
+    "subtype": SUBTYPE,
+    "host": "localhost",
+    "port": 8745,
+    "credential": "",
+    "ssl": "",
+    "restricted": "guibridge",
+}
 
 
 def configure():
     parser = argparse.ArgumentParser(description="Track proxied hvacs..")
     # version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
-    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
-    parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
-    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
-    parser.add_argument("-c", "--config", default="/etc/autobuddy/proxy.cfg", type=argparse.FileType('r'),
-                        help="Config file to use (default \"/etc/autobuddy/proxy.cfg\")")
-    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
-    parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
-    parser.add_argument("-S", "--ssl", default="",
-                        help="The directory where the file %s can be found." % (CERTFILE))
-    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
-                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
-    parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="Log warning messages")
-    parser.add_argument("-C", "--configonly", default="",
-                        help="Exit after the the configuration has been saved")
+    parser.add_argument(
+        "-t",
+        "--type",
+        default=cfgdefault["type"],
+        help='The type of devices we handle. (default "%s").' % cfgdefault["type"],
+    )
+    parser.add_argument(
+        "-s",
+        "--subtype",
+        default=cfgdefault["subtype"],
+        help='The specific subtype we manage. (default "%s").' % cfgdefault["subtype"],
+    )
+    parser.add_argument(
+        "-a",
+        "--host",
+        default=cfgdefault["host"],
+        help='The host address of the server (default "%s").' % cfgdefault["host"],
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=cfgdefault["port"],
+        help='The port used by the server (default "%s").' % cfgdefault["port"],
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="/etc/autobuddy/proxy.cfg",
+        type=argparse.FileType("r"),
+        help='Config file to use (default "/etc/autobuddy/proxy.cfg")',
+    )
+    parser.add_argument(
+        "-V",
+        "--credential",
+        default=cfgdefault["credential"],
+        help='The credential used to verify authorization (default "%s").'
+        % cfgdefault["credential"],
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Log debug information (default False)",
+    )
+    parser.add_argument(
+        "-S",
+        "--ssl",
+        default="",
+        help="The directory where the file %s can be found." % (CERTFILE),
+    )
+    parser.add_argument(
+        "-r",
+        "--restricted",
+        default=cfgdefault["restricted"],
+        help='Where to send "restricted events" (default "%s").'
+        % cfgdefault["restricted"],
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Log warning messages",
+    )
+    parser.add_argument(
+        "-C",
+        "--configonly",
+        default="",
+        help="Exit after the the configuration has been saved",
+    )
 
     try:
         opts = parser.parse_args()
@@ -906,26 +1130,24 @@ def configure():
 
     if opts.debug:
         logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
+            level=logging.DEBUG, format="%(levelname)7s: %(message)s", stream=sys.stderr
         )
     elif opts.verbose:
         logging.basicConfig(
             level=logging.WARNING,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
     else:
         logging.basicConfig(
             level=logging.CRITICAL,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
-    proxylog = logging.getLogger('')
+    proxylog = logging.getLogger("")
     proxycfg = {"debug": opts.debug}
     try:
-    # if True:
+        # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
@@ -942,24 +1164,25 @@ def configure():
             else:
                 proxycfg[attr] = opts.__getattribute__(attr)
             if opts.debug:
-                proxylog.debug("The %s is %s." % (attr,proxycfg[attr]))
-
+                proxylog.debug("The %s is %s." % (attr, proxycfg[attr]))
 
         if proxycfg["ssl"] and not (os.path.isfile(proxycfg["ssl"] + "/" + CERTFILE)):
-            proxylog.critical("Encryption: Could not find {} .".format(
-                proxycfg["ssl"] + "/" + CERTFILE))
+            proxylog.critical(
+                "Encryption: Could not find {} .".format(
+                    proxycfg["ssl"] + "/" + CERTFILE
+                )
+            )
             sys.exit()
         if opts.debug:
             if proxycfg["ssl"]:
                 proxylog.debug(
-                    "The ssl certificates can be found in %s" %
-                    proxycfg["ssl"])
+                    "The ssl certificates can be found in %s" % proxycfg["ssl"]
+                )
             else:
                 proxylog.debug("The connection is not encrypted")
 
         if "buddykey" in cfgdata:
             proxycfg["buddykey"] = cfgdata["buddykey"]
-
 
         if opts.configonly:
 
@@ -968,7 +1191,7 @@ def configure():
                     proxylog.debug("Generating random key")
                 proxycfg["buddykey"] = bl.keygen()
             try:
-                del(proxycfg["debug"])
+                del proxycfg["debug"]
             except:
                 pass
             with open(opts.configonly, "w") as cfile:
@@ -984,13 +1207,13 @@ def configure():
 
 
 def special_cmp(a):
-    if a.startswith('buf-mode-'):
+    if a.startswith("buf-mode-"):
         return "buf-0"
-    if a.startswith('buf-temperature-'):
+    if a.startswith("buf-temperature-"):
         return "buf-1"
-    if a.startswith('buf-fan-'):
+    if a.startswith("buf-fan-"):
         return "buf-2"
-    if a.startswith('buf-swing-'):
+    if a.startswith("buf-swing-"):
         return "buf-3"
     return a
 
@@ -1001,30 +1224,32 @@ if __name__ == "__main__":
     log, config = configure()
     log.info("Configured")
 
-    #Let's get the plugins and generate all possible commands
-    dir_path = os.path.join(os.path.dirname(__file__),'plugins')
-    importlib.import_module('plugins')
+    # Let's get the plugins and generate all possible commands
+    dir_path = os.path.join(os.path.dirname(__file__), "plugins")
+    importlib.import_module("plugins")
     plugs = []
     for filename in os.listdir(dir_path):
         if "hvaclib.py" in filename:
             continue
         name, ext = os.path.splitext(filename)
         if ext.endswith(".py"):
-            mod = importlib.import_module("."+name, package="plugins")
+            mod = importlib.import_module("." + name, package="plugins")
             plugs.append(mod.PluginObject())
     generated_xml = {}
-    inserted_xml=set()
+    inserted_xml = set()
     lof = {}
     for p in plugs:
         for m in p.models:
-            proxy_commands += """\n<item label="{}" value="{}" />\n""".format(p.brand.title()+" "+m,p.brand+"||"+m)
+            proxy_commands += """\n<item label="{}" value="{}" />\n""".format(
+                p.brand.title() + " " + m, p.brand + "||" + m
+            )
             ac = p.factory(m)
-            for x,v in ac.available_functions().items():
-                #print("Adding for {} : {}".format(x,v))
+            for x, v in ac.available_functions().items():
+                # print("Adding for {} : {}".format(x,v))
                 lof[x] = v
-            del(ac)
+            del ac
     proxy_commands += "</controlgroup>"
-    #Now let's generate the xml
+    # Now let's generate the xml
     mode_xml = ""
     temp_xml = ""
     fan_xml = ""
@@ -1034,9 +1259,9 @@ if __name__ == "__main__":
     for i in lofn:
         if i in inserted_xml:
             continue
-        _,f,k = i.split("-")
-        if k not in generated_xml:#Generation needed
-            #Is this an On/Off thing?
+        _, f, k = i.split("-")
+        if k not in generated_xml:  # Generation needed
+            # Is this an On/Off thing?
             if f == "temperature":
                 h = '<control type="slider" name="{}" label="{}" onlyif="{}::yes">'
                 s, e = k.split("|")
@@ -1045,7 +1270,9 @@ if __name__ == "__main__":
                     <start>{}</start>
                     <end>{}</end>
                     <increment>{}</increment>
-                </control>""".format(s,e,int(step)/10)
+                </control>""".format(
+                    s, e, int(step) / 10
+                )
             elif len(lof[i]) == 2 and "on" in lof[i] and "off" in lof[i]:
                 h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
                 v = """<value label="On">on</value>
@@ -1055,71 +1282,85 @@ if __name__ == "__main__":
                 h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
                 v = """<value label="{}">{}</value>
                      <value label="{}">{}</value>
-                </control>""".format(str(lof[i][0]).title(), str(lof[i][0]), str(lof[i][1]).title(), str(lof[i][1]))
-            else: #A choice it is
+                </control>""".format(
+                    str(lof[i][0]).title(),
+                    str(lof[i][0]),
+                    str(lof[i][1]).title(),
+                    str(lof[i][1]),
+                )
+            else:  # A choice it is
                 h = '<controlgroup type="choice" name="{}" label="{}" onlyif="{}::yes">'
-                v=""
+                v = ""
                 for val in lof[i]:
-                    v += """<item label="{}" value="{}" />\n""".format(str(val).title(),val)
+                    v += """<item label="{}" value="{}" />\n""".format(
+                        str(val).title(), val
+                    )
                 v += "</controlgroup>"
-            generated_xml[k] = (h,v)
+            generated_xml[k] = (h, v)
 
-        h, v  = generated_xml[k]
+        h, v = generated_xml[k]
         if f == "mode":
-            mode_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+            mode_xml += "\n" + h.format(f, f.title(), i) + "\n" + v
         elif f == "temperature":
-            temp_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+            temp_xml += "\n" + h.format(f, f.title(), i) + "\n" + v
         elif f == "fan":
-            fan_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+            fan_xml += "\n" + h.format(f, f.title(), i) + "\n" + v
         elif f == "swing":
-            swing_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+            swing_xml += "\n" + h.format(f, f.title(), i) + "\n" + v
         else:
-            other_xml += "\n" + h.format(f,f.title(),i) + "\n" + v
+            other_xml += "\n" + h.format(f, f.title(), i) + "\n" + v
         inserted_xml.add(i)
 
-    proxy_commands += mode_xml + "\n" + \
-                        temp_xml + "\n" + \
-                            fan_xml + "\n" + \
-                                swing_xml + "\n" + \
-                                    other_xml + proxy_command_end
-    #Clean up
-    del(inserted_xml)
-    del(generated_xml)
-    del(lofn)
-    del(mode_xml)
-    del(temp_xml)
-    del(fan_xml)
-    del(swing_xml)
-    del(other_xml)
-
+    proxy_commands += (
+        mode_xml
+        + "\n"
+        + temp_xml
+        + "\n"
+        + fan_xml
+        + "\n"
+        + swing_xml
+        + "\n"
+        + other_xml
+        + proxy_command_end
+    )
+    # Clean up
+    del inserted_xml
+    del generated_xml
+    del lofn
+    del mode_xml
+    del temp_xml
+    del fan_xml
+    del swing_xml
+    del other_xml
 
     loop = aio.get_event_loop()
-    #if config["debug"]:
-        #loop.set_debug(True)
+    # if config["debug"]:
+    # loop.set_debug(True)
 
     if config["ssl"]:
-        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-                                                cafile=config["ssl"] + '/' + CERTFILE)
+        sslcontext = ssl.create_default_context(
+            ssl.Purpose.SERVER_AUTH, cafile=config["ssl"] + "/" + CERTFILE
+        )
 
         sslcontext.check_hostname = False
     else:
         sslcontext = None
     connFuture = aio.Future()
     fac = loop.create_connection(
-        partial(HVACBridge,
-                loop,
-                connFuture,
-                config,
-                log),
+        partial(HVACBridge, loop, connFuture, config, log),
         config["host"],
-     config["port"],
-     ssl=sslcontext)
+        config["port"],
+        ssl=sslcontext,
+    )
     conn, bridgectl = loop.run_until_complete(fac)
     loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"HVACBuddy": aboutstr},
-         "display": {config["type"]: {config["subtype"]: iconstr}},
-         "config name":config["subtype"]+"-hvac"})
+        {
+            "about": {"HVACBuddy": aboutstr},
+            "display": {config["type"]: {config["subtype"]: iconstr}},
+            "config name": config["subtype"] + "-hvac",
+        },
+    )
 
     try:
         loop.run_until_complete(connFuture)
