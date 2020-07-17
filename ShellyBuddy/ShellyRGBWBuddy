@@ -31,7 +31,8 @@ import colorsys
 import math
 import os
 import ssl
-#import colorsys
+
+# import colorsys
 import buddylib as bl
 import asyncio as aio
 from functools import partial
@@ -44,10 +45,12 @@ __version__ = "0.10"
 
 DEVLIST = ["shellyrgbw2"]
 
+
 def intround(x):
     return int(round(x))
 
-#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
+
+# <controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
 
 shelly_commands = """
 <buddyui version="0.1">
@@ -110,22 +113,22 @@ shelly_config = """
     </configuration>
 </buddyui>
 """
-shelly_config_default = {"credential":{"user":"","password":""}}
+shelly_config_default = {"credential": {"user": "", "password": ""}}
 shelly_module_commands = {}
-
 
 
 def cssColour(self, col=None):
     try:
         if self.power:
-            alpha = int(round(15+self.gain*0.85))
-            iconsts = 'rgba(%d,%d,%d,%d)' % (self.red,self.green,self.blue,alpha)
+            alpha = int(round(15 + self.gain * 0.85))
+            iconsts = "rgba(%d,%d,%d,%d)" % (self.red, self.green, self.blue, alpha)
         else:
             iconsts = "transparent"
         return iconsts
     except Exception as e:
         print("Exception: {}".format(e))
         return "transparent"
+
 
 async def shelly_timed(self, target):
     """Perform the changes gradually
@@ -140,134 +143,195 @@ async def shelly_timed(self, target):
         white
     """
     async with self.busy:
-        steps = int(round(target["duration"]*5))
-        rdelta = int(round((target["red"] - self.red)/steps))
-        gdelta = int(round((target["green"] - self.green)/steps))
-        bdelta = int(round((target["blue"] - self.blue)/steps))
-        zdelta = int(round((target["gain"] - self.gain)/steps))
-        wdelta = int(round((target["white"] - self.white)/steps))
-        rvals = [ target["red"] - (i-1)*rdelta for i in range(steps,0,-1)]
-        gvals = [ target["green"] - (i-1)*gdelta for i in range(steps,0,-1)]
-        bvals = [ target["blue"] - (i-1)*bdelta for i in range(steps,0,-1)]
-        zvals = [ target["gain"] - (i-1)*zdelta for i in range(steps,0,-1)]
-        wvals = [ target["white"] - (i-1)*wdelta for i in range(steps,0,-1)]
-        allvals = [ {"mode":"color", "white":w, "red": x, "green": y, "blue": z, "gain": t} for w,x,y,z,t in zip(wvals,rvals,gvals,bvals, zvals) ]
+        steps = int(round(target["duration"] * 5))
+        rdelta = int(round((target["red"] - self.red) / steps))
+        gdelta = int(round((target["green"] - self.green) / steps))
+        bdelta = int(round((target["blue"] - self.blue) / steps))
+        zdelta = int(round((target["gain"] - self.gain) / steps))
+        wdelta = int(round((target["white"] - self.white) / steps))
+        rvals = [target["red"] - (i - 1) * rdelta for i in range(steps, 0, -1)]
+        gvals = [target["green"] - (i - 1) * gdelta for i in range(steps, 0, -1)]
+        bvals = [target["blue"] - (i - 1) * bdelta for i in range(steps, 0, -1)]
+        zvals = [target["gain"] - (i - 1) * zdelta for i in range(steps, 0, -1)]
+        wvals = [target["white"] - (i - 1) * wdelta for i in range(steps, 0, -1)]
+        allvals = [
+            {"mode": "color", "white": w, "red": x, "green": y, "blue": z, "gain": t}
+            for w, x, y, z, t in zip(wvals, rvals, gvals, bvals, zvals)
+        ]
 
         for aval in allvals:
             if self.interrupt_busy:
                 self.interrupt_busy = False
                 return
             await bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
-                json.dumps(aval).encode())
+                bridgectl.config["mqttprefix"] + self.name + "/color/0/set",
+                json.dumps(aval).encode(),
+            )
             await aio.sleep(0.2)
+
 
 def shelly_process(self, msg, type="autobuddy"):
     bridgectl = self.controller
-    #bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
+    # bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
     if type == "autobuddy":
         if msg["content"]["command"] == "nickname":
             # print msg
             self.nickname = msg["content"]["value"]
             bridgectl.sending(
-                {"subject": "control" + "." + bridgectl.type,
+                {
+                    "subject": "control" + "." + bridgectl.type,
                     "content_type": "request",
-                    "content": {"request": "nickname",
-                                "target": bridgectl.type + "." + self.name,
-                                #"token": bridgectl.target,
-                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+                    "content": {
+                        "request": "nickname",
+                        "target": bridgectl.type + "." + self.name,
+                        # "token": bridgectl.target,
+                        "value": {
+                            "name": self.name,
+                            "nickname": msg["content"]["value"],
+                        },
+                    },
+                }
+            )
         elif msg["content"]["command"] == "status":
             # Not gone the way of the dodo
             # try:
-            bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "status",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "icon status":
-                                                {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
-                                                "opacity": 0}},
-                                                "value": {"power":{"power":self.power and "on" or "off"}}}})
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "status",
+                        "target": bridgectl.type + "." + self.name,
+                        "icon status": {
+                            "bu-fill": {"fill": self.cssColour()},
+                            "bu-not-present": {"opacity": 0},
+                        },
+                        "value": {"power": {"power": self.power and "on" or "off"}},
+                    },
+                }
+            )
             # except: #Most probably is known but we lost pairing
-                # pass
+            # pass
         elif msg["content"]["command"] == "deletion":
             try:
                 bridgectl.sending(
-                    {"subject": "control" + "." + bridgectl.type,
+                    {
+                        "subject": "control" + "." + bridgectl.type,
                         "content_type": "request",
-                        "content": {"request": "deletion",
-                                    "target": bridgectl.type,
-                                    "value": self.name}})
+                        "content": {
+                            "request": "deletion",
+                            "target": bridgectl.type,
+                            "value": self.name,
+                        },
+                    }
+                )
             except:
-                #Deleting non active devices
+                # Deleting non active devices
                 bridgectl.sending(
-                    {"subject": "control" + "." + bridgectl.type,
+                    {
+                        "subject": "control" + "." + bridgectl.type,
                         "content_type": "request",
-                        "content": {"request": "deletion",
-                                    "target": bridgectl.type,
-                                    "value": self.name}})
+                        "content": {
+                            "request": "deletion",
+                            "target": bridgectl.type,
+                            "value": self.name,
+                        },
+                    }
+                )
 
         elif msg["content"]["command"] == "power":
             self.power = msg["content"]["value"]["power"].lower() == "on"
-            aio.ensure_future((bridgectl.mqtt_client.publish(
-                bridgectl.config['mqttprefix'] + self.name + "/color/0/command",
-                self.power and b"on" or b"off")))
-            bridgectl.sending({"subject": msg["subject"],
-                            "content_type": "event",
-                            "content": {"event": "power",
-                                        "target": msg["subject"],
-                                        "value": msg["content"]["value"]}})
+            aio.ensure_future(
+                (
+                    bridgectl.mqtt_client.publish(
+                        bridgectl.config["mqttprefix"] + self.name + "/color/0/command",
+                        self.power and b"on" or b"off",
+                    )
+                )
+            )
+            bridgectl.sending(
+                {
+                    "subject": msg["subject"],
+                    "content_type": "event",
+                    "content": {
+                        "event": "power",
+                        "target": msg["subject"],
+                        "value": msg["content"]["value"],
+                    },
+                }
+            )
 
             self.sendInfo()
 
         elif msg["content"]["command"] == "colour":
-            colour =[ x for x in  map(lambda x: int(round(x*255.0)),
-                         colorsys.hsv_to_rgb(msg["content"]["value"]["hue"]/360.0,
-                                             msg["content"]["value"]["saturation"]/100.0,
-                                             msg["content"]["value"]["value"]/100.0))]
+            colour = [
+                x
+                for x in map(
+                    lambda x: int(round(x * 255.0)),
+                    colorsys.hsv_to_rgb(
+                        msg["content"]["value"]["hue"] / 360.0,
+                        msg["content"]["value"]["saturation"] / 100.0,
+                        msg["content"]["value"]["value"] / 100.0,
+                    ),
+                )
+            ]
 
-            mqttmsg = {"mode":"color","white":0}
+            mqttmsg = {"mode": "color", "white": 0}
             mqttmsg["red"] = colour[0]
             mqttmsg["green"] = colour[1]
             mqttmsg["blue"] = colour[2]
             mqttmsg["gain"] = msg["content"]["value"]["value"]
-            mqttmsg["white"] = int(round(msg["content"]["value"]["white"] * 2.55,0))
-            if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
+            mqttmsg["white"] = int(round(msg["content"]["value"]["white"] * 2.55, 0))
+            if (
+                "duration" in msg["content"]["value"]
+                and msg["content"]["value"]["duration"]
+            ):
                 if self.busy.locked():
                     self.interrupt_busy = True
                 mqttmsg["duration"] = msg["content"]["value"]["duration"]
                 aio.ensure_future(self._timed(mqttmsg))
             else:
-                aio.ensure_future(bridgectl.mqtt_client.publish(
-                    bridgectl.config['mqttprefix'] + self.name + "/color/0/set",
-                    json.dumps(mqttmsg).encode()))
-                bridgectl.sending({"subject": msg["subject"],
-                                "content_type": "event",
-                                "content": {"event": "colour",
-                                            "target": msg["subject"],
-                                            "value": msg["content"]["value"]}})
+                aio.ensure_future(
+                    bridgectl.mqtt_client.publish(
+                        bridgectl.config["mqttprefix"] + self.name + "/color/0/set",
+                        json.dumps(mqttmsg).encode(),
+                    )
+                )
+                bridgectl.sending(
+                    {
+                        "subject": msg["subject"],
+                        "content_type": "event",
+                        "content": {
+                            "event": "colour",
+                            "target": msg["subject"],
+                            "value": msg["content"]["value"],
+                        },
+                    }
+                )
         return None
     else:
-        #try:
+        # try:
         if not self.present:
             self.present = True
-            bridgectl.sending({"subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {"event": "presence",
-                                    "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                                    "value":"online",
-                                    "icon status": {"bu-not-present": {"opacity": 0}}}})
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "presence",
+                        "target": bridgectl.type + "." + self.name,
+                        "value": "online",
+                        "icon status": {"bu-not-present": {"opacity": 0}},
+                    },
+                }
+            )
 
         if msg["subject"] == "color":
-            if msg["value"] in ["on","off"]:
-                #We don't really care about the relay. It is manage by the hardware
+            if msg["value"] in ["on", "off"]:
+                # We don't really care about the relay. It is manage by the hardware
                 self.power = msg["value"] == "on"
 
-
-            elif isinstance(msg["value"],dict) and "ison" in msg["value"]:
+            elif isinstance(msg["value"], dict) and "ison" in msg["value"]:
                 self.power = msg["value"]["ison"]
                 self.mode = msg["value"]["mode"]
                 self.red = msg["value"]["red"]
@@ -277,95 +341,134 @@ def shelly_process(self, msg, type="autobuddy"):
                 self.white = msg["value"]["white"]
 
             try:
-                hue, sat, val = colorsys.rgb_to_hsv(self.red/255.0,
-                                                    self.green/255.0,
-                                                    self.blue/255.0)
-                hue = int(round(hue*360))
-                sat = int(round(sat*100))
+                hue, sat, val = colorsys.rgb_to_hsv(
+                    self.red / 255.0, self.green / 255.0, self.blue / 255.0
+                )
+                hue = int(round(hue * 360))
+                sat = int(round(sat * 100))
                 val = self.gain
-                white = int(round(100*self.white/255,0))
+                white = int(round(100 * self.white / 255, 0))
             except:
                 hue = 0
                 sat = 30
-                val ==20
+                val == 20
                 white = 0
-            bridgectl.sending({"subject": bridgectl.type,
-                            "content_type": "event",
-                            "content": {"event": "status",
-                                        "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                        "icon status":
-                                        {"bu-fill": {"fill":self.cssColour()}, "bu-not-present": {
-                                        "opacity": 0}},
-                                        "value": {"power": {"power": self.power and "on" or "off"},
-                                                  "colour":{"hue": hue, "saturation": sat, "value": val, "white":white},
-                                                  }}})
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "status",
+                        "target": bridgectl.type + "." + self.name,
+                        "icon status": {
+                            "bu-fill": {"fill": self.cssColour()},
+                            "bu-not-present": {"opacity": 0},
+                        },
+                        "value": {
+                            "power": {"power": self.power and "on" or "off"},
+                            "colour": {
+                                "hue": hue,
+                                "saturation": sat,
+                                "value": val,
+                                "white": white,
+                            },
+                        },
+                    },
+                }
+            )
             self.sendInfo()
         elif msg["subject"] == "input":
-            self.switch = msg['value'] in [1, '1', 'on', 'ON', 'On',True]
-            bridgectl.sending({"subject": bridgectl.type,
-                            "content_type": "event",
-                            "content": {"event": "switch",
-                                        "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                        "value": (self.switch and "on") or "off"}})
+            self.switch = msg["value"] in [1, "1", "on", "ON", "On", True]
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "switch",
+                        "target": bridgectl.type + "." + self.name,
+                        "value": (self.switch and "on") or "off",
+                    },
+                }
+            )
             self.sendInfo()
         elif msg["subject"] == "longpush":
-            if msg['value'] in [1, '1', 'on', 'ON', 'On',True]:
-                bridgectl.sending({"subject": bridgectl.type,
-                                "content_type": "event",
-                                "content": {"event": "click",
-                                            "target": bridgectl.type +
-                                            "." +
-                                            self.name,
-                                            "value": "long"}})
-        #except Exception as e:
-            #try:
-                #bridgectl.log.warning(
-                    #"Bloody process problem",
-                    #exc_info=(type(e),
-                              #e,
-                              #e.__traceback__))
-            #except:
-                #print("Oops")
+            if msg["value"] in [1, "1", "on", "ON", "On", True]:
+                bridgectl.sending(
+                    {
+                        "subject": bridgectl.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "click",
+                            "target": bridgectl.type + "." + self.name,
+                            "value": "long",
+                        },
+                    }
+                )
+        # except Exception as e:
+        # try:
+        # bridgectl.log.warning(
+        # "Bloody process problem",
+        # exc_info=(type(e),
+        # e,
+        # e.__traceback__))
+        # except:
+        # print("Oops")
 
         return True
+
 
 def sendInfo(self):
     # Can be used in callback
     try:
-        msg=""
-        prefix="<div><dl class=\"dl-horizontal\">"
-        for x,lbl in [("power","Light On"),("switch","Switch Position")]:
-            if getattr(self,x) is not None:
-                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(getattr(self,x))+"</dd>"
-                prefix=""
+        msg = ""
+        prefix = '<div><dl class="dl-horizontal">'
+        for x, lbl in [("power", "Light On"), ("switch", "Switch Position")]:
+            if getattr(self, x) is not None:
+                msg += (
+                    prefix
+                    + "<dt>"
+                    + lbl.replace("_", " ").title()
+                    + ":</dt><dd>"
+                    + str(getattr(self, x))
+                    + "</dd>"
+                )
+                prefix = ""
         devid = self.name
-        for x,lbl in [("mac","mac address"),("ip","ip address"),("fw_ver","firmware"),("new_fw","firmware upgradable")]:
+        for x, lbl in [
+            ("mac", "mac address"),
+            ("ip", "ip address"),
+            ("fw_ver", "firmware"),
+            ("new_fw", "firmware upgradable"),
+        ]:
             try:
-                msg+=prefix+"<dt>"+lbl.replace("_"," ").title()+":</dt><dd>"+str(self.controller.infos[devid][x])+"</dd>"
-                prefix=""
+                msg += (
+                    prefix
+                    + "<dt>"
+                    + lbl.replace("_", " ").title()
+                    + ":</dt><dd>"
+                    + str(self.controller.infos[devid][x])
+                    + "</dd>"
+                )
+                prefix = ""
             except:
                 pass
         if msg:
-            msg+="</dl></div>"
-            self.controller.sending({"subject": self.controller.type,
-                                 "content_type": "event",
-                                 "content": {"event": "info",
-                                             "target": self.controller.type +
-                                             "." +
-                                             self.name,
-                                             "value": msg }})
+            msg += "</dl></div>"
+            self.controller.sending(
+                {
+                    "subject": self.controller.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "info",
+                        "target": self.controller.type + "." + self.name,
+                        "value": msg,
+                    },
+                }
+            )
     except Exception as e:
         self.controller.log.debug(
-            "Ooops could not send info",
-            exc_info=(type(e),
-                      e,
-                      e.__traceback__))
-
-
+            "Ooops could not send info", exc_info=(type(e), e, e.__traceback__)
+        )
 
 
 # Hop we go....
@@ -395,17 +498,27 @@ class ShellyBridge(bl.BuddyBridge):
             if msg["content"]["target"] == self.target:
                 for k, v in msg["content"]["value"].items():
                     shelly_config_default[k] = v
-                self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          "config name":config["subtype"]+"-light",
-                                          "value": bl.encrypt(shelly_config_default, self.config["buddykey"])}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {
+                            "request": "save configuration",
+                            "target": self.type,
+                            "config name": config["subtype"] + "-light",
+                            "value": bl.encrypt(
+                                shelly_config_default, self.config["buddykey"]
+                            ),
+                        },
+                    }
+                )
 
         elif msg["content"]["command"] == "update_fw":
-            aio.ensure_future(self.mqtt_client.publish(
-                self.config['mqttprefix']+"command",b"update_fw"))
-
+            aio.ensure_future(
+                self.mqtt_client.publish(
+                    self.config["mqttprefix"] + "command", b"update_fw"
+                )
+            )
 
         else:
             for ashelly in self.devices:
@@ -413,21 +526,24 @@ class ShellyBridge(bl.BuddyBridge):
 
     def process_response(self, msg):
         # if msg["content"]["token"] != self.target:
-            # if self.log:
-                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            # else:
-                # print ("Token not matching {} vs
-                # {}".format(msg["content"]["token"],self.target))
-        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+        # if self.log:
+        # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
+        # else:
+        # print ("Token not matching {} vs
+        # {}".format(msg["content"]["token"],self.target))
+        if (
+            self.state == "init"
+            and msg["content"]["response"] == "configuration"
+            and msg["subject"] == self.target
+        ):
             # Getting the config
             if msg["content"]["configuration"]:
                 try:
                     storedconfig = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
+                        msg["content"]["configuration"], self.config["buddykey"]
+                    )
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The config stored is {}".format(storedconfig))
+                        self.log.debug("The config stored is {}".format(storedconfig))
                 except:
                     storedconfig = {}
                     savenew = True
@@ -440,8 +556,6 @@ class ShellyBridge(bl.BuddyBridge):
                 for x in storedconfig:
                     self.shelly_config[x] = storedconfig[x]
 
-
-
             self.config["database"] = msg["content"]["database"]
             if "configonly" in self.config and self.config["configonly"]:
                 self.state = "wait config save"
@@ -449,13 +563,16 @@ class ShellyBridge(bl.BuddyBridge):
                 self.state = "active"
                 self.build()
             # if savenew or ("configonly" in self.config and self.config["configonly"]):
-                # self.sending({"subject":"control" + "." + self.subtype,
-                                #"content_type": "request",
-                                #"content": {"request":"save configuration",
-                                            #"target":self.target,
-                                            #"value":bl.encrypt(shelly_config_default,self.config["buddykey"])}})
+            # self.sending({"subject":"control" + "." + self.subtype,
+            # "content_type": "request",
+            # "content": {"request":"save configuration",
+            # "target":self.target,
+            # "value":bl.encrypt(shelly_config_default,self.config["buddykey"])}})
 
-        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+        elif (
+            msg["content"]["response"] == "save configuration"
+            and msg["subject"] == self.target
+        ):
             if self.state == "active" and msg["content"]["status"] != "done":
                 # log
                 if self.log:
@@ -463,80 +580,123 @@ class ShellyBridge(bl.BuddyBridge):
                 else:
                     print("Warning: Configuration was not saved.")
             else:
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [shelly_config, shelly_config_default]}}})
-                self.sending({"subject": self.config["restricted"],
-                              "content_type": "restricted event",
-                              "content": {"event": "config updated",
-                                          "target": self.target,
-                                          "value": shelly_config_default}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.target,
+                        "content_type": "request",
+                        "content": {
+                            "request": "functions",
+                            "target": self.type,
+                            "subtype": self.subtype,
+                            # "token": self.target,
+                            "value": {
+                                "configs": [shelly_config, shelly_config_default]
+                            },
+                        },
+                    }
+                )
+                self.sending(
+                    {
+                        "subject": self.config["restricted"],
+                        "content_type": "restricted event",
+                        "content": {
+                            "event": "config updated",
+                            "target": self.target,
+                            "value": shelly_config_default,
+                        },
+                    }
+                )
                 # Now update all the shelly present
                 for shelly in self.devices:
                     if shelly.present:
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  shelly.name,
-                                                  "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":light.cssColour()},
-                                                                  "bu-not-present": {"opacity": 0}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + shelly.name,
+                                    "value": "online",
+                                    "icon status": {
+                                        "bu-fill": {"fill": light.cssColour()},
+                                        "bu-not-present": {"opacity": 0},
+                                    },
+                                },
+                            }
+                        )
 
-        elif msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+        elif (
+            msg["content"]["response"] == "configuration"
+            and msg["subject"] == self.target
+        ):
             if msg["content"]["configuration"]:
                 try:
                     storedprop = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
+                        msg["content"]["configuration"], self.config["buddykey"]
+                    )
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The property stored is {}".format(storedprop))
+                        self.log.debug("The property stored is {}".format(storedprop))
                 except:
                     storedprop = {}
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The property stored cannot be decrypted.")
+                        self.log.debug("The property stored cannot be decrypted.")
                 for k, v in storedprop.items():
                     shelly_config_default[k] = v
 
-            if not(msg["content"]["configuration"] and storedprop):
+            if not (msg["content"]["configuration"] and storedprop):
                 # First time around... was never saved that property.. let's do
                 # it
-                self.sending({"subject": "control" + "." + self.type,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.subtype,
-                                          "config name":config["subtype"]+"-light",
-                                          #"token": self.target,
-                                          "value": bl.encrypt(shelly_config_default, self.config["buddykey"])}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.type,
+                        "content_type": "request",
+                        "content": {
+                            "request": "save configuration",
+                            "target": self.subtype,
+                            "config name": config["subtype"] + "-light",
+                            # "token": self.target,
+                            "value": bl.encrypt(
+                                shelly_config_default, self.config["buddykey"]
+                            ),
+                        },
+                    }
+                )
         elif self.state == "active":
-            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+            if (
+                msg["content"]["response"] == "creation"
+                and msg["content"]["status"] == "done"
+            ):
                 sess = bl.getSession(self.config["database"])
-                light = sess.query(bl.light).filter_by(
-                    name=msg["subject"].split(".")[-1]).one()
+                light = (
+                    sess.query(bl.light)
+                    .filter_by(name=msg["subject"].split(".")[-1])
+                    .one()
+                )
 
-                self.sending({"subject": self.type,
-                              "content_type": "event",
-                              "content": {"event": "new device",
-                                          "target": self.type +
-                                          "." +
-                                          light.name,
-                                          "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": light.name, "nickname": light.nickname}}})
+                self.sending(
+                    {
+                        "subject": self.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "new device",
+                            "target": self.type + "." + light.name,
+                            "value": {
+                                "type": self.type,
+                                "subtype": self.subtype,
+                                "name": light.name,
+                                "nickname": light.nickname,
+                            },
+                        },
+                    }
+                )
                 notseen = True
-                for b in  [ x for x in self.pending]:
+                for b in [x for x in self.pending]:
                     if b == light.name:
                         light.present = True
                         light.conn = b
                         light.controller = self
-                        light.info={}
-                        light.power=False
+                        light.info = {}
+                        light.power = False
                         light.mode = "color"
                         light.white = 20
                         light.red = 10
@@ -548,29 +708,49 @@ class ShellyBridge(bl.BuddyBridge):
                         light.interrupt_busy = False
                         self.devices.append(light)
                         self.pending.remove(b)
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  light.name,
-                                                  "value": "online",
-                                                  "icon status": {"bu-fill": {"fill":light.cssColour()}, "bu-not-present": {"opacity": 0}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + light.name,
+                                    "value": "online",
+                                    "icon status": {
+                                        "bu-fill": {"fill": light.cssColour()},
+                                        "bu-not-present": {"opacity": 0},
+                                    },
+                                },
+                            }
+                        )
 
-                        aio.ensure_future((self.mqtt_client.publish(
-                                self.config['mqttprefix']+ light.name +"/color/0/status/")))
+                        aio.ensure_future(
+                            (
+                                self.mqtt_client.publish(
+                                    self.config["mqttprefix"]
+                                    + light.name
+                                    + "/color/0/status/"
+                                )
+                            )
+                        )
                         notseen = False
                         break
                 if notseen:
-                    self.sending({"subject": self.type,
-                                  "content_type": "event",
-                                  "content": {"event": "presence",
-                                              "target": self.type +
-                                              "." +
-                                              light.name,
-                                              "value": "offline",
-                                              "icon status": {"bu-fill": {"fill":light.cssColour()},
-                                                              "bu-not-present": {"opacity": 1}}}})
+                    self.sending(
+                        {
+                            "subject": self.type,
+                            "content_type": "event",
+                            "content": {
+                                "event": "presence",
+                                "target": self.type + "." + light.name,
+                                "value": "offline",
+                                "icon status": {
+                                    "bu-fill": {"fill": light.cssColour()},
+                                    "bu-not-present": {"opacity": 1},
+                                },
+                            },
+                        }
+                    )
                 sess.close()
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
@@ -579,13 +759,17 @@ class ShellyBridge(bl.BuddyBridge):
                     for light in self.devices:
                         if light.name == msg["subject"].split(".")[-1]:
                             light.nickname = msg["content"]["value"]
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "nickname",
-                                                      "target": self.type +
-                                                      "." +
-                                                      light.name,
-                                                      "value": light.nickname}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "nickname",
+                                        "target": self.type + "." + light.name,
+                                        "value": light.nickname,
+                                    },
+                                }
+                            )
                             break
 
             elif msg["content"]["response"] == "deletion":
@@ -596,13 +780,17 @@ class ShellyBridge(bl.BuddyBridge):
                     doremove = False
                     for light in self.devices:
                         if light.name == msg["subject"].split(".")[-1]:
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "deletion",
-                                                      "target": self.type +
-                                                      "." +
-                                                      light.name,
-                                                      "value": light.name}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "deletion",
+                                        "target": self.type + "." + light.name,
+                                        "value": light.name,
+                                    },
+                                }
+                            )
                             doremove = True
                             break
                         sidx += 1
@@ -612,41 +800,54 @@ class ShellyBridge(bl.BuddyBridge):
         else:
             if self.log:
                 self.log.warning(
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
             else:
-                print (
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
+                print(
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
 
     def build(self):
-        self.sending({"subject": "control" + "." + self.target,
-                      "content_type": "request",
-                      "content": {"request": "functions",
-                                  "target": self.type,
-                                  "subtype": self.subtype,
-                                  #"token": self.target,
-                                  "value": {"functions": shelly_commands,
-                                            "module commands": shelly_module_commands,
-                                            "configs": [shelly_config, shelly_config_default]}}})
-
-        self.sending({"subject": self.config["restricted"],
-                      "content_type": "restricted event",
-                      "content": {"event": "config updated",
-                                  "target": self.target,
-                                  "value": shelly_config_default}})
-        sess = bl.getSession(self.config["database"])
-        self.devices = sess.query(
-            bl.light).filter_by(
-                subtype=self.subtype).all(
+        self.sending(
+            {
+                "subject": "control" + "." + self.target,
+                "content_type": "request",
+                "content": {
+                    "request": "functions",
+                    "target": self.type,
+                    "subtype": self.subtype,
+                    # "token": self.target,
+                    "value": {
+                        "functions": shelly_commands,
+                        "module commands": shelly_module_commands,
+                        "configs": [shelly_config, shelly_config_default],
+                    },
+                },
+            }
         )
+
+        self.sending(
+            {
+                "subject": self.config["restricted"],
+                "content_type": "restricted event",
+                "content": {
+                    "event": "config updated",
+                    "target": self.target,
+                    "value": shelly_config_default,
+                },
+            }
+        )
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(bl.light).filter_by(subtype=self.subtype).all()
         for light in self.devices:
             light.present = False
             light.controller = self
-            light.info={}
-            light.power=True
+            light.info = {}
+            light.power = True
             light.mode = "color"
             light.white = 20
             light.red = 10
@@ -656,52 +857,78 @@ class ShellyBridge(bl.BuddyBridge):
             light.switch = False
             light.busy = aio.Lock()
             light.interrupt_busy = False
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type + "." + light.name,
-                                      "value": "offline",
-                                      "icon status": {"bu-fill": {"fill":(light.power and light.cssColour()) or "transparent"}, "bu-not-present": {"opacity": 1}}}})
-
+            self.sending(
+                {
+                    "subject": self.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "presence",
+                        "target": self.type + "." + light.name,
+                        "value": "offline",
+                        "icon status": {
+                            "bu-fill": {
+                                "fill": (light.power and light.cssColour())
+                                or "transparent"
+                            },
+                            "bu-not-present": {"opacity": 1},
+                        },
+                    },
+                }
+            )
 
         # No shelly is present yet
         self.mqtt_future = aio.ensure_future(self.mqtt_reader())
 
     async def mqtt_reader(self):
         mqttconfig = {
-            'keep_alive': 10,
-            'ping_delay': 5,
-            'default_qos': 0,
-            'default_retain': False,
-            'auto_reconnect': False,
-            'reconnect_max_interval': 5,
-            'reconnect_retries': 10,
-            'topics': {
-                self.config["mqttprefix"]+'#': { 'qos': 1}
-            }
+            "keep_alive": 10,
+            "ping_delay": 5,
+            "default_qos": 0,
+            "default_retain": False,
+            "auto_reconnect": False,
+            "reconnect_max_interval": 5,
+            "reconnect_retries": 10,
+            "topics": {self.config["mqttprefix"] + "#": {"qos": 1}},
         }
         self.mqtt_client = MQTTClient(config=mqttconfig)
         connected = False
         while not connected:
             try:
                 self.log.debug("DEBUG MQTT connection.")
-                if "credential" in self.shelly_config and "user" in self.shelly_config["credential"] and  self.shelly_config["credential"]["user"]:
-                    await self.mqtt_client.connect('mqtt://{}:{}@{}:{}/'.format(self.shelly_config["credential"]["user"],
-                                                                                self.shelly_config["credential"]["password"],
-                                                                                self.config["mqtthost"],self.config["mqttport"]))
+                if (
+                    "credential" in self.shelly_config
+                    and "user" in self.shelly_config["credential"]
+                    and self.shelly_config["credential"]["user"]
+                ):
+                    await self.mqtt_client.connect(
+                        "mqtt://{}:{}@{}:{}/".format(
+                            self.shelly_config["credential"]["user"],
+                            self.shelly_config["credential"]["password"],
+                            self.config["mqtthost"],
+                            self.config["mqttport"],
+                        )
+                    )
                 else:
-                    await self.mqtt_client.connect('mqtt://{}:{}/'.format(self.config["mqtthost"],self.config["mqttport"]))
-                await self.mqtt_client.subscribe([(self.config["mqttprefix"]+'#', 1)])
-                connected=True
+                    await self.mqtt_client.connect(
+                        "mqtt://{}:{}/".format(
+                            self.config["mqtthost"], self.config["mqttport"]
+                        )
+                    )
+                await self.mqtt_client.subscribe([(self.config["mqttprefix"] + "#", 1)])
+                connected = True
             except:
                 self.log.debug("DEBUG MQTT could not connect to broker.")
                 await aio.sleep(5)
-                connected=False
+                connected = False
                 continue
-            #Whe have a connection. Let's ask ffor announces
+            # Whe have a connection. Let's ask ffor announces
             try:
-                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"announce")
-                await self.mqtt_client.publish(self.config['mqttprefix']+"command",b"update")
+                await self.mqtt_client.publish(
+                    self.config["mqttprefix"] + "command", b"announce"
+                )
+                await self.mqtt_client.publish(
+                    self.config["mqttprefix"] + "command", b"update"
+                )
                 while True:
                     try:
                         message = await self.mqtt_client.deliver_message()
@@ -716,36 +943,41 @@ class ShellyBridge(bl.BuddyBridge):
                     pass
                 connected = False
             except Exception as ce:
-                self.log.debug("\n\n\nOther exception: %s\n\n" %ce, exc_info=(type(ce),
-                              ce,
-                              ce.__traceback__))
+                self.log.debug(
+                    "\n\n\nOther exception: %s\n\n" % ce,
+                    exc_info=(type(ce), ce, ce.__traceback__),
+                )
                 if self.shuttingdown:
                     return
                 connected = False
 
-
-    def handle_mqtt(self,packet):
+    def handle_mqtt(self, packet):
         # Check if it is a new one
-        #try:
+        # try:
         mtopic = packet.variable_header.topic_name.split("/")
         prefix, dev = mtopic[:2]
         try:
-            payload=json.loads("".join([chr(z) for z in packet.payload.data]))
+            payload = json.loads("".join([chr(z) for z in packet.payload.data]))
         except:
-            payload="".join([chr(z) for z in packet.payload.data])
+            payload = "".join([chr(z) for z in packet.payload.data])
         self.log.debug("DEBUG MQTT:  {} => {}".format(mtopic, str(payload)))
         if dev == "command":
             return
 
         if dev == "announce":
-            #Possibly1, 2 or 4 new devices
+            # Possibly1, 2 or 4 new devices
             dtype = payload["id"].split("-")[0]
             if dtype not in DEVLIST:
                 self.log.debug("We do not handle {}".format(dtype))
                 return
             self.infos[payload["id"]] = payload
-            self.infos[payload["id"]]['mac'] = ":".join([payload["mac"][i:i+2].lower() for i in range(0,len(payload["mac"]),2)])
-            #self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
+            self.infos[payload["id"]]["mac"] = ":".join(
+                [
+                    payload["mac"][i : i + 2].lower()
+                    for i in range(0, len(payload["mac"]), 2)
+                ]
+            )
+            # self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
             self.register([payload["id"]])
             return
 
@@ -756,7 +988,7 @@ class ShellyBridge(bl.BuddyBridge):
             self.log.debug("We do not handle {}".format(dtype))
             return
 
-        #Deal with LWT messages:
+        # Deal with LWT messages:
         unseen = True
         if obj == "online":
             ispresent = payload
@@ -766,35 +998,38 @@ class ShellyBridge(bl.BuddyBridge):
                     shelly.controller = self
                     if ispresent != shelly.present:
                         shelly.present = ispresent
-                        self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "presence",
-                                                "target": self.type +
-                                                "." +
-                                                shelly.name,
-                                                "value":
-                                                ispresent and "online" or "offline",
-                                                "icon status": {"bu-not-present": {"opacity": 0 if ispresent else 1 }}}})
-
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + shelly.name,
+                                    "value": ispresent and "online" or "offline",
+                                    "icon status": {
+                                        "bu-not-present": {
+                                            "opacity": 0 if ispresent else 1
+                                        }
+                                    },
+                                },
+                            }
+                        )
 
         else:
             for light in self.devices:
-                #self.log.debug("\n\nComparing {} to {}".format(dev,light.name))
+                # self.log.debug("\n\nComparing {} to {}".format(dev,light.name))
                 if dev == light.name:
-                    light._process({"subject":obj,"value":payload},"shelly")
+                    light._process({"subject": obj, "value": payload}, "shelly")
                     unseen = False
                     break
         if unseen:
             self.register([dev])
-        #except:
-            #pass
-
-
-
+        # except:
+        # pass
 
     def register(self, loshelly):
         seen = False
-        ashelly = loshelly[0] #All the lights are created in tandem with the device
+        ashelly = loshelly[0]  # All the lights are created in tandem with the device
 
         for shelly in self.devices:
             if shelly.name == ashelly:
@@ -807,26 +1042,40 @@ class ShellyBridge(bl.BuddyBridge):
                     shelly.controller = self
                     if not shelly.present:
                         shelly.present = True
-                        self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "presence",
-                                                "target": self.type +
-                                                "." +
-                                                shelly.name,
-                                                "value": "online",
-                                                "icon status": {"bu-not-present": {"opacity": 0}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + shelly.name,
+                                    "value": "online",
+                                    "icon status": {"bu-not-present": {"opacity": 0}},
+                                },
+                            }
+                        )
 
         else:
             for ashelly in loshelly:
                 if ashelly not in self.pending:
                     self.pending.append(ashelly)
-                    self.sending({"subject": "control" + "." + self.type,
-                                "content_type": "request",
-                                "content": {"request": "creation",
-                                            "target": self.type,
-                                                # Here we need the type
-                                            #"token": self.target,
-                                            "value": {"name": ashelly, "nickname": ashelly, "subtype": self.subtype}}})
+                    self.sending(
+                        {
+                            "subject": "control" + "." + self.type,
+                            "content_type": "request",
+                            "content": {
+                                "request": "creation",
+                                "target": self.type,
+                                # Here we need the type
+                                # "token": self.target,
+                                "value": {
+                                    "name": ashelly,
+                                    "nickname": ashelly,
+                                    "subtype": self.subtype,
+                                },
+                            },
+                        }
+                    )
 
     def unregister(self, ashelly):
         if ashelly in self.pending:
@@ -836,20 +1085,24 @@ class ShellyBridge(bl.BuddyBridge):
                 try:  # HAve to protect, in some rare cases, switch does not have a name attribute yet
                     if light.name == ashelly:
                         light.present = False
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  light.name,
-                                                  "value": "offline",
-                                                  "icon status": {"bu-not-present": {"opacity": 1}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + light.name,
+                                    "value": "offline",
+                                    "icon status": {"bu-not-present": {"opacity": 1}},
+                                },
+                            }
+                        )
                 except:
                     pass
 
-
-    async def http_settings(self,relay,options):
+    async def http_settings(self, relay, options):
         pass
+
 
 aboutstr = """<p>ShellyBulbBuddy is a bridge talking to WiFi bulbs made by <a href="https://shelly.cloud">Shelly</a> configured
 to communicate over MQTT.</p>
@@ -879,51 +1132,121 @@ iconstr = """
 
 cfgdefault = {
     "type": "light",
-     "subtype": SUBTYPE,
-     "host": "localhost",
-     "port": 8745,
-     "credential": "",
-     "ssl": "",
-     "restricted": "guibridge",
-     "mqtthost": "localhost",
-     "mqttport": 1883,
-     "mqttprefix": "shellies/",
-     "update": False}
+    "subtype": SUBTYPE,
+    "host": "localhost",
+    "port": 8745,
+    "credential": "",
+    "ssl": "",
+    "restricted": "guibridge",
+    "mqtthost": "localhost",
+    "mqttport": 1883,
+    "mqttprefix": "shellies/",
+    "update": False,
+}
 
 
 def configure():
     parser = argparse.ArgumentParser(description="Track shelly lightes..")
     # version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
-    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
-    parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
-    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
-    parser.add_argument("-P", "--mqttport", type=int, default=cfgdefault["mqttport"],
-                        help="The port used by the mqtt broker (default \"%s\")." % cfgdefault["mqttport"])
-    parser.add_argument("-n", "--mqtthost", default=cfgdefault["mqtthost"],
-                        help="The host of the mqttbroker (default \"%s\"). " % cfgdefault["mqtthost"])
-    parser.add_argument("-f", "--mqttprefix", default=cfgdefault["mqttprefix"],
-                        help="The MQTT topic prefix (default \"%s\"). " % cfgdefault["mqttprefix"])
-    parser.add_argument("-c", "--config", default="/etc/autobuddy/shelly.cfg", type=argparse.FileType('r'),
-                        help="Config file to use (default \"/etc/autobuddy/shelly.cfg\")")
-    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
-    parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
-    parser.add_argument("-S", "--ssl", default="",
-                        help="The directory where the file %s can be found." % (CERTFILE))
-    parser.add_argument("-U", "--update", action="store_true", default=cfgdefault["update"],
-                        help="Handles Shellies updates (Default: {}".format(cfgdefault["update"]))
-    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
-                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
-    parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="Log warning messages")
-    parser.add_argument("-C", "--configonly", default="",
-                        help="Exit after the the configuration has been saved")
+    parser.add_argument(
+        "-t",
+        "--type",
+        default=cfgdefault["type"],
+        help='The type of devices we handle. (default "%s").' % cfgdefault["type"],
+    )
+    parser.add_argument(
+        "-s",
+        "--subtype",
+        default=cfgdefault["subtype"],
+        help='The specific subtype we manage. (default "%s").' % cfgdefault["subtype"],
+    )
+    parser.add_argument(
+        "-a",
+        "--host",
+        default=cfgdefault["host"],
+        help='The host address of the server (default "%s").' % cfgdefault["host"],
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=cfgdefault["port"],
+        help='The port used by the server (default "%s").' % cfgdefault["port"],
+    )
+    parser.add_argument(
+        "-P",
+        "--mqttport",
+        type=int,
+        default=cfgdefault["mqttport"],
+        help='The port used by the mqtt broker (default "%s").'
+        % cfgdefault["mqttport"],
+    )
+    parser.add_argument(
+        "-n",
+        "--mqtthost",
+        default=cfgdefault["mqtthost"],
+        help='The host of the mqttbroker (default "%s"). ' % cfgdefault["mqtthost"],
+    )
+    parser.add_argument(
+        "-f",
+        "--mqttprefix",
+        default=cfgdefault["mqttprefix"],
+        help='The MQTT topic prefix (default "%s"). ' % cfgdefault["mqttprefix"],
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="/etc/autobuddy/shelly.cfg",
+        type=argparse.FileType("r"),
+        help='Config file to use (default "/etc/autobuddy/shelly.cfg")',
+    )
+    parser.add_argument(
+        "-V",
+        "--credential",
+        default=cfgdefault["credential"],
+        help='The credential used to verify authorization (default "%s").'
+        % cfgdefault["credential"],
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Log debug information (default False)",
+    )
+    parser.add_argument(
+        "-S",
+        "--ssl",
+        default="",
+        help="The directory where the file %s can be found." % (CERTFILE),
+    )
+    parser.add_argument(
+        "-U",
+        "--update",
+        action="store_true",
+        default=cfgdefault["update"],
+        help="Handles Shellies updates (Default: {}".format(cfgdefault["update"]),
+    )
+    parser.add_argument(
+        "-r",
+        "--restricted",
+        default=cfgdefault["restricted"],
+        help='Where to send "restricted events" (default "%s").'
+        % cfgdefault["restricted"],
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Log warning messages",
+    )
+    parser.add_argument(
+        "-C",
+        "--configonly",
+        default="",
+        help="Exit after the the configuration has been saved",
+    )
 
     try:
         opts = parser.parse_args()
@@ -932,26 +1255,24 @@ def configure():
 
     if opts.debug:
         logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
+            level=logging.DEBUG, format="%(levelname)7s: %(message)s", stream=sys.stderr
         )
     elif opts.verbose:
         logging.basicConfig(
             level=logging.WARNING,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
     else:
         logging.basicConfig(
             level=logging.CRITICAL,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
-    shellylog = logging.getLogger('')
+    shellylog = logging.getLogger("")
     shellycfg = {"debug": opts.debug}
     try:
-    # if True:
+        # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
@@ -968,24 +1289,25 @@ def configure():
             else:
                 shellycfg[attr] = opts.__getattribute__(attr)
             if opts.debug:
-                shellylog.debug("The %s is %s." % (attr,shellycfg[attr]))
-
+                shellylog.debug("The %s is %s." % (attr, shellycfg[attr]))
 
         if shellycfg["ssl"] and not (os.path.isfile(shellycfg["ssl"] + "/" + CERTFILE)):
-            shellylog.critical("Encryption: Could not find {} .".format(
-                shellycfg["ssl"] + "/" + CERTFILE))
+            shellylog.critical(
+                "Encryption: Could not find {} .".format(
+                    shellycfg["ssl"] + "/" + CERTFILE
+                )
+            )
             sys.exit()
         if opts.debug:
             if shellycfg["ssl"]:
                 shellylog.debug(
-                    "The ssl certificates can be found in %s" %
-                    shellycfg["ssl"])
+                    "The ssl certificates can be found in %s" % shellycfg["ssl"]
+                )
             else:
                 shellylog.debug("The connection is not encrypted")
 
         if "buddykey" in cfgdata:
             shellycfg["buddykey"] = cfgdata["buddykey"]
-
 
         if opts.configonly:
 
@@ -994,7 +1316,7 @@ def configure():
                     shellylog.debug("Generating random key")
                 shellycfg["buddykey"] = bl.keygen()
             try:
-                del(shellycfg["debug"])
+                del shellycfg["debug"]
             except:
                 pass
             with open(opts.configonly, "w") as cfile:
@@ -1015,49 +1337,47 @@ if __name__ == "__main__":
 
     if config["update"]:
         log.info("Handling Firmware Updates")
-        shelly_module_commands[
-        "update_fw"] = {
-        "module": config[
-            "type"],
-             "value": config[
-                 "subtype"],
-                 "label": "Update Shellies Firmware"}
+        shelly_module_commands["update_fw"] = {
+            "module": config["type"],
+            "value": config["subtype"],
+            "label": "Update Shellies Firmware",
+        }
 
     loop = aio.get_event_loop()
-    #if config["debug"]:
-        #loop.set_debug(True)
+    # if config["debug"]:
+    # loop.set_debug(True)
 
     if config["ssl"]:
-        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-                                                cafile=config["ssl"] + '/' + CERTFILE)
+        sslcontext = ssl.create_default_context(
+            ssl.Purpose.SERVER_AUTH, cafile=config["ssl"] + "/" + CERTFILE
+        )
 
         sslcontext.check_hostname = False
     else:
         sslcontext = None
     connFuture = aio.Future()
     fac = loop.create_connection(
-        partial(ShellyBridge,
-                loop,
-                connFuture,
-                config,
-                log),
+        partial(ShellyBridge, loop, connFuture, config, log),
         config["host"],
-     config["port"],
-     ssl=sslcontext)
+        config["port"],
+        ssl=sslcontext,
+    )
     conn, bridgectl = loop.run_until_complete(fac)
     loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"ShellyBulbBuddy": aboutstr},
-         "display": {config["type"]: {config["subtype"]: iconstr}},
-         "config name":config["subtype"]+"-light"})
+        {
+            "about": {"ShellyBulbBuddy": aboutstr},
+            "display": {config["type"]: {config["subtype"]: iconstr}},
+            "config name": config["subtype"] + "-light",
+        },
+    )
 
     try:
         loop.run_until_complete(connFuture)
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-        loop.run_until_complete(bridgectl.mqtt_client.unsubscribe([
-                    'shellies/#']))
+        loop.run_until_complete(bridgectl.mqtt_client.unsubscribe(["shellies/#"]))
         loop.run_until_complete(bridgectl.mqtt_client.disconnect())
         bridgectl.shuttingdown = True
         bridgectl.mqtt_future.cancel()

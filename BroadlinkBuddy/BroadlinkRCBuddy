@@ -44,7 +44,7 @@ import importlib
 SUBTYPE = "Broadlink"
 __version__ = "0.10"
 CERTFILE = "autobuddy.crt"
-INFOTIMER = 90 #secs
+INFOTIMER = 90  # secs
 
 blremote_function = """
 <buddyui version="0.1">
@@ -62,27 +62,29 @@ blremote_function = """
 </buddyui>
 """
 
-blremote_config = """
-"""
+blremote_config = ""
 
 blremote_config_default = {}
 
 # Utility
 def name_to_mac(name):
     global bridgectl
-    mac=name.replace(bridgectl.subtype+"-","")
-    return ':'.join(a+b for a,b in zip(mac[::2], mac[1::2]))
+    mac = name.replace(bridgectl.subtype + "-", "")
+    return ":".join(a + b for a, b in zip(mac[::2], mac[1::2]))
+
 
 def mac_to_name(mac):
     global bridgectl
-    return bridgectl.subtype+"-"+mac.replace(":", "")
+    return bridgectl.subtype + "-" + mac.replace(":", "")
 
-#Used to have different animation names
+
+# Used to have different animation names
 def animname():
     res = ""
     for x in range(4):
         res += random.choice(string.ascii_letters)
     return res
+
 
 def cssColour(state="send"):
     if state == "send":
@@ -93,12 +95,12 @@ def cssColour(state="send"):
     return "#99cc00"
 
 
-def to_lirc(frames,timing):
+def to_lirc(frames, timing):
     """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""
-    lircframe =  []
+    lircframe = []
     for frame in frames:
         lircframe += timing["start frame"]
-        for x in [ int(frame[i:i+2],16) for i in range(0,len(frame),2)]:
+        for x in [int(frame[i : i + 2], 16) for i in range(0, len(frame), 2)]:
             idx = 0x80
             while idx:
                 lircframe.append(timing["mark"])
@@ -108,30 +110,35 @@ def to_lirc(frames,timing):
                     lircframe.append(timing["space 0"])
                 idx >>= 1
         if "drop_bits" in timing:
-            lircframe = lircframe[:-2*timing["drop_bits"]]  #Each bit is a pulse and a space
+            lircframe = lircframe[
+                : -2 * timing["drop_bits"]
+            ]  # Each bit is a pulse and a space
         lircframe += timing["end frame"]
     return lircframe
 
+
 def to_broadlink(frames, timing):
-    pulses = to_lirc(frames,timing)
+    pulses = to_lirc(frames, timing)
     array = bytearray()
 
     for pulse in pulses:
         pulse = round(pulse * 269 / 8192)  # 32.84ms units
 
         if pulse < 256:
-            array += bytearray(struct.pack('>B', pulse))  # big endian (1-byte)
+            array += bytearray(struct.pack(">B", pulse))  # big endian (1-byte)
         else:
             array += bytearray([0x00])  # indicate next number is 2-bytes
-            array += bytearray(struct.pack('>H', pulse))  # big endian (2-bytes)
+            array += bytearray(struct.pack(">H", pulse))  # big endian (2-bytes)
 
     packet = bytearray([0x26, 0x00])  # 0x26 = IR, 0x00 = no repeats
-    packet += bytearray(struct.pack('<H', len(array)))  # little endian byte count
+    packet += bytearray(struct.pack("<H", len(array)))  # little endian byte count
     packet += array
-    packet += bytearray([0x0d, 0x05])  # IR terminator
+    packet += bytearray([0x0D, 0x05])  # IR terminator
 
     # Add 0s to make ultimate packet size a multiple of 16 for 128-bit AES encryption.
-    remainder = (len(packet) + 4) % 16  # rm.send_data() adds 4-byte header (02 00 00 00)
+    remainder = (
+        len(packet) + 4
+    ) % 16  # rm.send_data() adds 4-byte header (02 00 00 00)
     if remainder:
         packet += bytearray(16 - remainder)
 
@@ -142,33 +149,54 @@ def broadlinkrc_process(self, msg):
     global bridgectl
     if msg["content_type"] == "command":
         if msg["content"]["command"] == "proxydevice":
-            #Simply singnal the relecvant proxy that there is a new device
+            # Simply singnal the relecvant proxy that there is a new device
 
-            bridgectl.sending({"subject": msg["content"]["value"]["device"]["bu-cvalue"] + ".proxy",
-                            "content_type": "command",
-                            "content": {"command": "new proxy device",
-                                        "target": msg["content"]["value"]["device"]["bu-cvalue"] + ".proxy",
-                                        "value": {"name": msg["content"]["value"]["name"],
-                                                  "gateway": bridgectl.type+"."+self.name,
-                                                  "commands":self.commands}}})
+            bridgectl.sending(
+                {
+                    "subject": msg["content"]["value"]["device"]["bu-cvalue"]
+                    + ".proxy",
+                    "content_type": "command",
+                    "content": {
+                        "command": "new proxy device",
+                        "target": msg["content"]["value"]["device"]["bu-cvalue"]
+                        + ".proxy",
+                        "value": {
+                            "name": msg["content"]["value"]["name"],
+                            "gateway": bridgectl.type + "." + self.name,
+                            "commands": self.commands,
+                        },
+                    },
+                }
+            )
         elif msg["content"]["command"] == "nickname":
-            bridgectl.sending({
+            bridgectl.sending(
+                {
                     "subject": "control" + "." + self.name,
                     "content_type": "request",
-                    "content": {"request": "nickname",
-                                "target": bridgectl.type +
-                                "." +
-                                self.name,
-                                #"token": bridgectl.target,
-                                "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
+                    "content": {
+                        "request": "nickname",
+                        "target": bridgectl.type + "." + self.name,
+                        # "token": bridgectl.target,
+                        "value": {
+                            "name": self.name,
+                            "nickname": msg["content"]["value"],
+                        },
+                    },
+                }
+            )
 
         elif msg["content"]["command"] == "deletion":
             bridgectl.sending(
-                {"subject": "control" + "." + bridgectl.type,
+                {
+                    "subject": "control" + "." + bridgectl.type,
                     "content_type": "request",
-                    "content": {"request": "deletion",
-                                "target": bridgectl.type,
-                                "value": self.name}})
+                    "content": {
+                        "request": "deletion",
+                        "target": bridgectl.type,
+                        "value": self.name,
+                    },
+                }
+            )
 
         elif msg["content"]["command"] == "send":
             value = msg["content"]["value"]
@@ -176,59 +204,77 @@ def broadlinkrc_process(self, msg):
             command = value["command"]
             code = value["code"]
             if "timing" in value:
-                #We got an hex string
-                if isinstance(code,str):
-                    code = [code]  #single frame
+                # We got an hex string
+                if isinstance(code, str):
+                    code = [code]  # single frame
                 code = to_broadlink(code, value["timing"])
 
             xx = aio.create_task(self.do_send_code(code, req_from, command))
-            iconsts = {"bu-radar1": {"opacity": "0.1","fill":cssColour("send")},
-                        "bu-radar2": {"opacity": "0","fill":cssColour("send")},
-                        "bu-radar3": {"opacity": "0","fill":cssColour("send")}}
+            iconsts = {
+                "bu-radar1": {"opacity": "0.1", "fill": cssColour("send")},
+                "bu-radar2": {"opacity": "0", "fill": cssColour("send")},
+                "bu-radar3": {"opacity": "0", "fill": cssColour("send")},
+            }
             iconsts["animation"] = self.genAnim("send")
             iconsts["multipart"] = True
-            bridgectl.sending({"subject": bridgectl.type,
-                                "content_type": "event",
-                                "content": {"event": "status",
-                                            "target": bridgectl.type +
-                                            "." +
-                                            self.name,
-                                            "icon status": iconsts,
-                                            "value": {}}})
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "status",
+                        "target": bridgectl.type + "." + self.name,
+                        "icon status": iconsts,
+                        "value": {},
+                    },
+                }
+            )
         elif msg["content"]["command"] == "learn":
             value = msg["content"]["value"]
             req_from = value["sender"]
             command = value["command"]
             ctype = value["ctype"]
             if ctype == "ir":
-                iconsts = {"bu-radar1": {"opacity": "0","fill":cssColour("learn")},
-                            "bu-radar2": {"opacity": "0","fill":cssColour("learn")},
-                            "bu-radar3": {"opacity": "0.1","fill":cssColour("learn")}}
+                iconsts = {
+                    "bu-radar1": {"opacity": "0", "fill": cssColour("learn")},
+                    "bu-radar2": {"opacity": "0", "fill": cssColour("learn")},
+                    "bu-radar3": {"opacity": "0.1", "fill": cssColour("learn")},
+                }
                 iconsts["animation"] = self.genAnim("learn")
                 iconsts["multipart"] = True
-                bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "status",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "icon status": iconsts,
-                                                "value": {}}})
+                bridgectl.sending(
+                    {
+                        "subject": bridgectl.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "status",
+                            "target": bridgectl.type + "." + self.name,
+                            "icon status": iconsts,
+                            "value": {},
+                        },
+                    }
+                )
                 xx = aio.create_task(self.do_learn_code(req_from, command))
             else:
-                iconsts = {"bu-radar1": {"opacity": "0","fill":cssColour("lock")},
-                            "bu-radar2": {"opacity": "0","fill":cssColour("lock")},
-                            "bu-radar3": {"opacity": "0","fill":cssColour("lock")}}
+                iconsts = {
+                    "bu-radar1": {"opacity": "0", "fill": cssColour("lock")},
+                    "bu-radar2": {"opacity": "0", "fill": cssColour("lock")},
+                    "bu-radar3": {"opacity": "0", "fill": cssColour("lock")},
+                }
                 iconsts["animation"] = self.genAnim("lock")
                 iconsts["multipart"] = True
-                bridgectl.sending({"subject": bridgectl.type,
-                                    "content_type": "event",
-                                    "content": {"event": "status",
-                                                "target": bridgectl.type +
-                                                "." +
-                                                self.name,
-                                                "icon status": iconsts,
-                                                "value": {}}})
+                bridgectl.sending(
+                    {
+                        "subject": bridgectl.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "status",
+                            "target": bridgectl.type + "." + self.name,
+                            "icon status": iconsts,
+                            "value": {},
+                        },
+                    }
+                )
                 xx = aio.create_task(self.do_rflearn_code(req_from, command))
 
 
@@ -236,121 +282,174 @@ async def do_send_code(self, code, req_from, command):
     global bridgectl
 
     async with self.accesslock:
-        if isinstance(code,str):
-            resu = await self.conn.send_code(bytes.fromhex(code))  or False
+        if isinstance(code, str):
+            resu = await self.conn.send_code(bytes.fromhex(code)) or False
         else:
-            resu = await self.conn.send_code(code)  or False
-        #resu = await self.conn.send_code(base64.b64decode(code))
+            resu = await self.conn.send_code(code) or False
+        # resu = await self.conn.send_code(base64.b64decode(code))
         resu = True if resu else False
-    bridgectl.sending({"subject": req_from,
-                    "content_type": "event",
-                    "content": {"event": "code sent",
-                                "target": req_from,
-                                "value": {"sent": resu, "sender": req_from,
-                                        "command": command}}})
+    bridgectl.sending(
+        {
+            "subject": req_from,
+            "content_type": "event",
+            "content": {
+                "event": "code sent",
+                "target": req_from,
+                "value": {"sent": resu, "sender": req_from, "command": command},
+            },
+        }
+    )
+
 
 async def do_learn_code(self, req_from, command):
     global bridgectl
 
     async with self.accesslock:
-        bridgectl.sending({"subject": bridgectl.type ,
-                    "content_type": "event",
-                    "content": {"event": "gui alert",
-                                "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                "value": "Please, do press the buttun you want to learn."}})
+        bridgectl.sending(
+            {
+                "subject": bridgectl.type,
+                "content_type": "event",
+                "content": {
+                    "event": "gui alert",
+                    "target": bridgectl.type + "." + self.name,
+                    "value": "Please, do press the buttun you want to learn.",
+                },
+            }
+        )
         resu = await self.conn.learn_ir_code() or False
-        #resu = await self.conn.send_code(base64.b64decode(code))
+        # resu = await self.conn.send_code(base64.b64decode(code))
         if resu:
             resu = resu.hex()
         else:
             resu = False
-    bridgectl.sending({"subject": req_from,
-                    "content_type": "command",
-                    "content": {"command": "code learned",
-                                "target": req_from,
-                                "value": {"code": resu,
-                                          "sender": bridgectl.type + "." + self.name,
-                                          "ctype": "ir",
-                                          "command": command}}})
-    iconsts = {"bu-radar1": {"opacity": "0"},
-                "bu-radar2": {"opacity": "0"},
-                "bu-radar3": {"opacity": "0"},
-                "multipart": True}
-    bridgectl.sending({"subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {"event": "status",
-                                    "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                                    "icon status": iconsts,
-                                    "value": {}}})
+    bridgectl.sending(
+        {
+            "subject": req_from,
+            "content_type": "command",
+            "content": {
+                "command": "code learned",
+                "target": req_from,
+                "value": {
+                    "code": resu,
+                    "sender": bridgectl.type + "." + self.name,
+                    "ctype": "ir",
+                    "command": command,
+                },
+            },
+        }
+    )
+    iconsts = {
+        "bu-radar1": {"opacity": "0"},
+        "bu-radar2": {"opacity": "0"},
+        "bu-radar3": {"opacity": "0"},
+        "multipart": True,
+    }
+    bridgectl.sending(
+        {
+            "subject": bridgectl.type,
+            "content_type": "event",
+            "content": {
+                "event": "status",
+                "target": bridgectl.type + "." + self.name,
+                "icon status": iconsts,
+                "value": {},
+            },
+        }
+    )
 
 
 async def rffreq_locked(self):
 
-    bridgectl.sending({"subject": bridgectl.type,
-                "content_type": "event",
-                "content": {"event": "gui alert",
-                            "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                            "value": "We are locked onto the frequency. Follow the icon and press the buttun you wish to learn."}})
+    bridgectl.sending(
+        {
+            "subject": bridgectl.type,
+            "content_type": "event",
+            "content": {
+                "event": "gui alert",
+                "target": bridgectl.type + "." + self.name,
+                "value": "We are locked onto the frequency. Follow the icon and press the buttun you wish to learn.",
+            },
+        }
+    )
     await aio.sleep(2)
-    iconsts = {"bu-radar1": {"opacity": "0","fill":cssColour("learn")},
-                "bu-radar2": {"opacity": "0","fill":cssColour("learn")},
-                "bu-radar3": {"opacity": "0.1","fill":cssColour("learn")}}
+    iconsts = {
+        "bu-radar1": {"opacity": "0", "fill": cssColour("learn")},
+        "bu-radar2": {"opacity": "0", "fill": cssColour("learn")},
+        "bu-radar3": {"opacity": "0.1", "fill": cssColour("learn")},
+    }
     iconsts["animation"] = self.genAnim("learn")
     iconsts["multipart"] = True
-    bridgectl.sending({"subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {"event": "status",
-                                    "target": bridgectl.type +
-                                    "." +
-                                    self.name,
-                                    "icon status": iconsts,
-                                    "value": {}}})
+    bridgectl.sending(
+        {
+            "subject": bridgectl.type,
+            "content_type": "event",
+            "content": {
+                "event": "status",
+                "target": bridgectl.type + "." + self.name,
+                "icon status": iconsts,
+                "value": {},
+            },
+        }
+    )
+
 
 async def do_rflearn_code(self, req_from, command):
     global bridgectl
 
     async with self.accesslock:
-        bridgectl.sending({"subject": bridgectl.type,
-                    "content_type": "event",
-                    "content": {"event": "gui alert",
-                                "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                "value": "Please, do press continuously a button so we can lock onto its frequency."}})
+        bridgectl.sending(
+            {
+                "subject": bridgectl.type,
+                "content_type": "event",
+                "content": {
+                    "event": "gui alert",
+                    "target": bridgectl.type + "." + self.name,
+                    "value": "Please, do press continuously a button so we can lock onto its frequency.",
+                },
+            }
+        )
         resu = await self.conn.learn_rf_code(cb=self.rffreq_locked) or False
         if resu:
             resu = resu.hex()
         else:
             resu = False
-        bridgectl.sending({"subject": req_from,
-                        "content_type": "command",
-                        "content": {"command": "code learned",
-                                    "target": req_from,
-                                    "value": {"code": resu,
-                                            "sender": bridgectl.type + "." + self.name,
-                                            "ctype": "rf",
-                                            "command": command}}})
-        iconsts = {"bu-radar1": {"opacity": "0"},
-                    "bu-radar2": {"opacity": "0"},
-                    "bu-radar3": {"opacity": "0"},
-                    "multipart": True}
-        bridgectl.sending({"subject": bridgectl.type,
-                            "content_type": "event",
-                            "content": {"event": "status",
-                                        "target": bridgectl.type +
-                                        "." +
-                                        self.name,
-                                        "icon status": iconsts,
-                                        "value": {}}})
+        bridgectl.sending(
+            {
+                "subject": req_from,
+                "content_type": "command",
+                "content": {
+                    "command": "code learned",
+                    "target": req_from,
+                    "value": {
+                        "code": resu,
+                        "sender": bridgectl.type + "." + self.name,
+                        "ctype": "rf",
+                        "command": command,
+                    },
+                },
+            }
+        )
+        iconsts = {
+            "bu-radar1": {"opacity": "0"},
+            "bu-radar2": {"opacity": "0"},
+            "bu-radar3": {"opacity": "0"},
+            "multipart": True,
+        }
+        bridgectl.sending(
+            {
+                "subject": bridgectl.type,
+                "content_type": "event",
+                "content": {
+                    "event": "status",
+                    "target": bridgectl.type + "." + self.name,
+                    "icon status": iconsts,
+                    "value": {},
+                },
+            }
+        )
 
 
-def genAnim(self,state="send"):
+def genAnim(self, state="send"):
     """Generate an animation for the given state
     """
     anim = ""
@@ -358,112 +457,356 @@ def genAnim(self,state="send"):
     prefix = animname()
     if state == "send":
         cnt = "5"
-        anim = "@keyframes " + prefix + self.name + "-bu-radar1" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "@keyframes " + prefix + self.name + "-bu-radar2" +\
-            " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0% ,33%{ opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0%,33$ { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "@keyframes " + prefix + self.name + "-bu-radar3" +\
-            " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name + "bu-radar3"  + \
-            " {  0% ,66%{ opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name + "bu-radar3"  + \
-            " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name + "bu-radar3"  + \
-            " {  0%,66$ { opacity: 0;}  100% { opacity: 1;}}"
+        anim = (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0% ,33%{ opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0%,33$ { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar3"
+            + " {  0% ,66%{ opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar3"
+            + " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar3"
+            + " {  0%,66$ { opacity: 0;}  100% { opacity: 1;}}"
+        )
 
-        anim += "\n.run-animation-" + self.name + "-bu-radar1" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar1" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar2" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar2" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar3" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar3" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar1"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar2"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar3"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
     elif state == "learn":
-        anim = "@keyframes " + prefix + self.name + "-bu-radar3" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
-        anim += "@keyframes " + prefix + self.name + "-bu-radar2" +\
-            " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0% ,33%{ opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name + "bu-radar2"  + \
-            " {  0%,33$ { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "@keyframes " + prefix + self.name + "-bu-radar1" +\
-            " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name + "bu-radar1"  + \
-            " {  0% ,66%{ opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name + "bu-radar1"  + \
-            " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name + "bu-radar1"  + \
-            " {  0%,66$ { opacity: 0;}  100% { opacity: 1;}}"
+        anim = (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0.1;}  33%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0% ,33%{ opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0%,33% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar2"
+            + " {  0%,33$ { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar1"
+            + " {  0% ,66%{ opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar1"
+            + " {  0%,66% { opacity: 0;}  100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "bu-radar1"
+            + " {  0%,66$ { opacity: 0;}  100% { opacity: 1;}}"
+        )
 
-        anim += "\n.run-animation-" + self.name + "-bu-radar1" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar1" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar2" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar2" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar3" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar3" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar1"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar2"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar3"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
     else:
-        anim = "@keyframes " + prefix + self.name + "-bu-radar1" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name +  "-bu-radar1" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim = "@keyframes " + prefix + self.name + "-bu-radar2" +\
-            " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name +  "-bu-radar2" +\
-            " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name +  "-bu-radar2" +\
-            " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name +  "-bu-radar2" +\
-            " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
-        anim = "@keyframes " + prefix + self.name + "-bu-radar3" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-webkit-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-moz-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
-        anim += "\n@-o-keyframes " + prefix + self.name +  "-bu-radar3" +\
-            " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        anim = (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim = (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + " {  0% { opacity: 0;}  70%,100% { opacity: 1;}}"
+        )
+        anim = (
+            "@keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-webkit-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-moz-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
+        anim += (
+            "\n@-o-keyframes "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + " {  0% { opacity: 0;}  50%,100% { opacity: 1;}}"
+        )
 
-        anim += "\n.run-animation-" + self.name + "-bu-radar1" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar1" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar2" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar2" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
-        anim += "\n.run-animation-" + self.name + "-bu-radar3" +\
-            " { animation-name: " + prefix + self.name + "-bu-radar3" +\
-                "; animation-duration: 1s; animation-iteration-count: %s; }"%cnt
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar1"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar1"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar2"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar2"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
+        anim += (
+            "\n.run-animation-"
+            + self.name
+            + "-bu-radar3"
+            + " { animation-name: "
+            + prefix
+            + self.name
+            + "-bu-radar3"
+            + "; animation-duration: 1s; animation-iteration-count: %s; }" % cnt
+        )
 
     return anim
+
 
 # Do use mybytes.hex() when sending learned codes
 
@@ -473,6 +816,7 @@ bl.remotec.do_learn_code = do_learn_code
 bl.remotec.do_rflearn_code = do_rflearn_code
 bl.remotec.rffreq_locked = rffreq_locked
 bl.remotec.genAnim = genAnim
+
 
 class BroadlinkRCBridge(bl.BuddyBridge):
 
@@ -487,37 +831,46 @@ class BroadlinkRCBridge(bl.BuddyBridge):
         self.pending = []
         self.blproto = None
 
-
-
     def process_command(self, msg):
         if msg["content"]["command"] == "update config":
             if msg["content"]["target"] == self.target:
                 for k, v in msg["content"]["value"].items():
                     blremote_config_default[k] = v
-                self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          #"token": self.target,
-                                          "value": bl.encrypt(blremote_config_default, self.config["buddykey"])}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.subtype,
+                        "content_type": "request",
+                        "content": {
+                            "request": "save configuration",
+                            "target": self.type,
+                            # "token": self.target,
+                            "value": bl.encrypt(
+                                blremote_config_default, self.config["buddykey"]
+                            ),
+                        },
+                    }
+                )
         else:
             for aconn in self.devices:
                 aconn.process(msg)
 
     def process_response(self, msg):
 
-        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
+        if (
+            self.state == "init"
+            and msg["content"]["response"] == "configuration"
+            and msg["subject"] == self.target
+        ):
             # Getting the config
             newconfig = {}
             fromconfig = []
             if msg["content"]["configuration"]:
                 try:
                     storedconfig = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
+                        msg["content"]["configuration"], self.config["buddykey"]
+                    )
                     if self.config["debug"]:
-                        self.log.debug(
-                            "The config stored is {}".format(storedconfig))
+                        self.log.debug("The config stored is {}".format(storedconfig))
                 except:
                     storedconfig = {}
                     savenew = True
@@ -536,22 +889,47 @@ class BroadlinkRCBridge(bl.BuddyBridge):
             else:
                 self.state = "active"
                 self.build()
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [self.blremote_config, blremote_config_default]}}})
-                self.sending({"subject": self.config["restricted"],
-                              "content_type": "restricted event",
-                              "content": {"event": "config updated",
-                                          "target": self.target,
-                                          "value": self.blremote_config}})
-                self.sending({"subject":"control","content": {"subject":self.type},"content_type":"mute events"})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.target,
+                        "content_type": "request",
+                        "content": {
+                            "request": "functions",
+                            "target": self.type,
+                            "subtype": self.subtype,
+                            # "token": self.target,
+                            "value": {
+                                "configs": [
+                                    self.blremote_config,
+                                    blremote_config_default,
+                                ]
+                            },
+                        },
+                    }
+                )
+                self.sending(
+                    {
+                        "subject": self.config["restricted"],
+                        "content_type": "restricted event",
+                        "content": {
+                            "event": "config updated",
+                            "target": self.target,
+                            "value": self.blremote_config,
+                        },
+                    }
+                )
+                self.sending(
+                    {
+                        "subject": "control",
+                        "content": {"subject": self.type},
+                        "content_type": "mute events",
+                    }
+                )
 
-
-        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
+        elif (
+            msg["content"]["response"] == "save configuration"
+            and msg["subject"] == self.target
+        ):
             if self.state == "active" and msg["content"]["status"] != "done":
                 # log
                 if self.log:
@@ -564,24 +942,44 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                 else:
                     raise bl.Exit(2, "Error: Configuration was not saved")
             else:
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [blremote_config, self.blremote_config]}}})
-                self.sending({"subject": self.config["restricted"],
-                              "content_type": "restricted event",
-                              "content": {"event": "config updated",
-                                          "target": self.target,
-                                          "value": self.blremote_config}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.target,
+                        "content_type": "request",
+                        "content": {
+                            "request": "functions",
+                            "target": self.type,
+                            "subtype": self.subtype,
+                            # "token": self.target,
+                            "value": {
+                                "configs": [blremote_config, self.blremote_config]
+                            },
+                        },
+                    }
+                )
+                self.sending(
+                    {
+                        "subject": self.config["restricted"],
+                        "content_type": "restricted event",
+                        "content": {
+                            "event": "config updated",
+                            "target": self.target,
+                            "value": self.blremote_config,
+                        },
+                    }
+                )
 
         elif self.state == "active":
-            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
+            if (
+                msg["content"]["response"] == "creation"
+                and msg["content"]["status"] == "done"
+            ):
                 sess = bl.getSession(self.config["database"])
-                remotec = sess.query(bl.remotec).filter_by(
-                    name=msg["subject"].split(".")[-1]).one()
+                remotec = (
+                    sess.query(bl.remotec)
+                    .filter_by(name=msg["subject"].split(".")[-1])
+                    .one()
+                )
                 idx = 0
                 for adev in self.pending:
                     if mac_to_name(adev.name) == remotec.name:
@@ -589,33 +987,50 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                         remotec.accesslock = aio.Lock()
                         remotec.present = True
                         if adev.dev == "RM PRO":
-                            remotec.commands = ["learn_ir", "send_ir", "learn_rf", "send_rf"]
+                            remotec.commands = [
+                                "learn_ir",
+                                "send_ir",
+                                "learn_rf",
+                                "send_rf",
+                            ]
                         else:
                             remotec.commands = ["learn_ir", "send_ir"]
                         break
                     idx == 1
                 try:
-                    del(self.pending[idx])
+                    del self.pending[idx]
                 except:
                     self.log.debug("Error: No pending device")
                 sess.close()
-                self.sending({"subject": self.type,
-                              "content_type": "event",
-                              "content": {"event": "new device",
-                                          "target": self.type +
-                                          "." +
-                                          remotec.name,
-                                          "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": remotec.name, "nickname": remotec.nickname}}})
+                self.sending(
+                    {
+                        "subject": self.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "new device",
+                            "target": self.type + "." + remotec.name,
+                            "value": {
+                                "type": self.type,
+                                "subtype": self.subtype,
+                                "name": remotec.name,
+                                "nickname": remotec.nickname,
+                            },
+                        },
+                    }
+                )
 
-                self.sending({"subject": self.type,
-                                "content_type": "event",
-                                "content": {"event": "presence",
-                                            "target": self.type +
-                                            "." +
-                                            remotec.name,
-                                            "value": "online",
-                                            "icon status": {"bu-not-present": {"opacity": 0}}}})
+                self.sending(
+                    {
+                        "subject": self.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "presence",
+                            "target": self.type + "." + remotec.name,
+                            "value": "online",
+                            "icon status": {"bu-not-present": {"opacity": 0}},
+                        },
+                    }
+                )
 
             elif msg["content"]["response"] == "nickname":
                 if msg["content"]["status"] == "done":
@@ -624,13 +1039,17 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                     for remotec in self.devices:
                         if remotec.name == msg["subject"].split(".")[-1]:
                             remotec.nickname = msg["content"]["value"]
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "nickname",
-                                                      "target": self.type +
-                                                      "." +
-                                                      remotec.name,
-                                                      "value": remotec.nickname}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "nickname",
+                                        "target": self.type + "." + remotec.name,
+                                        "value": remotec.nickname,
+                                    },
+                                }
+                            )
                             break
 
             elif msg["content"]["response"] == "deletion":
@@ -642,13 +1061,17 @@ class BroadlinkRCBridge(bl.BuddyBridge):
                     for remotec in self.devices:
                         if remotec.name == msg["subject"].split(".")[-1]:
                             remotec.conn.close()
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "deletion",
-                                                      "target": self.type +
-                                                      "." +
-                                                      remotec.name,
-                                                      "value": remotec.name}})
+                            self.sending(
+                                {
+                                    "subject": self.type,
+                                    "content_type": "event",
+                                    "content": {
+                                        "event": "deletion",
+                                        "target": self.type + "." + remotec.name,
+                                        "value": remotec.name,
+                                    },
+                                }
+                            )
                             doremove = True
                             break
                         sidx += 1
@@ -658,15 +1081,16 @@ class BroadlinkRCBridge(bl.BuddyBridge):
         else:
             if self.log:
                 self.log.warning(
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
             else:
-                print (
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
-
+                print(
+                    "Unknown response {} {} {}".format(
+                        msg["subject"], msg["content_type"], msg["content"]
+                    )
+                )
 
     def process_event(self, msg):
         # We can react to 2 events. "dhcp" events on devices and "gui info" info requests
@@ -674,48 +1098,64 @@ class BroadlinkRCBridge(bl.BuddyBridge):
         if msg["content"]["event"] == "gui refresh":
             for remotec in self.devices:
                 remotec.present = True
-                self.sending({"subject": self.type,
-                            "content_type": "event",
-                            "content": {"event": "presence",
-                                        "target": self.type + "." + remotec.name,
-                                        "value": "online",
-                                        "icon status": {"bu-not-present": {"opacity": 0}}}})
+                self.sending(
+                    {
+                        "subject": self.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "presence",
+                            "target": self.type + "." + remotec.name,
+                            "value": "online",
+                            "icon status": {"bu-not-present": {"opacity": 0}},
+                        },
+                    }
+                )
 
     def build(self):
         global blremote_config
         global event_loop
-        blremote_config = blremote_config.format(type=self.type,subtype=self.subtype)
-        self.sending({"subject": "control" + "." + self.target,
-                      "content_type": "request",
-                      "content": {"request": "functions",
-                                  "target": self.type,
-                                  "subtype": self.subtype,
-                                  #"token": self.target,
-                                  "value": {"functions":blremote_function, "configs": [blremote_config, self.blremote_config]}}})
-        sess = bl.getSession(self.config["database"])
-        self.devices = sess.query(
-            bl.remotec).filter_by(
-                subtype=self.subtype).all(
+        blremote_config = blremote_config.format(type=self.type, subtype=self.subtype)
+        self.sending(
+            {
+                "subject": "control" + "." + self.target,
+                "content_type": "request",
+                "content": {
+                    "request": "functions",
+                    "target": self.type,
+                    "subtype": self.subtype,
+                    # "token": self.target,
+                    "value": {
+                        "functions": blremote_function,
+                        "configs": [blremote_config, self.blremote_config],
+                    },
+                },
+            }
         )
+        sess = bl.getSession(self.config["database"])
+        self.devices = sess.query(bl.remotec).filter_by(subtype=self.subtype).all()
         for remotec in self.devices:
             remotec.present = False
-            remotec.infoval={}
+            remotec.infoval = {}
             remotec.accesslock = aio.Lock()
-            remotec.commands = ['send_ir']   #By default
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type + "." + remotec.name,
-                                      "value": "offline",
-                                      "icon status": {"bu-not-present": {"opacity": 1}}}})
+            remotec.commands = ["send_ir"]  # By default
+            self.sending(
+                {
+                    "subject": self.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "presence",
+                        "target": self.type + "." + remotec.name,
+                        "value": "offline",
+                        "icon status": {"bu-not-present": {"opacity": 1}},
+                    },
+                }
+            )
         self.blproto = aiobl.BroadlinkProtocol(process=self.register)
         coro = event_loop.create_datagram_endpoint(
-            lambda: self.blproto, local_addr=(self.config["ip"], 0))
+            lambda: self.blproto, local_addr=(self.config["ip"], 0)
+        )
         task = event_loop.create_task(coro)
         disc = event_loop.create_task(self.blproto.discovery())
-
-
-
 
     def register(self, entity):
         if entity.dev in ["RM", "RM PRO", "RM4"]:
@@ -723,38 +1163,65 @@ class BroadlinkRCBridge(bl.BuddyBridge):
             ename = mac_to_name(entity.mac)
             for remotec in self.devices:
                 if remotec.name == ename:
-                    found =  True
+                    found = True
                     if entity.dev == "RM PRO":
-                        remotec.commands = ["learn_ir", "send_ir", "learn_rf", "send_rf"]
+                        remotec.commands = [
+                            "learn_ir",
+                            "send_ir",
+                            "learn_rf",
+                            "send_rf",
+                        ]
                     else:
                         remotec.commands = ["learn_ir", "send_ir"]
                     if entity.dev == "RM4" and entity.cloud:
-                        self.sending({"subject": self.type ,
-                                    "content_type": "event",
-                                    "content": {"event": "gui alert",
-                                                "target": self.type +
-                                                        "." +
-                                                        ename,
-                                                "value": "Warning: Device {} is cloud enabled. It won't respond!".format(remotec.nickname)}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "gui alert",
+                                    "target": self.type + "." + ename,
+                                    "value": "Warning: Device {} is cloud enabled. It won't respond!".format(
+                                        remotec.nickname
+                                    ),
+                                },
+                            }
+                        )
                     if not remotec.present:
                         remotec.conn = entity
                         update = True
                         remotec.present = True
-                        self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type + "." + remotec.name,
-                                      "value": "online",
-                                      "icon status": {"bu-not-present": {"opacity": 0}}}})
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "presence",
+                                    "target": self.type + "." + remotec.name,
+                                    "value": "online",
+                                    "icon status": {"bu-not-present": {"opacity": 0}},
+                                },
+                            }
+                        )
             if not found:
                 self.pending.append(entity)
-                self.sending({"subject": "control" + "." + self.type,
-                          "content_type": "request",
-                          "content": {"request": "creation",
-                                      "target": self.type,
-                                          # Here we need the type
-                                      #"token": self.target,
-                                      "value": {"name": ename, "nickname": ename, "subtype": self.subtype}}})
+                self.sending(
+                    {
+                        "subject": "control" + "." + self.type,
+                        "content_type": "request",
+                        "content": {
+                            "request": "creation",
+                            "target": self.type,
+                            # Here we need the type
+                            # "token": self.target,
+                            "value": {
+                                "name": ename,
+                                "nickname": ename,
+                                "subtype": self.subtype,
+                            },
+                        },
+                    }
+                )
 
     def unregister(self, entity):
         self.devices = [x for x in self.devices if x.name != entity.name]
@@ -764,36 +1231,44 @@ class BroadlinkRCBridge(bl.BuddyBridge):
             await aio.sleep(self.blremote_config["throttle"]["info"])
             try:
                 for remotec in self.devices:
-                    msg=""
-                    prefix="<div><dl class=\"dl-horizontal\">"
+                    msg = ""
+                    prefix = '<div><dl class="dl-horizontal">'
                     lov = [x for x in remotec.infoval.keys()]
                     lov.sort()
                     for x in lov:
                         try:
-                            unit,transform = remotec.infoval[x][1]
+                            unit, transform = remotec.infoval[x][1]
                             if transform:
-                                v = (transform(remotec.infoval[x][0]),unit)
+                                v = (transform(remotec.infoval[x][0]), unit)
                             else:
-                                v = (remotec.infoval[x][0],unit)
-                            msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>%.2f %s</dd>"%v
-                            prefix=""
+                                v = (remotec.infoval[x][0], unit)
+                            msg += (
+                                prefix
+                                + "<dt>"
+                                + x.replace("_", " ").title()
+                                + ":</dt><dd>%.2f %s</dd>" % v
+                            )
+                            prefix = ""
                         except:
                             pass
                     if msg:
-                        msg+="</dl></div>"
-                        self.sending({"subject": self.type,
-                                            "content_type": "event",
-                                            "content": {"event": "info",
-                                                        "target": self.type +
-                                                        "." +
-                                                        remotec.name,
-                                                        "value": msg }})
+                        msg += "</dl></div>"
+                        self.sending(
+                            {
+                                "subject": self.type,
+                                "content_type": "event",
+                                "content": {
+                                    "event": "info",
+                                    "target": self.type + "." + remotec.name,
+                                    "value": msg,
+                                },
+                            }
+                        )
             except Exception as e:
                 self.log.debug(
-                    "Ooops could not send info",
-                    exc_info=(type(e),
-                            e,
-                            e.__traceback__))
+                    "Ooops could not send info", exc_info=(type(e), e, e.__traceback__)
+                )
+
 
 aboutstr = """<p>BroadlinRCBuddy is a bridge managing Broadlink remote control devices. </p>
 <p>The icon was designed by lifting an icon from <a href="http://fontawesome.io">Flat Icons - http://flaticon.com</a> and
@@ -889,47 +1364,103 @@ iconstr = """
 
 cfgdefault = {
     "type": "remotec",
-     "subtype": SUBTYPE,
-     "host": "localhost",
-     "port": 8745,
-     "ip": "",
-     "credential": "",
-     "ssl": "",
-     "restricted": "guibridge"}
+    "subtype": SUBTYPE,
+    "host": "localhost",
+    "port": 8745,
+    "ip": "",
+    "credential": "",
+    "ssl": "",
+    "restricted": "guibridge",
+}
 
 
 def configure():
     parser = argparse.ArgumentParser(
-        description="Manage Broadlink Remothe Control devices.")
+        description="Manage Broadlink Remothe Control devices."
+    )
     # version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                        help="The type of devices we handle. (default \"%s\")." % cfgdefault["type"])
-    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                        help="The specific subtype we manage. (default \"%s\")." % cfgdefault["subtype"])
+    parser.add_argument(
+        "-t",
+        "--type",
+        default=cfgdefault["type"],
+        help='The type of devices we handle. (default "%s").' % cfgdefault["type"],
+    )
+    parser.add_argument(
+        "-s",
+        "--subtype",
+        default=cfgdefault["subtype"],
+        help='The specific subtype we manage. (default "%s").' % cfgdefault["subtype"],
+    )
 
-    parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
-    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
-    parser.add_argument("-i", "--ip", default=cfgdefault["ip"],
-                        help="The IP address used to connect to the Broadlink devices (default to guessing)." )
+    parser.add_argument(
+        "-a",
+        "--host",
+        default=cfgdefault["host"],
+        help='The host address of the server (default "%s").' % cfgdefault["host"],
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=cfgdefault["port"],
+        help='The port used by the server (default "%s").' % cfgdefault["port"],
+    )
+    parser.add_argument(
+        "-i",
+        "--ip",
+        default=cfgdefault["ip"],
+        help="The IP address used to connect to the Broadlink devices (default to guessing).",
+    )
 
-    parser.add_argument("-c", "--config", default="/etc/autobuddy/blremote.cfg", type=argparse.FileType('r'),
-                        help="Config file to use (default \"/etc/autobuddy/blremote.cfg\")")
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="/etc/autobuddy/blremote.cfg",
+        type=argparse.FileType("r"),
+        help='Config file to use (default "/etc/autobuddy/blremote.cfg")',
+    )
 
-    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
-    parser.add_argument("-S", "--ssl", default="",
-                        help="The directory where the file %s can be found." % (CERTFILE))
-    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
-                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
-    parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="Log warning messages")
+    parser.add_argument(
+        "-V",
+        "--credential",
+        default=cfgdefault["credential"],
+        help='The credential used to verify authorization (default "%s").'
+        % cfgdefault["credential"],
+    )
+    parser.add_argument(
+        "-S",
+        "--ssl",
+        default="",
+        help="The directory where the file %s can be found." % (CERTFILE),
+    )
+    parser.add_argument(
+        "-r",
+        "--restricted",
+        default=cfgdefault["restricted"],
+        help='Where to send "restricted events" (default "%s").'
+        % cfgdefault["restricted"],
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Log warning messages",
+    )
 
-    parser.add_argument("-C", "--configonly", default="",
-                        help="Exit after the the configuration has been saved")
-    parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
+    parser.add_argument(
+        "-C",
+        "--configonly",
+        default="",
+        help="Exit after the the configuration has been saved",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Log debug information (default False)",
+    )
 
     try:
         opts = parser.parse_args()
@@ -938,26 +1469,24 @@ def configure():
 
     if opts.debug:
         logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
+            level=logging.DEBUG, format="%(levelname)7s: %(message)s", stream=sys.stderr
         )
     elif opts.verbose:
         logging.basicConfig(
             level=logging.WARNING,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
     else:
         logging.basicConfig(
             level=logging.CRITICAL,
-            format='%(levelname)7s: %(message)s',
+            format="%(levelname)7s: %(message)s",
             stream=sys.stderr,
         )
-    blremotelog = logging.getLogger('')
+    blremotelog = logging.getLogger("")
     blremotecfg = {"debug": opts.debug}
     try:
-    # if True:
+        # if True:
         try:
             cfgdata = json.load(opts.config)
             opts.config.close()
@@ -974,19 +1503,24 @@ def configure():
             else:
                 blremotecfg[attr] = opts.__getattribute__(attr)
             if opts.debug:
-                blremotelog.debug("The %s is %s." % (attr,blremotecfg[attr]))
+                blremotelog.debug("The %s is %s." % (attr, blremotecfg[attr]))
 
         if not blremotecfg["ip"]:
-            #Let's try to figure it out"
+            # Let's try to figure it out"
             try:
                 import netifaces
+
                 for iface in netifaces.interfaces():
                     alladdr = netifaces.ifaddresses(iface)
                     if netifaces.AF_INET in alladdr:
                         alladdr = alladdr[netifaces.AF_INET]
                         for addr in alladdr:
                             if not addr["addr"].startswith("127."):
-                                blremotelog.debug("Selecting address {} on {}".format(addr["addr"],iface))
+                                blremotelog.debug(
+                                    "Selecting address {} on {}".format(
+                                        addr["addr"], iface
+                                    )
+                                )
                                 blremotecfg["ip"] = addr["addr"]
                                 break
                         if blremotecfg["ip"]:
@@ -994,18 +1528,25 @@ def configure():
                 if not blremotecfg["ip"]:
                     raise Exception
             except:
-                blremotelog.critical("No IP address was specified. We tried but could not guess it. Make sure netifaces is installed")
+                blremotelog.critical(
+                    "No IP address was specified. We tried but could not guess it. Make sure netifaces is installed"
+                )
                 sys.exit(1)
 
-        if blremotecfg["ssl"] and not (os.path.isfile(blremotecfg["ssl"] + "/" + CERTFILE)):
-            blremotelog.critical("Encryption: Could not find {} .".format(
-                blremotecfg["ssl"] + "/" + CERTFILE))
+        if blremotecfg["ssl"] and not (
+            os.path.isfile(blremotecfg["ssl"] + "/" + CERTFILE)
+        ):
+            blremotelog.critical(
+                "Encryption: Could not find {} .".format(
+                    blremotecfg["ssl"] + "/" + CERTFILE
+                )
+            )
             sys.exit()
         if opts.debug:
             if blremotecfg["ssl"]:
                 blremotelog.debug(
-                    "The ssl certificates can be found in %s" %
-                    blremotecfg["ssl"])
+                    "The ssl certificates can be found in %s" % blremotecfg["ssl"]
+                )
             else:
                 blremotelog.debug("The connection is not encrypted")
 
@@ -1020,7 +1561,7 @@ def configure():
                     blremotelog.debug("Generating random key")
                 blremotecfg["buddykey"] = bl.keygen()
             try:
-                del(blremotecfg["debug"])
+                del blremotecfg["debug"]
             except:
                 pass
             with open(opts.configonly, "w") as cfile:
@@ -1043,29 +1584,30 @@ if __name__ == "__main__":
         event_loop.set_debug(True)
 
     if config["ssl"]:
-        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-                                                cafile=config["ssl"] + '/' + CERTFILE)
+        sslcontext = ssl.create_default_context(
+            ssl.Purpose.SERVER_AUTH, cafile=config["ssl"] + "/" + CERTFILE
+        )
 
         sslcontext.check_hostname = False
     else:
         sslcontext = None
     connFuture = aio.Future()
     fac = event_loop.create_connection(
-            partial(BroadlinkRCBridge,
-                    event_loop,
-                    connFuture,
-                    config,
-                    log),
-            config["host"],
-            config["port"],
-            ssl=sslcontext)
-    log.debug("We got fac {} as {}".format(fac,fac.__class__))
+        partial(BroadlinkRCBridge, event_loop, connFuture, config, log),
+        config["host"],
+        config["port"],
+        ssl=sslcontext,
+    )
+    log.debug("We got fac {} as {}".format(fac, fac.__class__))
     conn, bridgectl = event_loop.run_until_complete(fac)
-    log.debug("We got conn {} and ctl {}".format(conn,bridgectl))
+    log.debug("We got conn {} and ctl {}".format(conn, bridgectl))
     event_loop.call_soon(
         bridgectl.configrequest,
-        {"about": {"BroadlinkRCBuddy": aboutstr},
-         "display": {config["subtype"]: iconstr}})
+        {
+            "about": {"BroadlinkRCBuddy": aboutstr},
+            "display": {config["subtype"]: iconstr},
+        },
+    )
 
     try:
         event_loop.run_until_complete(connFuture)
