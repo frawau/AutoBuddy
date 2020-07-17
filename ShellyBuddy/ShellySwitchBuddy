@@ -50,6 +50,8 @@ DEVLIST = {
     "shelly4pro": 4,
 }
 
+INFOCD = 5
+
 
 def intround(x):
     return int(round(x))
@@ -269,6 +271,7 @@ def shelly_process(self, msg, type="autobuddy"):
                             },
                         }
                     )
+                    self.send_info_cd -= 1
             else:
                 if self.power != (msg["value"] == "on"):
                     self.power = msg["value"] == "on"
@@ -391,6 +394,7 @@ def shelly_process(self, msg, type="autobuddy"):
                     },
                 }
             )
+            self.send_info_cd -= 1
         elif msg["subject"] == "overtemperature":
             # We don't really care about the relay. It is manage by the hardware
             devid = self.name.split("_")[0]
@@ -410,6 +414,7 @@ def shelly_process(self, msg, type="autobuddy"):
                         },
                     }
                 )
+                self.send_info_cd -= 1
         # except Exception as e:
         # try:
         # bridgectl.log.warning(
@@ -419,12 +424,15 @@ def shelly_process(self, msg, type="autobuddy"):
         # e.__traceback__))
         # except:
         # print("Oops")
+        if self.send_info_cd <= 0:
+            self.sendInfo()
 
         return True
 
 
 def sendInfo(self):
-    # Can be used in callback
+    # Sending the latest info
+    self.send_info_cd = INFOCD
     try:
         msg = ""
         prefix = '<div><dl class="dl-horizontal">'
@@ -744,6 +752,7 @@ class ShellyBridge(bl.BuddyBridge):
                         switch.longpush = False
                         switch.power_con = None
                         switch.energy = None
+                        switch.send_info_cd = INFOCD
                         for x in self.shelly_config["relay"]:
                             if b == x["entity"] and x["relay"]["bu-cvalue"] == "no":
                                 switch.software_switch = True
@@ -904,6 +913,7 @@ class ShellyBridge(bl.BuddyBridge):
             switch.longpush = False
             switch.power_con = None
             switch.energy = None
+            switch.send_info_cd = INFOCD
             self.sending(
                 {
                     "subject": self.type,
