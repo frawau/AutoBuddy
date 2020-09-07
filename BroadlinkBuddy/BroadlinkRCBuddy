@@ -276,6 +276,19 @@ def broadlinkrc_process(self, msg):
                     }
                 )
                 xx = aio.create_task(self.do_rflearn_code(req_from, command))
+        elif msg["content"]["command"] == "status":
+            bridgectl.sending(
+                {
+                    "subject": bridgectl.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "status",
+                        "target": bridgectl.type + "." + self.name,
+                        "icon status": {"bu-not-present": {"opacity": 0}},
+                        "value": {},
+                    },
+                }
+            )
 
 
 async def do_send_code(self, code, req_from, command):
