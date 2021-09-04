@@ -143,7 +143,7 @@ def proxy_process(self, msg, type="autobuddy"):
                                 "target": bridgectl.type,
                                 "value": self.name}})
 
-        elif msg["content"]["command"] == "action":
+        elif msg["content"]["command"] == "action":  #WARNING Becomes opstcl
             iconsts = {}
             action = None
             ctype = "ir"

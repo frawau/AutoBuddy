@@ -663,11 +663,12 @@ class BLESensorBridge(bl.BuddyBridge):
         try:
             sock = aiobs.create_bt_socket(btdev)
             #create a connection with the raw socket
-            #Now needs a STREAM socket
+            #Work around need for a STREAM socket
             fac=self.loop._create_connection_transport(sock,aiobs.BLEScanRequester,None,None)
             #Start it
-            self.ble_adv = self.loop.create_task(fac)
-            await aio.sleep(1) #Let it start
+            #self.ble_adv = await self.loop.create_task(fac)
+            self.ble_adv = aio.loop.create_task(fac)
+            #await aio.sleep(1) #Let it start
             #Attach your processing
             btctrl = self.ble_adv.result()[1]
             btctrl.process=self.ble_process

@@ -243,7 +243,7 @@ class Sharp(HVAC):
             mode = self.status["mode"]
 
         mask = bytearray(b'\x00'*len(self.FBODY))
-        if option is None:
+        if option is None or mode == "off":
             if mode != self.status["mode"]:
                 if mode == "off":
                     b5val = 0x21

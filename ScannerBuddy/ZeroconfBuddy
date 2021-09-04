@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+#
+# This application looks for published services Avahi/Bonjour
+# figures out the MAC address of the server and send events about
+# newly discoverd services.
+#
+# Copyright (c) 2017 François Wautier
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all copies
+# or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
+import sys
+import json
+import os
+import logging
+
+# import ipaddress
+import asyncio as aio
+import buddylib as bl
+import socket
+import netifaces
+from functools import partial
+from aiozeroconf import ZeroconfServiceTypes, ServiceBrowser, Zeroconf
+from struct import pack, unpack
+
+
+__version__ = "1.0"
+scanner_function = ""
+
+bridge_config_default = {"type": "scanner", "subtype": "zeroconf", "iface": ""}
+
+
+scanner_config_default = {"probe": 600}
+_log = logging.getLogger(__name__)
+
+
+class MyService(object):
+    def remove_service(self, zeroconf, type, name):
+        aio.create_task(bridgectl.unregister(name))
+
+    def add_service(self, zeroconf, type, name):
+        aio.create_task(self.found_service(zeroconf, type, name))
+
+    async def found_service(self, zc, type, name):
+        global bridgectl
+        info = await zc.get_service_info(type, name)
+        if info:
+            info.address = socket.inet_ntoa(pack(">L", unpack(">L", info.address)[0]))
+            aio.create_task(bridgectl.register(info))
+
+
+class ScannerBridge(bl.BuddyService):
+
+    """
+    This is the bridge application. It will check for the current list  of scanner bulb.
+    It will report any new bulb
+    """
+
+    def __init__(self, defaults={}, descr="AutoBuddy ZeroConf Scanner"):
+        super().__init__(defaults, descr)
+        self.buddy_config = scanner_config_default
+        self.predef_command_buddy += ["scan request","known services"]
+        self.probe_service = []
+        self.seen_service = {}
+        self.scan_request = None
+        self.zeroconf = None
+        self.browsers = {}
+        self.noevent = True
+        self.config_buddy.append(
+            bl.xml.xml_spinner(
+                "probe",
+                label="Scan interval",
+                start=30,
+                end=3600,
+                increment=5,
+                postfix="secs",
+                default=600,
+            )
+        )
+
+    async def handle_command_known_services(self, msg):
+        los = []
+        for entity in self.seen_service.values():
+            if msg["value"] == entity.type:
+                newprop = {}
+                for x, y in entity.properties.items():
+                    try:
+                        newprop[x.decode()] = y.decode()
+                    except:
+                        newprop[x.decode()] = y
+                los.append(
+                    {
+                        "name": entity.name,
+                        "address": entity.address,
+                        "port": entity.port,
+                        "properties": newprop,
+                        "type": entity.type,
+                        "mac": entity.mac,
+                    }
+                )
+        await self.enqueue(
+            {
+                "subject": msg["target"],
+                "content_type": "event",
+                "content": {
+                    "event": "known services",
+                    "target": msg["value"],
+                    # "token": self.target,
+                    "value": los,
+                },
+            }
+        )
+
+    async def handle_command_scan_request(self, msg):
+
+        if isinstance(msg["value"]["service"], list):
+            los = msg["value"]["service"]
+        else:
+            los = [msg["value"]["service"]]
+        for serv in los:
+            if serv in self.browsers:
+                await self.send_service_status(serv)
+            else:
+                try:
+                    self.browsers[serv] = ServiceBrowser(
+                        self.zeroconf, serv, listener=MyService()
+                    )
+                except:
+                    pass
+        await aio.sleep(0)
+
+    def build(self, devices):
+        pass
+
+    def local_response_configuration(self, msg):
+        aio.create_task(
+            self.enqueue(
+                {
+                    "subject": self.target,
+                    "content_type": "event",
+                    "content": {
+                        "event": "new scanner",
+                        "target": self.target,
+                        "value": self.subtype,
+                    },
+                }
+            )
+        )
+
+        self.zeroconf = Zeroconf(aio.get_running_loop(), iface=self.bridge_config["iface"])
+        self.probe_service.append(aio.create_task(self.service_scanner()))
+
+    async def service_scanner(self):
+        # Give time for things to settle
+        await aio.sleep(2)
+        # Here we actually start the probe
+        while True:
+            try:
+                los = await ZeroconfServiceTypes.find(self.zeroconf)
+            except:
+                pass
+
+            await aio.sleep(self.buddy_config["probe"])
+
+    async def send_service_status(self, servname):
+        for knownserv, entity in self.seen_service.items():
+            if knownserv.endswith(servname):
+                await self.enqueue(
+                    {
+                        "subject": self.target,
+                        "content_type": "event",
+                        "content": {
+                            "event": "service found",
+                            "target": entity.type,
+                            "value": {
+                                "name": entity.name,
+                                "address": entity.address,
+                                "port": entity.port,
+                                "properties": entity.decoded_properties,
+                                "type": entity.type,
+                                "mac": entity.mac,
+                            },
+                        },
+                    }
+                )
+        await aio.sleep(0)  # Make sure we wait for something
+
+    async def register(self, entity):
+        if (
+            entity.name not in self.seen_service
+            or entity.address != self.seen_service[entity.name].address
+            or entity.port != self.seen_service[entity.name].port
+        ):
+            newprop = {}
+            for x, y in entity.properties.items():
+                try:
+                    newprop[x.decode()] = y.decode()
+                except:
+                    try:
+                        newprop[x.decode()] = y
+                    except:
+                        newprop[x] = y
+            entity.decoded_properties = newprop
+            # Mac address if IPv4Address
+            # if isinstance(ipaddress.ip_address(entity.address),ipaddress.IPv4Address):
+            addrinfo = socket.getaddrinfo(entity.address, None)[0]
+            if addrinfo[0] == socket.AF_INET:  # IPv4
+                # Cheat... uses arp command after a quick ping
+                try:
+                    cheat = await aio.create_subprocess_shell(
+                        "ping -c 1 -t 5 " + entity.address, stdout=aio.subprocess.PIPE
+                    )
+                    await cheat.wait()
+                    cheat = await aio.create_subprocess_shell(
+                        "arp -n|grep -w '" + entity.address + "'| awk '{ print $3 }'",
+                        stdout=aio.subprocess.PIPE,
+                    )
+                    mymac = await cheat.stdout.readline()
+                    mymac = mymac.decode("utf-8").rstrip()
+                    await cheat.wait()
+                    # mymac=subprocess.getoutput("arp -n|grep -w '"+entity.address+"'| awk '{ print $3 }'")
+                except Exception as e:
+                    # print("oops {}: {}".format(e,e.__traceback__))
+                    mymac = ""
+            else:
+                try:
+                    cheat = await aio.create_subprocess_shell(
+                        "ip -6 neighbor show|grep -w '"
+                        + entity.address
+                        + "'| awk '{ print $5 }'",
+                        stdout=aio.subprocess.PIPE,
+                    )
+                    mymac = await cheat.stdout.readline()
+                    mymac = mymac.decode("utf-8").rstrip()
+                    await cheat.wait()
+                except:
+                    mymac = ""
+            if mymac == "":
+                # Local?
+                try:
+                    for ifc in netifaces.interfaces():
+                        loa = netifaces.ifaddresses(ifc)
+                        for af in loa:
+                            for addr in loa[af]:
+                                if "addr" in addr and addr["addr"] == entity.address:
+                                    mymac = loa[netifaces.AF_LINK][0]["addr"]
+                                    break
+                            if mymac:
+                                break
+                        if mymac:
+                            break
+                except Exception as e:
+                    pass
+
+            if mymac == "":
+                _log.debug(
+                    "Could not figure out mac address for service {}".format(entity)
+                )
+                return
+
+            self.seen_service[entity.name] = entity
+            entity.mac = mymac
+            await self.enqueue(
+                {
+                    "subject": self.target,
+                    "content_type": "event",
+                    "content": {
+                        "event": "service found",
+                        "target": entity.type,
+                        "value": {
+                            "name": entity.name,
+                            "address": entity.address,
+                            "port": entity.port,
+                            "properties": entity.decoded_properties,
+                            "type": entity.type,
+                            "mac": entity.mac,
+                        },
+                    },
+                }
+            )
+
+            _log.debug("Found new service {}".format(entity))
+
+    async def unregister(self, name):
+        if name in self.seen_service:
+            entity = self.seen_service[name]
+            await self.enqueue(
+                {
+                    "subject": self.target,
+                    "content_type": "event",
+                    "content": {
+                        "event": "service gone",
+                        "target": entity.type,
+                        "value": {
+                            "name": entity.name,
+                            "address": entity.address,
+                            "port": entity.port,
+                            "type": entity.type,
+                            "mac": entity.mac,
+                        },
+                    },
+                }
+            )
+            del self.seen_service[entity.name]
+        else:
+            aio.sleep(0) #To be sure....
+
+    def lp_prepare(self, desc, parser=None, default={}):
+        """
+
+        Whenever overloading this,  set your own dftls for those elements
+        that need to be set and saved
+
+        Set things in default to your own defaults (e.g. type and subtype
+
+        """
+        parser = super().lp_prepare(desc, parser, default)
+        # Now we add ipv6prefix
+        parser.add_argument(
+            "-i", "--iface", default="", help="The interfaces to use (default all).",
+        )
+        return parser
+
+    def last_rites(self):
+        super().last_rites()
+        for x in self.probe_service:
+            x.cancel()
+        for x in self.browsers.values():
+            x.cancel()
+
+
+aboutstr = """<p>ZeroconfBuddy is an application scanning the LAN for Zeroconf services. Upon discovery of a new or modified
+service, it will send a "service found" event. The value associated with the event is a dictionary with key "name", "type", "address", "mac", "port" and,
+"properties". It will respond to "known services" commands, content.target should be the type.subtype of the requester. content.value should be
+the type of service requested.</p>
+<p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
+"""
+
+iconstr = {}
+
+
+if __name__ == "__main__":
+    try:
+        bridgectl = ScannerBridge(bridge_config_default)
+    except bl.BuddyConfigOnly:
+        sys.exit(-1)
+
+    try:
+        loop = aio.get_event_loop()
+        loop.run_until_complete(
+            bridgectl.start({"about": {"ZeroconfBuddy": aboutstr}, "display": {}})
+        )
+        loop.run_until_complete(bridgectl.future)
+    except KeyboardInterrupt:
+        print("\n", "Exiting at user's request")
+    finally:
+        bridgectl.last_rites()
+        loop.run_until_complete(bridgectl.zeroconf.close())
+        loop.run_until_complete(aio.sleep(3))
+        loop.close()
+

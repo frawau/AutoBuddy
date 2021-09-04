@@ -32,7 +32,7 @@
 from hashlib import blake2b
 
 #90% of hvac remotes use this timing
-STARFRAME = [ 3500, 1750 ]
+STARTFRAME = [ 3500, 1750 ]
 ENDFRAME = [435, 10000 ]
 MARK = 435
 SPACE0 = 435
@@ -63,7 +63,7 @@ class HVAC(object):
         self.functions = []
 
     def get_timing(self):
-        return {"start frame": STARFRAME,
+        return {"start frame": STARTFRAME,
                   "end frame": ENDFRAME,
                   "mark": MARK,
                   "space 0": SPACE0,

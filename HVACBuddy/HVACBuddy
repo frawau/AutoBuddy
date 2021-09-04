@@ -1263,7 +1263,7 @@ if __name__ == "__main__":
         if k not in generated_xml:  # Generation needed
             # Is this an On/Off thing?
             if f == "temperature":
-                h = '<control type="slider" name="{}" label="{}" onlyif="{}::yes">'
+                h = '<control type="slider" name="{}" label="{}" rteffect="1" onlyif="{}::yes">'
                 s, e = k.split("|")
                 e, step = e.split("__")
                 v = """
@@ -1274,12 +1274,12 @@ if __name__ == "__main__":
                     s, e, int(step) / 10
                 )
             elif len(lof[i]) == 2 and "on" in lof[i] and "off" in lof[i]:
-                h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
+                h = '<control type="switch" name="{}" label="{}" rteffect="1" onlyif="{}::yes">'
                 v = """<value label="On">on</value>
                      <value label="Off">off</value>
                 </control>"""
             elif len(lof[i]) == 2:
-                h = '<control type="switch" name="{}" label="{}" onlyif="{}::yes">'
+                h = '<control type="switch" name="{}" label="{}" rteffect="1" onlyif="{}::yes">'
                 v = """<value label="{}">{}</value>
                      <value label="{}">{}</value>
                 </control>""".format(
@@ -1289,7 +1289,7 @@ if __name__ == "__main__":
                     str(lof[i][1]),
                 )
             else:  # A choice it is
-                h = '<controlgroup type="choice" name="{}" label="{}" onlyif="{}::yes">'
+                h = '<controlgroup type="choice" name="{}" label="{}" rteffect="1" onlyif="{}::yes">'
                 v = ""
                 for val in lof[i]:
                     v += """<item label="{}" value="{}" />\n""".format(

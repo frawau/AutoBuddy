@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# This application is simply a bridge application for Yeelight bulbs.
+# This application is simply a bridge application for Lifx bulbs.
 #
-# Copyright (c) 2016 François Wautier
+# Copyright © 2021 François Wautier
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,1007 +22,713 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse
-import sys
-import traceback
-import json
-import logging
-import functools
 import random
-import os
-import ssl
-import math
-import colorsys
-import string
 import buddylib as bl
 import asyncio as aio
 import aioxiaomi
+import logging
+import sys
 from functools import partial
 
 SUBTYPE = "Yeelight"
 CERTFILE = "autobuddy.crt"
-__version__ = "0.10"
+__version__ = "1.0"
+
+UDP_BROADCAST_PORT = 56700
+BUILDNAME = "FakeYee"
+MAXRECONNECT = 1
+
+_log = logging.getLogger(__name__)
 
 
 def intround(x):
     return int(round(x))
 
 
-def animname():
-    res = ""
-    for x in range(4):
-        res += random.choice(string.ascii_letters)
-    return res
+def hsv_to_rgb(hue, sat, val):
+    h = hue / 360
+    s = sat / 100
+    v = val / 100
+    if s == 0.0:
+        v = round(v * 255)
+        return (v, v, v)
+    i = int(h * 6.0)  # XXX assume int() truncates!
+    f = (h * 6.0) - i
+    p, q, t = (
+        round(255 * (v * (1.0 - s))),
+        round(255 * (v * (1.0 - s * f))),
+        round(255 * (v * (1.0 - s * (1.0 - f)))),
+    )
+    v = round(v * 255)
+    i %= 6
+    if i == 0:
+        return (v, t, p)
+    if i == 1:
+        return (q, v, p)
+    if i == 2:
+        return (p, v, t)
+    if i == 3:
+        return (p, q, v)
+    if i == 4:
+        return (t, p, v)
+    if i == 5:
+        return (v, p, q)
 
-#<controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
-xiaomi_functions = """
-<buddyui version="0.1">
-<command name="yeelight">
-        <controlgroup type="list" name="power" label="Power" rteffect="1">
-            <control type="switch" name="power" label="Power" rteffect="1">
-                <value label="On">on</value>
-                <value label="Off">off</value>
-            </control>
-            <control type="spinner" name="duration" label="Duration"  >
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup type="list" name="colour" label="Colour" rteffect="1" onlyif="power::power::on">
-            <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
-                <control type="slider" name="hue" label="Hue" rteffect="1">
-                    <start>0</start>
-                    <end>360</end>
-                    <increment>1</increment>
-                </control>
-                <control type="slider" name="saturation" label="Saturation" rteffect="1">
-                    <start>0</start>
-                    <end>100</end>
-                    <increment>1</increment>
-                </control>
-                <control type="slider" name="value" label="Brightness" rteffect="1">
-                    <start>0</start>
-                    <end>100</end>
-                    <increment>1</increment>
-                </control>
-            </controlgroup>
-            <control type="spinner" name="duration" label="Duration"  >
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="power::power::on">
-            <control type="slider" name="brightness" label="Brightness" rteffect="1">
-                <start>0</start>
-                <end>100</end>
-                <increment>1</increment>
-            </control>
-            <control type="slider" name="temperature" label="Kelvin" rteffect="1">
-                <start>1700</start>
-                <end>6500</end>
-                <increment>100</increment>
-            </control>
-            <control  type="spinner" name="duration" label="Duration">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup  type="grouplist" name="animate" label="Animation" rteffect="0" onlyif="power::power::on">
-            <control type="spinner" name="repeat" label="Repeat" rteffect="1">
-                <start>0</start>
-                <default>1</default>
-                <increment>1</increment>
-            </control>
-            <controlgroup type="choice" name="ending" label="End Action" >
-                <item label="Start Colour" value='start' />
-                <item label="End Colour" value='stop' />
-                <item label="Light Off" value='off' />
-            </controlgroup>
-            <controlgroup type="listmaker"  name="flow action" label="Actions">
-                <control type="text" name="name" label="Name" length="32"/>
-                <control type="spinner" name="duration" label="Duration" rteffect="1">
-                    <start>0.01</start>
-                    <end>10000</end>
-                    <increment>0.1</increment>
-                    <decimals>2</decimals>
-                    <default>1.0</default>
-                    <postfix>secs</postfix>
-                </control>
-                <controlgroup type="choice"  name="action" label="Action">
-                    <item value="white" label="White">
-                        <control type="slider" name="brightness" label="Brightness">
-                            <start>0</start>
-                            <end>100</end>
-                            <increment>1</increment>
-                        </control>
-                        <control type="slider" name="temperature" label="Kelvin">
-                            <start>1700</start>
-                            <end>6500</end>
-                            <increment>100</increment>
-                        </control>
-                    </item>
-                    <item value="colour" label="Colour">
-                        <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
-                            <control type="slider" name="hue" label="Hue" rteffect="1">
-                                <start>0</start>
-                                <end>360</end>
-                                <increment>1</increment>
-                            </control>
-                            <control type="slider" name="saturation" label="Saturation" rteffect="1">
-                                <start>0</start>
-                                <end>100</end>
-                                <increment>1</increment>
-                            </control>
-                            <control type="slider" name="value" label="Brightness" rteffect="1">
-                                <start>0</start>
-                                <end>100</end>
-                                <increment>1</increment>
-                            </control>
-                        </controlgroup>
-                    </item>
-                    <item value="sleep" label="Sleep" />
-                </controlgroup>
-            </controlgroup>
-        </controlgroup>
-    </command>
-</buddyui>
-"""
 
-xiaomi_config = """
-<buddyui version="0.1">
-<configuration  name="yeelight">
-        <control type="spinner" name="refresh" label="Check for new devices interval">
-            <start>30</start>
-            <end>3600</end>
-            <increment>1</increment>
-            <postfix>secs</postfix>
-            <default>180</default>
-        </control>
-        <control type="spinner" name="heartbeat" label="Requesting status from lightbulbs">
-            <start>10</start>
-            <end>600</end>
-            <increment>10</increment>
-            <postfix>secs</postfix>
-            <default>60</default>
-        </control>
-    </configuration>
-</buddyui>
-"""
 xiaomi_config_default = {"refresh": 120, "heartbeat": 60}
+bridge_default = {"type": "light", "subtype": SUBTYPE}
 
 
-def convert_K_to_RGB(colour_temperature):
-    """
-    Converts from K to RGB, algorithm courtesy of
-    http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
-    Taken from petrklus on github
-    """
-    # range check
-    if colour_temperature < 1000:
-        colour_temperature = 1000
-    elif colour_temperature > 40000:
-        colour_temperature = 40000
+class Yeelight(bl.light):
+    def __init__(self, name, nickname, conn=None, did=None):
+        super().__init__(name, nickname, SUBTYPE, did)
+        self.from_bulb = None
+        self.conn = None
+        self.pending_conn = None
+        self.rt_duration = "never"
+        self._rt_brightness = -1  # Finicky fellows when in real time
+        self._rt_temperature = -1
+        self.reconnect_cnt = 0
+        self._data_expected = False
+        if conn:
+            self.add_connection(conn)
 
-    tmp_internal = colour_temperature / 100.0
-
-    # red
-    if tmp_internal <= 66:
-        red = 255
-    else:
-        tmp_red = 329.698727446 * math.pow(tmp_internal - 60, -0.1332047592)
-        if tmp_red < 0:
-            red = 0
-        elif tmp_red > 255:
-            red = 255
+    def add_connection(self, conn):
+        _log.debug(f"Adding connection for {self.nickname} with {conn.support}")
+        self.conn = conn
+        self.reconnect_cnt = 0
+        if "start_cf" in conn.support:
+            self.rt_duration = "no"
+        if "set_bright" in conn.support:
+            self._brightness_range = [0, 100, 1]
+        self._colour_range = "set_hsv" in conn.support or "set_rgb" in conn.support
+        if "set_ct_abx" in conn.support:
+            self._temperature_range = [1700, 6500, 100]
         else:
-            red = int(tmp_red + 0.5)
+            self._temperature_range = [6500, 6500, 0]
 
-    # green
-    if tmp_internal <= 66:
-        tmp_green = 99.4708025861 * math.log(tmp_internal) - 161.1195681661
-        if tmp_green < 0:
-            green = 0
-        elif tmp_green > 255:
-            green = 255
-        else:
-            green = int(tmp_green + 0.5)
-    else:
-        tmp_green = 288.1221695283 * math.pow(tmp_internal - 60, -0.0755148492)
-        if tmp_green < 0:
-            green = 0
-        elif tmp_green > 255:
-            green = 255
-        else:
-            green = int(tmp_green + 0.5)
+        if self.name != BUILDNAME:  # It i a real bulb
+            conn.register_callback(self.status_cb)
+            if self.from_bulb is None:
+                self.from_bulb = aio.Queue()
+                aio.create_task(self.reader_task())
+            _ = self.set_and_send()
+            conn.set_connections(2)  # Open 2 channels to the bulb
+            conn.set_queue_limit(10, "adapt")
+            conn.activate()
+            self.present = True
 
-    # blue
-    if tmp_internal >= 66:
-        blue = 255
-    elif tmp_internal <= 19:
-        blue = 0
-    else:
-        tmp_blue = 138.5177312231 * \
-            math.log(tmp_internal - 10) - 305.0447927307
-        if tmp_blue < 0:
-            blue = 0
-        elif tmp_blue > 255:
-            blue = 255
-        else:
-            blue = int(tmp_blue + 0.5)
-    return (red, green, blue)
+    def update(self, x):
+        """
+        Overloaded here
+        """
+        if self.pending_conn:
+            self.add_connection(self.pending_conn)
+            self.pending_conn = None
 
+    async def reader_task(self):
+        """
+        When receiveing messages from the bulb, they are placed on the from_bulb queue
+        """
+        while True:
+            msg = await self.from_bulb.get()
+            if msg == "Die Now":
+                return
+            else:
+                await self.controller.enqueue(msg)
 
-def xiaomi_process(self, msg):
-    if not self.present:
-        return None
-    try:
-        if msg["content_type"] == "command":
-            if msg["content"]["command"] == "power":
-                nowcss = self.cssColour(force=True)
-                iconsts = {
-                    "bu-fill": {"fill": (msg["content"]["value"]["power"] == "on" and nowcss) or "transparent"}}
-                current = self.conn and self.conn.power
-                if current != msg["content"]["value"]["power"]:
-                    if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                        prefix = animname()
-                        startcss = (msg["content"]["value"][
-                                    "power"] == "on" and "transparent") or nowcss
-                        endcss = (msg["content"]["value"][
-                                  "power"] == "on" and nowcss) or "transparent"
-                        anim = "@keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                            " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-webkit-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-moz-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-o-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        alen = int(msg["content"]["value"]["duration"] or 0)
-                        anim += "\n.run-animation-" + self.name + \
-                            " { animation-name: " + prefix + self.name + \
-                                "; animation-duration: %ds" % alen + \
-                            "; animation-iteration-count: 1; }"
-                        if alen:
-                            iconsts["animation"] = anim
-                            if self.conn.hbtimer < alen:
-                                self.conn.hbtimer=alen+5
-                mypartial = partial(self.controller.sending,
-                                    {"subject": self.controller.type,
-                                     "content_type": "event",
-                                     "content": {"event": "power",
-                                                 "target": self.controller.type +
-                                                 "." +
-                                                 self.name,
-                                                 "icon status": iconsts,
-                                                 "value": msg["content"]["value"]}})
-                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                    self.conn.set_power(msg["content"]["value"]["power"],"smooth",int(float(msg["content"]["value"]["duration"])*1000),callb=lambda x: mypartial())
-                else:
-                    self.conn.set_power(msg["content"]["value"]["power"],
-                                        callb=lambda x: mypartial())
+    def set_and_send(self, msg=None):
+        ret = False
+        self._data_expected = False  # reset
+        if self.conn.power != self.power:
+            ret = True
+            self.power = self.conn.power
 
-            elif msg["content"]["command"] == "colour":
-                current = self.conn and self.conn.power
-                if current == "on":
-                    endcss = self.cssColour(msg["content"]["value"])
-                    iconsts = {"bu-fill": {"fill": endcss}}
-                    if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                        prefix = animname()
-                        startcss = self.cssColour(force=True)
-                        anim = "@keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                            " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-webkit-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-moz-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-o-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        alen = int(msg["content"]["value"]["duration"] or 0)
-                        anim += "\n.run-animation-" + self.name + \
-                            " { animation-name: " + prefix + self.name + \
-                                "; animation-duration: %ds" % alen + \
-                            "; animation-iteration-count: 1; }"
-                        if alen:
-                            iconsts["animation"] = anim
-                            if self.conn.hbtimer < alen:
-                                self.conn.hbtimer=alen+5
-                else:
-                    iconsts = {"bu-fill": {"fill": "transparent"},"bu-not-present": {"opacity": 0}}
-
-                mypartial = partial(
-                    self.controller.sending, {"subject": self.controller.type,
-                                              "content_type": "event",
-                                              "content": {"event": "colour",
-                                                          "target": self.controller.type +
-                                                          "." +
-                                                          self.name,
-                                                          "icon status":
-                                                              iconsts,
-                                                          "value": msg["content"]["value"]}})
-                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                    self.conn.set_colour(
-                        intround(
-                            float(msg[
-                                "content"]["value"]["hue"]) ),
-                         intround(
-                             float(msg[
-                                "content"]["value"]["saturation"])),
-                             "smooth",int(float(msg["content"]["value"]["duration"])*1000),callb=lambda x: mypartial())
-                    self.conn.set_brightness(
-                        intround(float(msg["content"]["value"]["value"])),"smooth",int(float(msg["content"]["value"]["duration"])*1000))
-                else:
-                    self.conn.set_hsv_direct(
-                        intround(
-                            float(msg[
-                                "content"]["value"]["hue"]) ),
-                        intround(
-                             float(msg[
-                                "content"]["value"]["saturation"])),
-                             intround(float(msg["content"]["value"]["value"])),callb=lambda x: mypartial())
-
-            elif msg["content"]["command"] == "white":
-                current = self.conn and self.conn.power
-                if current == "on":
-                    endcss = self.cssColour(msg["content"]["value"])
-                    iconsts = {"bu-fill": {"fill": endcss}}
-                    if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                        prefix = animname()
-                        startcss = self.cssColour(force=True)
-                        anim = "@keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                            " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-webkit-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-moz-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        anim += "\n@-o-keyframes " + prefix + self.name + \
-                            " {  from { fill: " + startcss + \
-                                " }  to { fill: " + endcss + " }}"
-                        alen = int(msg["content"]["value"]["duration"] or 0)
-                        anim += "\n.run-animation-" + self.name + \
-                            " { animation-name: " + prefix + self.name + \
-                                "; animation-duration: %ds" % alen + \
-                            "; animation-iteration-count: 1; }"
-                        if alen:
-                            iconsts["animation"] = anim
-                            if self.conn.hbtimer < alen:
-                                self.conn.hbtimer=alen+5
-                else:
-                    iconsts = {"bu-fill": {"fill": "transparent"}}
-
-                mypartial = partial(self.controller.sending, {"subject": "",
-                                                              "content_type":
-                                                                  "event",
-                                                              "content": {"event": "white",
-                                                                          "target": self.controller.type +
-                                                                          "." +
-                                                                          self.name,
-                                                                          "icon status":
-                                                                              iconsts,
-                                                                          "value": msg["content"]["value"]}})
-                if "duration" in msg["content"]["value"] and msg["content"]["value"]["duration"]:
-                    self.conn.set_colour([58275, 0,
-                                        intround(
-                                         (float(msg[
-                                             "content"]["value"]["brightness"]))),
-                                        intround(
-                                            float(
-                                                msg["content"]["value"]["temperature"]))], duration=int(msg["content"]["value"]["duration"] or 0) * 1000,
-                                        callb=lambda x: mypartial())
-                else:
-                    self.conn.set_white_direct(msg["content"]["value"]["temperature"],msg["content"]["value"]["brightness"],callb=lambda x: mypartial())
-
-            elif msg["content"]["command"] == "animate":
-                current = self.conn and (
-                    (self.conn.power and "on") or "off")
-                if current == "on":
-                    iconsts = {}
-                    thiscss=self.cssColour(force=True)
-                    locss = "{ 0% { fill:  "+thiscss+ " } "
-                    myflow =[]
-                    finalcss="transparent"
-                    ending = msg["content"]["value"]["ending"]["bu-cvalue"]
-                    actions=msg["content"]["value"]["flow action"]
-                    totalduration=0.0
-                    for action in actions:
-                        totalduration+=float(action["duration"])*1000.0
-                    if ending == "start":
-                        finalcss=thiscss
-                    elif ending =="stop":
-                        for action in actions[::-1]:
-                            if action['action']['bu-cvalue']== "sleep":
-                                continue
-
-                            if action['action']['bu-cvalue']== "white":
-                                finalcss = self.cssColour(action['action'])
-                            else:
-                                finalcss = self.cssColour(action['action']["colour"])
-                            break
-                    totaltime=0.0
-                    for action in actions:
-                        totaltime+=float(action["duration"])*1000.0
-                        myflow.append(intround(float(action["duration"])*1000.0))
-                        if action['action']['bu-cvalue']== "sleep":
-                            myflow.append(7)
-                            myflow.append(-1)
-                            myflow.append(-1)
-                        elif action['action']['bu-cvalue']== "white":
-                            thiscss = self.cssColour(action['action'])
-                            myflow.append(2)
-                            myflow.append(int(action['action']["temperature"]))
-                            myflow.append(int(action['action']["brightness"]))
-                        else:
-                            thiscss = self.cssColour(action['action']["colour"])
-                            myflow.append(1)
-                            myflow.append(int(thiscss.strip("#"),base=16))
-                            myflow.append(int(action['action']["colour"]["value"]))
-
-                        thisp = int(round((totaltime/totalduration)*100))
-                        locss += "%d%% { fill: %s } "%(thisp,thiscss)
-                    locss += "}"
-
-
-                    repeat = int(msg["content"]["value"]["repeat"])
-                    prefix = animname()
-                    anim = "@keyframes " + prefix + self.name + locss
-                    anim += "\n@-webkit-keyframes " + prefix + self.name + locss
-                    anim += "\n@-moz-keyframes " + prefix + self.name + locss
-                    anim += "\n@-o-keyframes " + prefix + self.name + locss
-
-                    anim += "\n.run-animation-" + self.name + \
-                        " { animation-name: " + prefix + self.name + "; animation-duration: %dms" % totalduration + \
-                            "; animation-iteration-count: %d; }" % (repeat)
-                    iconsts["animation"] = anim
-                    iconsts["bu-fill"] = {"fill": finalcss}
-                    tdur=int((totalduration*repeat)/1000)
-                    if self.conn.hbtimer <= tdur:
-                        self.conn.hbtimer=tdur+5
-
-                else:
-                    iconsts = {"bu-fill": {"fill": "transparent"}}
-
-                mypartial = partial(
-                    self.controller.sending, {"subject": self.controller.type,
-                                              "content_type": "event",
-                                              "content": {"event": "pulse",
-                                                          "target": self.controller.type +
-                                                          "." +
-                                                          self.name,
-                                                          "icon status":
-                                                              iconsts,
-                                                          "value": msg["content"]["value"]}})
-
-                self.conn.start_flow(repeat*len(actions),ending,myflow,callb=lambda x: mypartial())
-
-            elif msg["content"]["command"] == "status":
-                #current = self.conn and self.conn.power
-                self.conn.infosent = False
-                if self.conn:
-                    # Not gone the way of the dodo
-                    try:
-                        self.sendStatus()
-                    except:
-                        self.sending({"subject":self.controller.type,
-                                    "content_type": "event",
-                                    "content":{"event":"presence",
-                                                "target": self.controller.type + "." + self.name,
-                                                "value":"offline",
-                                                "icon status": {"bu-fill": {"fill": "transparent"},
-                                                                "bu-not-present": {"opacity": 1}}}})
-                else:
-                    self.controller.sending({"subject": self.controller.type,
-                                             "content_type": "event",
-                                             "content": {"event": "presence",
-                                                         "target": self.controller.type +
-                                                         "." +
-                                                         self.name,
-                                                         "value": "offline",
-                                                         "icon status": {"bu-fill": {"fill": "transparent"},
-                                                                         "bu-not-present": {"opacity": 1}}}})
-
-            elif msg["content"]["command"] == "nickname":
-                # print msg
-                mypartial = partial(
-                    self.controller.sending, {
-                        "subject": "control" + "." + self.name,
-                        "content_type": "request",
-                        "content": {"request": "nickname",
-                                    "target": self.controller.type +
-                                    "." +
-                                    self.name,
-                                    #"token": self.controller.target,
-                                    "value": {"name": self.name, "nickname": msg["content"]["value"]}}})
-                self.conn.set_name(msg["content"]["value"],callb=lambda x: mypartial())
-
-            elif msg["content"]["command"] == "deletion":
-                self.controller.sending(
-                    {"subject": "control" + "." + self.controller.type,
-                        "content_type": "request",
-                        "content": {"request": "deletion",
-                                    "target": self.controller.type,
-                                    "value": self.name}})
-
-    except Exception as e:
-        bridgectl.log.warning(
-            "Bloody process problem",
-            exc_info=(type(e),
-                      e,
-                      e.__traceback__))
-
-    return None
-
-
-def lighthb(self, duration=5):
-    try:  # Could happen that conn is None... Maybe a race condition with unregister
-    #if True:
-        if self.conn.hbtimer<= 0:
-            self.conn.hbtimer = self.controller.xiaomi_config["heartbeat"]
-            if not self.conn.infosent:
-                self.sendInfo()
-                self.conn.infosent = True
-            if "music_on" not in self.conn.properties or  self.conn.properties["music_on"] !=1:
-                if "flowing" not in self.conn.properties or self.conn.properties["flowing"] != 1:
-                    self.conn.get_prop(["power","bright","sat","hue","ct","rgb","color_mode"],callb=self.sendStatus)
-        else:
-            self.conn.hbtimer -= 5
-        self.controller.lighthb[self.name] = self.controller.loop.call_later(
-                duration, partial(self.lighthb, 5))
-    except:
-        pass
-
-
-def sendStatus(self, light=None, resp=None):
-    try:
         colour = self.conn.current_colour
-        if "temperature" in colour:
-            colour= self.conn.colour
-            colour["value"] = colour["brightness"]
-            del(colour["brightness"])
-            colour["saturation"]=0
-        elif "red" in colour:
-            newcol=[x for x in map(lambda x: int(round(x[0]*x[1])),zip([360,100,100],colorsys.rgb_to_hsv(*map(lambda x: x/255.0,[colour[c] for c in ["red","green","blue"]]))))]
-            colour = dict(zip(["hue","saturation","value"],newcol))
-        else:
-            colour["value"] = colour["brightness"]
-            del(colour["brightness"])
-        self.controller.sending({"subject": self.controller.type,
-                                 "content_type": "event",
-                                 "content": {"event": "status",
-                                             "target": self.controller.type +
-                                             "." +
-                                             self.name,
-                                             "icon status":
-                                             {"bu-fill": {"fill": self.cssColour()}, "bu-not-present": {
-                                              "opacity": 0}},
-                                             "value": {"power": {"power": self.conn.power},
-                                                       "colour": colour,
-                                                       "white": self.conn.white }}})
-    except Exception as e:
-        self.controller.log.warning(
-            "Ooops could not send status",
-            exc_info=(type(e),
-                      e,
-                      e.__traceback__))
-
-def sendInfo(self, light=None, resp=None):
-    # Can be used in callback
-    try:
-        msg=""
-        prefix="<div><dl class=\"dl-horizontal\">"
-        for x in ["name","model","fw_ver"]:
-            if x in self.conn.properties:
-                msg+=prefix+"<dt>"+x.replace("_"," ").title()+":</dt><dd>"+str(self.conn.properties[x])+"</dd>"
-                prefix=""
-        msg+=prefix+"<dt>IP Address:</dt><dd>"+str(self.conn.ip_address)+"</dd>"
-        if msg:
-            msg+="</dl></div>"
-            self.controller.sending({"subject": self.controller.type,
-                                 "content_type": "event",
-                                 "content": {"event": "info",
-                                             "target": self.controller.type +
-                                             "." +
-                                             self.name,
-                                             "value": msg }})
-    except Exception as e:
-        self.controller.log.debug(
-            "Ooops could not send info",
-            exc_info=(type(e),
-                      e,
-                      e.__traceback__))
-
-
-
-def cssColour(self, col=None, force=False):
-    # try:
-    if col:
-        colour = col
-    else:
-        colour = self.conn.current_colour
-    if "hue" in colour and "brightness" in colour:
-        colour["value"]=colour["brightness"]
-    if force or col or self.conn.power == "on":
+        oldcolour = self.colour
         if "hue" in colour:
-            iconsts = '#%02x%02x%02x' % tuple(
-                map(lambda x: int((x * 255) + 0.5),
-                    colorsys.hsv_to_rgb(colour["hue"]/359.0,colour["saturation"]/100.0,colour["value"]/100.0)))
-        elif "red" in colour:
-            iconsts = '#%02x%02x%02x' %(colour["red"],colour["green"],colour["blue"])
+            self.colour = {
+                "hue": colour["hue"],
+                "saturation": colour["saturation"],
+                "value": colour["brightness"],
+            }
         else:
-            iconsts = '#%02x%02x%02x' % convert_K_to_RGB(colour["temperature"])
-    else:
-        iconsts = "transparent"
-    return iconsts
-    # except:
-        # return "white"
+            self.colour = colour
+        if self.colour != oldcolour:
+            ret = True
+        if msg:
+            self.from_bulb.put_nowait(msg)
+        elif ret:
+            aio.create_task(self.send_status_delayed())
+
+    async def local_command_power(self, value, rt, msg=None):
+        _log.debug(f"local power with msg {msg}")
+        mypartial = partial(self.set_and_send, msg)
+        self._data_expected = True
+        if "duration" in value:
+            duration = 1000 * int(value["duration"])
+            self.conn.set_power(
+                value["power"], "smooth", duration, callb=lambda x: mypartial()
+            )
+        else:
+            self.conn.set_power(
+                value["power"], callb=lambda x: mypartial(),
+            )
+        await aio.sleep(0)
+
+    async def local_command_white(self, value, rt, msg=None):
+        mypartial = partial(self.set_and_send, msg)
+        self._data_expected = True
+        if rt:
+            if (
+                value["temperature"] != self._temperature
+                and value["temperature"] != self._rt_temperature
+            ):
+                self._rt_temperature = value["temperature"]
+                self.conn.set_temperature(
+                    value["temperature"], callb=lambda x: mypartial()
+                )
+            elif (
+                value["brightness"] != self.brightness
+                and value["brightness"] != self._rt_brightness
+            ):
+                self._rt_brightness = value["brightness"]
+                self.conn.set_brightness(
+                    value["brightness"], callb=lambda x: mypartial()
+                )
+        elif "duration" in value and int(value["duration"]):
+            duration = 1000 * int(value["duration"])
+            self.conn.start_flow(
+                1,
+                "stop",
+                [
+                    duration,
+                    aioxiaomi.Mode.White.value,
+                    value["temperature"],
+                    value["brightness"],
+                ],
+                callb=lambda x: mypartial(),
+            )
+        else:
+            self.conn.set_white_direct(
+                value["temperature"], value["brightness"], callb=lambda x: mypartial(),
+            )
+        await aio.sleep(0)
+
+    async def local_command_colour(self, value, rt, msg=None):
+        mypartial = partial(self.set_and_send, msg)
+        self._data_expected = True
+        if rt:
+            self.conn.set_hsv(
+                intround(float(value["hue"])),
+                intround(float(value["saturation"])),
+                "smooth",
+            )
+            self.conn.set_brightness(
+                intround(float(value["value"])), "smooth", callb=lambda x: mypartial()
+            )
+        elif "duration" in value and int(value["duration"]):
+            duration = 1000 * int(value["duration"])
+            self.conn.start_flow(
+                1,
+                "stop",
+                [duration, aioxiaomi.Mode.RGB.value]
+                + list(hsv_to_rgb(value["hue"], value["saturation"], value["value"])),
+                callb=lambda x: mypartial(),
+            )
+        else:
+            if "set_hsv" in self.conn.support:
+                self.conn.set_hsv_direct(
+                    value["hue"],
+                    value["saturation"],
+                    value["value"],
+                    callb=lambda x: mypartial(),
+                )
+            else:
+                rgb = hsv_to_rgb(value["hue"], value["saturation"], 100)
+                rgb = (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]
+                self.conn.set_rgb_direct(
+                    rgb, value["value"], callb=lambda x: mypartial()
+                )
+        await aio.sleep(0)
+
+    async def handle_command_pulse(self, value, rt):
+        if self.power == "on":
+            iconsts = {}
+            thiscss = self.icon_colour()["fill"]
+            locss = "{ 0% { fill:  " + thiscss + " } "
+            myflow = []
+            finalcss = "transparent"
+            ending = value["ending"]
+            actions = value["flow action"]
+            totalduration = 0.0
+            for action in actions:
+                totalduration += float(action["duration"]) * 1000.0
+            if ending == "start":
+                finalcss = thiscss
+            elif ending == "stop":
+                for action in actions[::-1]:
+                    if action["action"]["selection"] == "sleep":
+                        continue
+
+                    if action["action"]["selection"] == "white":
+                        finalcss = self.icon_colour(action["action"])["fill"]
+                    else:
+                        finalcss = self.icon_colour(action["action"]["colour"])["fill"]
+                    break
+            totaltime = 0.0
+            for action in actions:
+                totaltime += float(action["duration"]) * 1000.0
+                myflow.append(intround(float(action["duration"]) * 1000.0))
+                if action["action"]["selection"] == "sleep":
+                    myflow.append(7)
+                    myflow.append(-1)
+                    myflow.append(-1)
+                elif action["action"]["selection"] == "white":
+                    thiscss = self.icon_colour(action["action"])["fill"]
+                    myflow.append(2)
+                    myflow.append(int(action["action"]["temperature"]))
+                    myflow.append(int(action["action"]["brightness"]))
+                else:
+                    thiscss = self.icon_colour(action["action"]["colour"])["fill"]
+                    myflow.append(1)
+                    myflow.append(int(thiscss.strip("#"), base=16))
+                    myflow.append(int(action["action"]["colour"]["value"]))
+
+                thisp = int(round((totaltime / totalduration) * 100))
+                locss += "%d%% { fill: %s } " % (thisp, thiscss)
+            locss += "}"
+
+            repeat = int(value["repeat"])
+            prefix = bl.animname()
+            anim = "@keyframes " + prefix + self.name + locss
+            anim += "\n@-webkit-keyframes " + prefix + self.name + locss
+            anim += "\n@-moz-keyframes " + prefix + self.name + locss
+
+            anim += (
+                "\n.run-animation-"
+                + self.name
+                + " { animation-name: "
+                + prefix
+                + self.name
+                + "; animation-duration: %dms" % totalduration
+                + "; animation-iteration-count: %d; }" % (repeat)
+            )
+            iconsts["animation"] = anim
+            iconsts["bu-fill"] = {"fill": finalcss}
+            tdur = int((totalduration * repeat) / 1000)
+            self.hbdelay(tdur)
+
+        else:
+            iconsts = {"bu-fill": {"fill": "transparent"}}
+
+        mypartial = partial(
+            self.from_bulb.put_nowait,
+            {
+                "subject": self.controller.type,
+                "content_type": "event",
+                "content": {
+                    "event": "pulse",
+                    "target": self.controller.type + "." + self.name,
+                    "icon status": iconsts,
+                    "value": value,
+                },
+            },
+        )
+
+        self.conn.start_flow(
+            repeat * len(actions), ending, myflow, callb=lambda x: mypartial()
+        )
+        await aio.sleep(0)
+
+    async def handle_command_save_state(self, value, rt):
+        self.conn.set_default()
+        await aio.sleep(0)
+
+    def hbdelay(self, alen):
+        if self.conn.hbtimer < alen:
+            self.conn.hbtimer = alen + 5
+
+    def lighthb(self, duration=5):
+        try:  # Could happen that conn is None... Maybe a race condition with unregister
+            # if True:
+            #            _log.debug(f"Heartbeat {self.conn.infosent}")
+            if self.conn.hbtimer <= 0:
+                self.conn.hbtimer = self.controller.buddy_config["heartbeat"]
+                if not self.conn.infosent or random.randrange(50) == 17:
+                    aio.create_task(self.send_info())
+                    self.conn.infosent = True
+                if (
+                    "music_on" not in self.conn.properties
+                    or self.conn.properties["music_on"] != 1
+                ):
+                    if (
+                        "flowing" not in self.conn.properties
+                        or self.conn.properties["flowing"] != 1
+                    ):
+                        self.conn.get_prop(
+                            [
+                                "power",
+                                "bright",
+                                "sat",
+                                "hue",
+                                "ct",
+                                "rgb",
+                                "color_mode",
+                            ],
+                            callb=self.status_cb,
+                        )
+            else:
+                self.conn.hbtimer -= 5
+            self.controller.ylhb[self.name] = aio.get_running_loop().call_later(
+                duration, partial(self.lighthb, 5)
+            )
+        except:
+            pass
+
+    async def send_status(self):
+        """
+        Send the current Lifx status
+        """
+        if not self.present:
+            await aio.sleep(0)
+            return
+        try:
+            content = {
+                "event": "status",
+                "target": self.controller.type + "." + self.name,
+                "icon status": {
+                    "bu-fill": self.icon_colour(),
+                    "bu-not-present": {"opacity": 0},
+                },
+                "value": {
+                    "power": {"power": self.power},
+                    "colour": self._colour,
+                    "white": {
+                        "brightness": self.brightness,
+                        "temperature": self.temperature,
+                    },
+                },
+            }
+            for x in self.xml_names().values():
+                if x is not None:
+                    content["value"][x] = "yes"
+            await self.controller.enqueue(
+                {
+                    "subject": self.controller.type,
+                    "content_type": "event",
+                    "content": content,
+                }
+            )
+        except Exception as e:
+            _log.warning(f"Ooops could not send status {e}")
+
+    async def send_info(self):
+        # Can be used in callback
+        #        _log.debug(f"Sending info for {self.conn.properties}")
+        try:
+            msg = ""
+            prefix = '<div><dl class="dl-horizontal">'
+            for x in ["name", "model", "ip_address", "port", "fw_ver", "support"]:
+                if x in self.conn.properties:
+                    msg += (
+                        prefix
+                        + "<dt>"
+                        + x.replace("_", " ").title()
+                        + ":</dt><dd>"
+                        + str(self.conn.properties[x])
+                        + "</dd>"
+                    )
+                    prefix = ""
+                elif getattr(self.conn, x, None):
+                    msg += (
+                        prefix
+                        + "<dt>"
+                        + x.replace("_", " ").title()
+                        + ":</dt><dd>"
+                        + str(getattr(self.conn, x))
+                        + "</dd>"
+                    )
+                    prefix = ""
+
+            if msg:
+                msg += "</dl></div>"
+                await self.controller.enqueue(
+                    {
+                        "subject": self.controller.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "info",
+                            "target": self.controller.type + "." + self.name,
+                            "value": msg,
+                        },
+                    }
+                )
+        except Exception as e:
+            _log.debug(f"Ooops could not send info: {e}")
+            await aio.sleep(0)
+
+    def status_cb(self, m=None):
+        #        _log.debug(f"Status callback with {self._data_expected}")
+        if not self._data_expected:
+            self.set_and_send()
+
+    def info_cb(self, lifx=None, resp=None):
+        aio.create_task(self.send_info())
+
+    async def reconnect(self, ip, data):
+        await aio.sleep(3)
+        self.power = "off"
+        _log.debug(f"Reconnecting {ip} with {data}")
+        try:
+            # Let's chexck the bugger is still there
+            ping = await aio.create_subprocess_exec("ping", "-q", "-c", "2", ip[0])
+            isthere = await ping.wait()
+            if isthere:
+                #                _log.debug(f"Got {isthere} for ping with {ping.returncode}")
+                raise Exception("No ping")
+            self.controller.check_newbulb(ip, data)
+        except Exception as e:
+            # Really bad
+            _log.debug(f"Reconnection failed miserably: {e}")
+            #            _log.exception(e)
+            self.conn = None
+            self.reconnect_cnt = MAXRECONNECT + 1
 
 
-# Hop we go....
-bl.light._process = xiaomi_process
-bl.light.sendStatus = sendStatus
-bl.light.sendInfo = sendInfo
-bl.light.lighthb = lighthb
-bl.light.cssColour = cssColour
-
-class XiaomiBridge(bl.BuddyBridge):
+class YeelightBridge(bl.BuddyBridge):
 
     """
-    This is the bridge application. It will check for the current list  of yeelight bulb.
+    This is the bridge application. It will check for the current list  of lifx bulb.
     It will report any new bulb
     """
 
-    def __init__(self, loop, future, config, log):
-        super(XiaomiBridge, self).__init__(loop, future, config, log)
-        self.probelights = None
-        self.lighthb = {}
-        self.xiaomi_config = xiaomi_config_default
-        self.pending_connections = []
-
-    def process_command(self, msg):
-        if msg["content"]["command"] == "update config":
-            if msg["content"]["target"] == self.target:
-                for k, v in msg["content"]["value"].items():
-                    xiaomi_config_default[k] = v
-                    if k == "refresh":
-                        self.probelights.discovery_timeout = v
-
-                self.sending({"subject": "control" + "." + self.subtype,
-                              "content_type": "request",
-                              "content": {"request": "save configuration",
-                                          "target": self.type,
-                                          #"token": self.target,
-                                          "value": bl.encrypt(xiaomi_config_default, self.config["buddykey"])}})
-        else:
-            for aconn in self.devices:
-                aconn.process(msg)
-
-    def process_response(self, msg):
-        # if msg["content"]["token"] != self.target:
-            # if self.log:
-                # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-            # else:
-                # print ("Token not matching {} vs
-                # {}".format(msg["content"]["token"],self.target))
-        if self.state == "init" and msg["content"]["response"] == "configuration" and msg["subject"] == self.target:
-            # Getting the config
-            newconfig = {}
-            fromconfig = []
-            if msg["content"]["configuration"]:
-                try:
-                    storedconfig = bl.decrypt(
-                        msg["content"]["configuration"],
-                        self.config["buddykey"])
-                    if self.config["debug"]:
-                        self.log.debug(
-                            "The config stored is {}".format(storedconfig))
-                except:
-                    storedconfig = {}
-                    savenew = True
-                    # log
-                    if self.log:
-                        self.log.warning("Config is mangled")
-                    else:
-                        print("Config is mangled")
-
-                for x in storedconfig:
-                    self.xiaomi_config[x] = storedconfig[x]
-
-            self.config["database"] = msg["content"]["database"]
-            if "configonly" in self.config and self.config["configonly"]:
-                self.state = "wait config save"
-            else:
-                self.state = "active"
-                self.build()
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [xiaomi_config, xiaomi_config_default]}}})
-                self.sending({"subject": self.config["restricted"],
-                              "content_type": "restricted event",
-                              "content": {"event": "config updated",
-                                          "target": self.target,
-                                          "value": xiaomi_config_default}})
-            # if savenew or ("configonly" in self.config and self.config["configonly"]):
-                # self.sending({"subject":"control" + "." + self.subtype,
-                                #"content_type": "request",
-                                #"content": {"request":"save configuration",
-                                            #"target":self.target,
-                                            #"token": self.target,
-                                            #"value":bl.encrypt(newconfig,self.config["buddykey"])}})
-
-        elif msg["content"]["response"] == "save configuration" and msg["subject"] == self.target:
-            if self.state == "active" and msg["content"]["status"] != "done":
-                # log
-                if self.log:
-                    self.log.warning("Warning: Configuration was not saved.")
-                else:
-                    print("Warning: Configuration was not saved.")
-            elif self.state == "wait config save":
-                if msg["content"]["status"] == "done":
-                    raise bl.Exit(0, "Configuration was saved")
-                else:
-                    raise bl.Exit(2, "Error: Configuration was not saved")
-            else:
-                self.sending({"subject": "control" + "." + self.target,
-                              "content_type": "request",
-                              "content": {"request": "functions",
-                                          "target": self.type,
-                                          "subtype": self.subtype,
-                                          #"token": self.target,
-                                          "value": {"configs": [xiaomi_config, xiaomi_config_default]}}})
-                self.sending({"subject": self.config["restricted"],
-                              "content_type": "restricted event",
-                              "content": {"event": "config updated",
-                                          "target": self.target,
-                                          "value": xiaomi_config_default}})
-
-        elif self.state == "active":
-            if msg["content"]["response"] == "creation" and msg["content"]["status"] == "done":
-                sess = bl.getSession(self.config["database"])
-                light = sess.query(bl.light).filter_by(
-                    name=msg["subject"].split(".")[-1]).one()
-                light.controller = self
-                light.conn = None
-                self.sending({"subject": self.type,
-                              "content_type": "event",
-                              "content": {"event": "new device",
-                                          "target": self.type +
-                                          "." +
-                                          light.name,
-                                          "value": {"type": self.type, "subtype": self.subtype,
-                                                    "name": light.name, "nickname": light.nickname}}})
-                bidx = 0
-                notseen = True
-                for b in self.pending:
-                    b_name = self.subtype + "-"+str(b.bulb_id)
-                    if b_name == light.name:
-                        light.conn = b
-                        light.present = True
-                        self.devices.append(light)
-                        self.pending = self.pending[
-                            :bidx] + self.pending[
-                                bidx + 1:]
-                        self.sending({"subject": self.type,
-                                      "content_type": "event",
-                                      "content": {"event": "presence",
-                                                  "target": self.type +
-                                                  "." +
-                                                  light.name,
-                                                  "value": "online",
-                                                  "icon status": {"bu-fill": {"fill": light.cssColour()},
-                                                                  "bu-not-present": {"opacity": 0}}}})
-                        notseen = False
-                        break
-                    bidx += 1
-                if notseen:
-                    self.sending({"subject": self.type,
-                                  "content_type": "event",
-                                  "content": {"event": "presence",
-                                              "target": self.type +
-                                              "." +
-                                              light.name,
-                                              "value": "offline",
-                                              "icon status": {"bu-fill": {"fill": "transparent"},
-                                                              "bu-not-present": {"opacity": 1}}}})
-                sess.close()
-            elif msg["content"]["response"] == "nickname":
-                if msg["content"]["status"] == "done":
-                    if self.log:
-                        self.log.debug(msg)
-                    for light in self.devices:
-                        if light.name == msg["subject"].split(".")[-1]:
-                            light.nickname = msg["content"]["value"]
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "nickname",
-                                                      "target": self.type +
-                                                      "." +
-                                                      light.name,
-                                                      "value": light.nickname}})
-                            break
-
-            elif msg["content"]["response"] == "deletion":
-                if msg["content"]["status"] == "done":
-                    if self.log:
-                        self.log.debug(msg)
-                    sidx = 0
-                    doremove = False
-                    for light in self.devices:
-                        if light.name == msg["subject"].split(".")[-1]:
-                            light.conn.transport.close()
-                            self.sending({"subject": self.type,
-                                          "content_type": "event",
-                                          "content": {"event": "deletion",
-                                                      "target": self.type +
-                                                      "." +
-                                                      light.name,
-                                                      "value": light.name}})
-                            doremove = True
-                            break
-                        sidx += 1
-
-                    if doremove:
-                        del self.devices[sidx]
-        else:
-            if self.log:
-                self.log.warning(
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
-            else:
-                print (
-                    "Unknown response {} {} {}".format(msg["subject"],
-                                                       msg["content_type"],
-                                                       msg["content"]))
-
-    def build(self):
-        sess = bl.getSession(self.config["database"])
-        self.sending({"subject": "control" + "." + self.target,
-                      "content_type": "request",
-                      "content": {"request": "functions",
-                                  "target": self.type,
-                                  "subtype": self.subtype,
-                                  #"token": self.target,
-                                  "value": {"functions": xiaomi_functions, "configs": [xiaomi_config, xiaomi_config_default]}}})
-
-        self.devices = sess.query(
-            bl.light).filter_by(
-                subtype=self.subtype).all(
+    def __init__(self):
+        super().__init__(
+            Yeelight,
+            bridge_default,
+            descr="A bridge controlling Yeelight LED light bulbs",
         )
-        for light in self.devices:
-            light.present = False
-            light.conn = None
-            self.sending({"subject": self.type,
-                          "content_type": "event",
-                          "content": {"event": "presence",
-                                      "target": self.type + "." + light.name,
-                                      "value": "offline",
-                                      "icon status": {"bu-fill": {"fill": "transparent"}, "bu-not-present": {"opacity": 1}}}})
+        self.probelights = None
+        self.ylhb = {}
+        self.noevent =  True
+        # Build the tunable config
+        self.buddy_config = xiaomi_config_default
+        # Let'sd build the XML
+        self.config_buddy.append(
+            bl.xml.xml_spinner(
+                "refresh",
+                label="Check for new devices interval",
+                start=30,
+                end=3600,
+                increment=1,
+                postfix="secs",
+                default=180,
+            )
+        )
+        self.config_buddy.append(
+            bl.xml.xml_spinner(
+                "heartbeat",
+                label="Requesting status from bulbs",
+                start=10,
+                end=600,
+                increment=10,
+                postfix="secs",
+                default=60,
+            )
+        )
 
+    def build_devices_commands(self):
+        """
+        Build commands for the devices. Here we check all possible commands and
+        create them
+        """
+
+        class fake:
+            def __init__(self):
+                self.support = [
+                    "set_bright",
+                    "set_ct_abx",
+                    "start_cf",
+                    "set_power",
+                    "set_hsv",
+                ]
+
+        result = f"""
+        <buddyui version="0.1">
+            <command  name="{self.subtype}">
+         """
+        light = Yeelight(BUILDNAME, BUILDNAME, conn=fake())
+        loc = light.xml_names(gen_xml=True)
+        for cn, cd in loc.items():
+            result += cd[1] + "\n"
+        # Adding pulse
+        result += """
+                <controlgroup  type="grouplist" name="pulse" label="Animation" rteffect="1" onlyif="buoicmd_colours::yes">
+                    <control type="spinner" name="repeat" label="Repeat" rteffect="1">
+                        <start>0</start>
+                        <default>1</default>
+                        <increment>1</increment>
+                    </control>
+                    <controlgroup type="choice" name="ending" label="End Action" >
+                        <item label="Start Colour" value='start' />
+                        <item label="End Colour" value='stop' />
+                        <item label="Light Off" value='off' />
+                    </controlgroup>
+                    <controlgroup type="listmaker"  name="flow action" label="Actions">
+                        <control type="text" name="name" label="Name" length="32"/>
+                        <control type="spinner" name="duration" label="Duration" rteffect="1">
+                            <start>0.01</start>
+                            <end>10000</end>
+                            <increment>0.1</increment>
+                            <decimals>2</decimals>
+                            <default>1.0</default>
+                            <postfix>secs</postfix>
+                        </control>
+                        <controlgroup type="choice"  name="action" label="Action">
+                            <item value="white" label="White">
+                                <control type="slider" name="brightness" label="Brightness">
+                                    <start>0</start>
+                                    <end>100</end>
+                                    <increment>1</increment>
+                                </control>
+                                <control type="slider" name="temperature" label="Kelvin">
+                                    <start>1700</start>
+                                    <end>6500</end>
+                                    <increment>100</increment>
+                                </control>
+                            </item>
+                            <item value="colour" label="Colour">
+                                <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
+                                    <control type="slider" name="hue" label="Hue" rteffect="1">
+                                        <start>0</start>
+                                        <end>360</end>
+                                        <increment>1</increment>
+                                    </control>
+                                    <control type="slider" name="saturation" label="Saturation" rteffect="1">
+                                        <start>0</start>
+                                        <end>100</end>
+                                        <increment>1</increment>
+                                    </control>
+                                    <control type="slider" name="value" label="Brightness" rteffect="1">
+                                        <start>0</start>
+                                        <end>100</end>
+                                        <increment>1</increment>
+                                    </control>
+                                </controlgroup>
+                            </item>
+                            <item value="sleep" label="Sleep" />
+                        </controlgroup>
+                    </controlgroup>
+                </controlgroup>
+                <controlgroup  type="grouplist" name="save_state" label="Set state as default" rteffect="-1" >
+                </controlgroup>
+            </command>
+        </buddyui>
+        """
+        return result
+
+    def build(self, devices):
+        self.devices = Yeelight.from_list(devices)
+        for dev in self.devices:
+            dev.controller = self
+            dev.present = False
+        # Here we have the AutoBuddy bus running, let's start our things
         future = aioxiaomi.start_xiaomi_discovery(self.check_newbulb)
         future.add_done_callback(self.start_broadcast)
 
-
-    def start_broadcast(self,future):
+    def start_broadcast(self, future):
         probe = future.result()
         self.probelights = probe
-        probe.broadcast(2,self.xiaomi_config["refresh"])
+        probe.broadcast(2, self.buddy_config["refresh"])
 
     def check_newbulb(self, address, data):
+        # _log.debug(f"New bulb with ip {address},  {address.__class__} and {data}")
         if "id" in data:
-            newconn = aioxiaomi.XiaomiBulb(aio.get_event_loop(),data,self)
-            bulbname = self.subtype+"-"+str(newconn.bulb_id)
-            found = False
+            newconn = aioxiaomi.XiaomiBulb(aio.get_event_loop(), data, self)
+            newconn.orig_data = data
+            lname = self.subtype + "-" + str(newconn.bulb_id)
             for dev in self.devices:
-                if dev.name == bulbname and dev.conn:
-                    found = True
-                    break
-            if bulbname in self.pending_connections:
-                found=True
+                if dev.name == lname and (dev.conn or dev.pending_conn):
+                    del newconn
+                    return
+            self.newbulb(newconn)
 
-            if not found:
-                self.pending_connections.append(bulbname)
-                newconn.set_connections(2) #Open 2 channels to the bulb
-                newconn.set_queue_limit(5,"adapt")
-                newconn.activate()
-            else:
-                del(newconn)
-
-    #
-    def register(self, alight):
-        alight_name = self.subtype + "-" + str(alight.bulb_id)
-        alight_nickname = alight.name
+    def newbulb(self, alight):
+        lname = self.subtype + "-" + str(alight.bulb_id)
         notseen = True
         alight.hbtimer = 0
         alight.infosent = False
         for light in self.devices:
-            ispresent = False
-
-            if alight_name == light.name:
-                light.conn = alight
-                light.controller = self
-                light.present = True
-                alight.register_callback(light.sendStatus)
-                self.sending({"subject": self.type,
-                                "content_type": "event",
-                                "content": {"event": "presence",
-                                            "target": self.type +
-                                            "." +
-                                            light.name,
-                                            "value": "online",
-                                            "icon status": {"bu-fill": {"fill": light.cssColour()},
-                                                            "bu-not-present": {"opacity": 0}}}})
+            if lname == light.name:
+                # print(f"Light {alight} is {alight.product},  {dir(alight)}")
+                light.add_connection(alight)
                 notseen = False
                 break
         if notseen:
-            self.pending.append(alight)
-            self.sending({"subject": "control" + "." + self.type,
-                          "content_type": "request",
-                          "content": {"request": "creation",
-                                      "target": self.type,
-                                          # Here we need the type
-                                      #"token": self.target,
-                                      "value": {"name": alight_name, "nickname": alight_nickname or alight_name, "subtype": self.subtype}}})
+            newlight = Yeelight(lname, alight.properties["name"] or lname)
+            newlight.controller = self
+            newlight.pending_conn = alight
+            self.pending.append(newlight)
+            aio.create_task(
+                self.enqueue(
+                    {
+                        "subject": "control" + "." + self.type,
+                        "content_type": "request",
+                        "content": {
+                            "request": "creation",
+                            "target": self.type,
+                            "value": {
+                                "name": lname,
+                                "nickname": newlight.nickname,
+                                "subtype": self.subtype,
+                            },
+                        },
+                    }
+                )
+            )
         else:
-            try:
-                self.pending_connections.remove(light.name)
-            except:
-                pass
-            self.lighthb[self.subtype] = self.loop.call_later(
-                random.randrange(
-                    int(self.xiaomi_config["heartbeat"])),
-                partial(light.lighthb,5))
+            self.ylhb[light.name] = aio.get_running_loop().call_later(
+                random.randrange(int(self.buddy_config["heartbeat"])),
+                partial(light.lighthb, 5),
+            )
 
+    def register(self, alight):
+        pass
 
     def unregister(self, alight):
-        #print("Uregistering {}".format(alight))
-        if alight in self.pending:
-            self.pending.remove(alight)
-        else:
-            alight_name=self.subtype + "-" + str(alight.bulb_id)
-            try:
-                self.lighthb[alight.name].cancel()
-                #print ("HB Canceled for {}".format(alight.name))
-            except:
-                pass
-            for light in self.devices:
-                if light.name == alight_name:
-                    light.conn = None
-                    light.present = False
-                    self.sending({"subject": self.type,
-                                    "content_type": "event",
-                                    "content": {"event": "presence",
-                                                "target": self.type +
-                                                "." +
-                                                light.name,
-                                                "value": "offline",
-                                                "icon status": {"bu-fill": {"fill": "transparent"},
-                                                                "bu-not-present": {"opacity": 1}}}})
-        # Just in case it is one of those spurious disconnect,
-        # ask for a probe in 5 to 10 secs
-        if self.probelights:
-            self.loop.call_later(5, self.probelights.broadcast_once)
+        """
+        Removing disconnecting light bulbs
+        """
+        _log.debug(f"Unregister {alight}")
+
+        alight_name = self.subtype + "-" + str(alight.bulb_id)
+        for light in self.devices:
+            if light.name == alight_name:
+                light.reconnect_cnt += 1
+                if light.reconnect_cnt <= MAXRECONNECT:
+                    aio.create_task(
+                        light.reconnect(
+                            (light.conn.ip_address, light.conn.port),
+                            light.conn.orig_data,
+                        )
+                    )
+                try:
+                    self.controller.ylhb[alight_name].cancel()
+                    # print ("HB Canceled for {}".format(alight.name))
+                except:
+                    pass
+                light.conn = None
+                light.present = False
+                return
+        td = None
+        for light in self.pending:
+            if light.name == alight_name:
+                td = light
+                break
+        if td:
+            self.pending.remove(td)
+
 
 aboutstr = """<p>XiaomiBuddy is a bridge talking to <a href="https://www.yeelight.com/">Xiaomi Yeelight</a> lights. A library called <a href="https://github.com/frawau/aioxiaomi">aioxiaomi</a>
  is used when communicating with the actual device.</p>
@@ -1031,180 +737,35 @@ aboutstr = """<p>XiaomiBuddy is a bridge talking to <a href="https://www.yeeligh
 <p class=\"bu-copyright\">&copy; 2017 Fran&ccedil;ois Wautier</p>
 """
 
-iconstr = """
-   <svg class="bu-device-icon" width="60" height="60" viewBox="0 0 1792 1792" xmlns="http://www.w3.org/2000/svg">
-     <path class="bu-shape" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5
-                               22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90
-                               101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79
-                               68-180zM1400 576q0 155-103 268-45 49-74.5 87t-59.5 95.5-34 107.5q47 28 47 82 0 37-25 64 25 27 25 64 0 52-45
-                               81 13 23 13 47 0 46-31.5 71t-77.5 25q-20 44-60 70t-87 26-87-26-60-70q-46 0-77.5-25t-31.5-71q0-24 13-47-45-29-45-81
-                               0-37 25-64-25-27-25-64 0-54 47-82-4-50-34-107.5t-59.5-95.5-74.5-87q-103-113-103-268 0-99 44.5-184.5t117-142
-                               164-89 186.5-32.5 186.5 32.5 164 89 117 142 44.5 184.5z"/>
-     <path class="bu-fill" d="M1120 576q0 13-9.5 22.5t-22.5 9.5-22.5-9.5-9.5-22.5q0-46-54-71t-106-25q-13 0-22.5-9.5t-9.5-22.5 9.5-22.5
-                              22.5-9.5q50 0 99.5 16t87 54 37.5 90zm160 0q0-72-34.5-134t-90-101.5-123-62-136.5-22.5-136.5 22.5-123 62-90
-                              101.5-34.5 134q0 101 68 180 10 11 30.5 33t30.5 33q128 153 141 298h228q13-145 141-298 10-11 30.5-33t30.5-33q68-79
-                              68-180z" fill="transparent"/>
-    <path class="bu-not-present" fill="#a94442"
-           d="M1440 893q0-161-87-295l-754 753q137 89 297 89 111 0 211.5-43.5t173.5-116.5 116-174.5 43-212.5zm-999 299l755-754q-135-91-300-91-148
-              0-273 73t-198 199-73 274q0 162 89 299zm1223-299q0 157-61 300t-163.5 246-245 164-298.5 61-298.5-61-245-164-163.5-246-61-300 61-299.5
-              163.5-245.5 245-164 298.5-61 298.5 61 245 164 163.5 245.5 61 299.5z"/>
-   </svg>
-"""
-cfgdefault = {
-    "type": "light",
-     "subtype": SUBTYPE,
-     "host": "localhost",
-     "port": 8745,
-     "credential": "",
-     "ssl": "",
-     "restricted": "guibridge"}
-
-
-def configure():
-    parser = argparse.ArgumentParser(description="Track Yeelight light bulbs.")
-    # version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument("-t", "--type", default=cfgdefault["type"],
-                        help="The type of devices we handle. (default  \"%s\")." % cfgdefault["type"])
-    parser.add_argument("-s", "--subtype", default=cfgdefault["subtype"],
-                        help="The specific subtype we manage. (default  \"%s\")." % cfgdefault["subtype"])
-    parser.add_argument("-a", "--host", default=cfgdefault["host"],
-                        help="The host address of the server (default \"%s\")." % cfgdefault["host"])
-    parser.add_argument("-p", "--port", type=int, default=cfgdefault["port"],
-                        help="The port used by the server (default \"%s\")." % cfgdefault["port"])
-    parser.add_argument("-c", "--config", default="/etc/autobuddy/yeelight.cfg", type=argparse.FileType('r'),
-                        help="Config file to use (default \"/etc/autobuddy/yeelight.cfg\")")
-    parser.add_argument("-V", "--credential", default=cfgdefault['credential'],
-                        help="The credential used to verify authorization (default \"%s\")." % cfgdefault["credential"])
-    parser.add_argument("-d", "--debug", action="count", default=0,
-                        help="Log debug information (default False)")
-    parser.add_argument("-S", "--ssl", default="",
-                        help="The directory where the file %s can be found." % (CERTFILE))
-    parser.add_argument("-r", "--restricted", default=cfgdefault["restricted"],
-                        help="Where to send \"restricted events\" (default \"%s\")." % cfgdefault["restricted"])
-    parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="Log warning messages")
-    parser.add_argument("-C", "--configonly", default="",
-                        help="Exit after the the configuration has been saved")
-
-    try:
-        opts = parser.parse_args()
-    except Exception as e:
-        parser.error("Error: " + str(e))
-
-    if opts.debug:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
-        )
-    elif opts.verbose:
-        logging.basicConfig(
-            level=logging.WARNING,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
-        )
-    else:
-        logging.basicConfig(
-            level=logging.CRITICAL,
-            format='%(levelname)7s: %(message)s',
-            stream=sys.stderr,
-        )
-    lightlog = logging.getLogger('')
-    xiaomicfg = {"debug": opts.debug}
-    try:
-        try:
-            cfgdata = json.load(opts.config)
-            opts.config.close()
-        except:
-            cfgdata = {}
-            lightlog.warning("Config file could not be opened.")
-
-        # Definition
-        for attr in cfgdefault:
-            if opts.__getattribute__(attr) != cfgdefault[attr]:
-                xiaomicfg[attr] = opts.__getattribute__(attr)
-            elif attr in cfgdata:
-                xiaomicfg[attr] = cfgdata[attr]
-            else:
-                xiaomicfg[attr] = opts.__getattribute__(attr)
-            if opts.debug:
-                lightlog.debug("The %s is %s." % (attr,xiaomicfg[attr]))
-
-
-        if xiaomicfg["ssl"] and not (os.path.isfile(xiaomicfg["ssl"] + "/" + CERTFILE)):
-            lightlog.critical("Encryption: Could not find {} .".format(
-                xiaomicfg["ssl"] + "/" + CERTFILE))
-            sys.exit()
-        if opts.debug:
-            if xiaomicfg["ssl"]:
-                lightlog.debug(
-                    "The ssl certificates can be found in %s" %
-                    xiaomicfg["ssl"])
-            else:
-                lightlog.debug("The connection is not encrypted")
-
-        if "buddykey" in cfgdata:
-            xiaomicfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.configonly:
-
-            if "buddykey" not in xiaomicfg:
-                if opts.debug:
-                    lightlog.debug("Generating random key")
-                xiaomicfg["buddykey"] = bl.keygen()
-            try:
-                del(xiaomicfg["debug"])
-            except:
-                pass
-            with open(opts.configonly, "w") as cfile:
-                json.dump(xiaomicfg, cfile)
-            os.chmod(opts.configonly, 384)  # 0600
-            sys.exit()
-
-    except Exception as e:
-        lightlog.error("Error: %r" % e)
-        sys.exit(-2)
-
-    return (lightlog, xiaomicfg)
-
 
 if __name__ == "__main__":
-    log, config = configure()
-    log.info("Configured")
-    loop = aio.get_event_loop()
-    if config["debug"]:
-        loop.set_debug(True)
-    if config["ssl"]:
-        sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH,
-                                                cafile=config["ssl"] + '/' + CERTFILE)
-
-        sslcontext.check_hostname = False
-    else:
-        sslcontext = None
-    connFuture = aio.Future()
-    fac = loop.create_connection(
-        functools.partial(XiaomiBridge,
-                          loop,
-                          connFuture,
-                          config,
-                          log),
-        config["host"],
-     config["port"],
-     ssl=sslcontext)
-    conn, bridgectl = loop.run_until_complete(fac)
-    loop.call_soon(
-        bridgectl.configrequest,
-        {"about": {"XiaomiBuddy": aboutstr},
-         "display": {"Yeelight": iconstr}})
+    try:
+        bridgectl = YeelightBridge()
+    except bl.BuddyConfigOnly:
+        sys.exit(-1)
 
     try:
-        loop.run_until_complete(connFuture)
+        loop = aio.get_event_loop()
+        loop.run_until_complete(
+            bridgectl.start(
+                {
+                    "about": {"XiaomiBuddy": aboutstr},
+                    "display": {SUBTYPE: Yeelight.icon},
+                }
+            )
+        )
+        loop.run_until_complete(bridgectl.future)
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-        #for x in bridgectl.lighthb.values():
-            #x.close()
+        for x in bridgectl.devices:
+            if x.from_bulb:
+                x.from_bulb.put_nowait("Die Now")
+                try:
+                    bridgectl.ylhb[x.name].cancel()
+                except:
+                    pass
+        bridgectl.last_rites()
         bridgectl.probelights.close()
-        conn.close()
-        loop.run_until_complete(aio.sleep(1))
+        loop.run_until_complete(aio.sleep(3))
         loop.close()

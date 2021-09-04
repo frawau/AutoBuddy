@@ -418,64 +418,71 @@ class PresenceBridge(bl.BuddyBridge):
         await aio.sleep(2)
         # Here we actually start the probe
         lop = []
-        while True:
-            # Till the end of time
-            for x in self.mac_score:
-                self.mac_score[x] -= 1
+        try:
+            while True:
+                # Till the end of time
+                for x in self.mac_score:
+                    self.mac_score[x] -= 1
 
-            requesters = []
-            timetowait = 5
-            nbtries = 2
-            # Launch ARP
-            for net, dev in self.config["networks"].items():
+                requesters = []
+                timetowait = 5
+                nbtries = 2
+                # Launch ARP
+                for net, dev in self.config["networks"].items():
+                    if self.log:
+                        self.log.debug("Probing {} on {}".format(net, dev))
+                    sock = aping.create_raw_socket(dev)
+                    fac = self.loop._create_connection_transport(
+                        sock, aping.ArpRequester, None, None)
+                    conn, arpctrl = await self.loop.create_task(fac)
+                    arpctrl.process = self.process_mac
+                    arpctrl.skip_list = list(self.untracked_mac.values())
+                    lop.append(conn)
+                    requesters.append(partial(arpctrl.request,net))
+
+                # Start BT
+                if "btdev" in self.config and self.config["btdev"] is not None:
+                    if self.log:
+                        self.log.debug("Probing BT  for {}".format(self.bt_macs))
+                    sock = btping.create_bt_socket(self.config["btdev"])
+                    #fac = self.loop.create_connection(
+                        #btping.BTNameRequester, sock=sock)
+                    #Work around
+                    fac = self.loop._create_connection_transport(sock,
+                        btping.BTNameRequester, None, None)
+                    conn, btctrl = await self.loop.create_task(fac)
+                    btctrl.process = self.process_btmac
+                    lop.append(conn)
+                    requesters.append(partial(btctrl.request,self.bt_macs))
+
+                await aio.sleep(1) #Let things settle
+                for x in range(nbtries):
+                    for req in requesters:
+                        req()
+                    await aio.sleep(timetowait)  # Time for the devices to reply
                 if self.log:
-                    self.log.debug("Probing {} on {}".format(net, dev))
-                sock = aping.create_raw_socket(dev)
-                fac = self.loop._create_connection_transport(
-                    sock, aping.ArpRequester, None, None)
-                conn, arpctrl = await self.loop.create_task(fac)
-                arpctrl.process = self.process_mac
-                arpctrl.skip_list = list(self.untracked_mac.values())
-                lop.append(conn)
-                requesters.append(partial(arpctrl.request,net))
+                    self.log.debug("Closing")
+                for c in lop:
+                    c.close()  # No need to keep listening
+                lop = []
+                #
+                # Debug only
+                # self.sending({"subject":"presence.debug",
+                    #"content_type": "event",
+                    #"content":{"event":"mac score end",
+                        #"target":"presence.mac",
+                        #"value":{"mac scores":self.mac_score}}})
 
-            # Start BT
-            if "btdev" in self.config and self.config["btdev"] is not None:
+                for mac in [x for x in self.mac_score if self.mac_score[x] == 0]:
+                    data = {"mac": mac, "ip": "0.0.0.0", "status": "offline"}
+                    for ent in self.devices:
+                        ent.process_mac(data)
+                    del(self.mac_score[mac])
+
+                await aio.sleep(self.presence_config["probe"])
+        except Exception as e:
                 if self.log:
-                    self.log.debug("Probing BT  for {}".format(self.bt_macs))
-                sock = btping.create_bt_socket(self.config["btdev"])
-                fac = self.loop.create_connection(
-                    btping.BTNameRequester, sock=sock)
-                conn, btctrl = await self.loop.create_task(fac)
-                btctrl.process = self.process_btmac
-                lop.append(conn)
-                requesters.append(partial(btctrl.request,self.bt_macs))
-
-            await aio.sleep(1) #Let things settle
-            for x in range(nbtries):
-                for req in requesters:
-                    req()
-                await aio.sleep(timetowait)  # Time for the devices to reply
-            if self.log:
-                self.log.debug("Closing")
-            for c in lop:
-                c.close()  # No need to keep listening
-            lop = []
-            #
-            # Debug only
-            # self.sending({"subject":"presence.debug",
-                #"content_type": "event",
-                #"content":{"event":"mac score end",
-                    #"target":"presence.mac",
-                    #"value":{"mac scores":self.mac_score}}})
-
-            for mac in [x for x in self.mac_score if self.mac_score[x] == 0]:
-                data = {"mac": mac, "ip": "0.0.0.0", "status": "offline"}
-                for ent in self.devices:
-                    ent.process_mac(data)
-                del(self.mac_score[mac])
-
-            await aio.sleep(self.presence_config["probe"])
+                    self.log.debug("Ooops: {}".format(e))
 
     def process_mac(self, data):
         # this runs when an ARP reply is received
@@ -793,6 +800,6 @@ if __name__ == "__main__":
         print("\n", "Exiting at user's request")
     finally:
 
-        bridgectl.probe_mac.set_result('done')
+        bridgectl.probe_mac.cancel()
         conn.close()
         loop.close()

@@ -463,7 +463,13 @@ function bu_parse_xml(txt) {
                 $.each( deviceById, function (idx, dev) {
                     if ( dtype==undefined || dev.type==dtype) {
                         if ( dstype==undefined || dev.type==dstype) {
-                            mylist.push([dev.type,dev.subtype,dev.nickname,dev.name])
+                            var looi = [];
+                            Object.entries(dev.status).forEach((kv, index) => {
+                                if ( kv[0].startsWith("buoicmd") && kv[1] =="yes") {
+                                        looi.push(kv[0])
+                                }
+                            })
+                            mylist.push([dev.type,dev.subtype,dev.nickname,dev.name, looi])
                         }
                     }
                 })
@@ -484,8 +490,12 @@ function bu_parse_xml(txt) {
                             cxml=$( jQuery.parseXML(buddy.functions[ctype][cstype])).find( "command" );
                             $.each(cxml.children(),function(idx,part) {
                                 if ( $(part).attr("rteffect") == undefined || $(part).attr("rteffect") >= 0 ) {
-                                    cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name")])
-                                    clist[$(part).attr("name")]=part.outerHTML;
+                                    var kname = $(part).attr("name")
+                                     if ($(part).attr("onlyif") != undefined && $(part).attr("onlyif").startsWith("buoicmd")) {
+                                         kname = $(part).attr("onlyif").replace("::yes","")
+                                     }
+                                    cnlist.push([$(part).attr("name"),$(part).attr("label")||$(part).attr("name"), kname])
+                                    clist[kname]=part.outerHTML;
                                 }
                             });
                         }
@@ -497,17 +507,19 @@ function bu_parse_xml(txt) {
                         thisexpand+="<controlgroup type=\"choice\" name=\"command\">";
                     }
                     $.each(cnlist, function (idx,cval) {
-                        if (options != undefined && options.includes("simplelist")) {
-                            if (!seencmd.includes(cval[0]) ) {
-                                seencmd.push(cval[0])
+                        if (val[4].length == 0 || cval[0] == cval[2] || val[4].includes(cval[2])) {
+                            if (options != undefined && options.includes("simplelist")) {
+                                if (!seencmd.includes(cval[2]) ) {
+                                    seencmd.push(cval[2])
+                                    thisexpand+="<item value=\""+cval[0]+"\" label=\""+cval[1]+"\">"
+                                    thisexpand+=clist[cval[2]];
+                                    thisexpand+="</item>";
+                                }
+                            } else {
                                 thisexpand+="<item value=\""+cval[0]+"\" label=\""+cval[1]+"\">"
-                                thisexpand+=clist[cval[0]];
+                                thisexpand+=clist[cval[2]];
                                 thisexpand+="</item>";
                             }
-                        } else {
-                            thisexpand+="<item value=\""+cval[0]+"\" label=\""+cval[1]+"\">"
-                            thisexpand+=clist[cval[0]];
-                            thisexpand+="</item>";
                         }
                     });
                     if (options == undefined || !options.includes("simplelist")) {

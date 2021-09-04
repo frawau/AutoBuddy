@@ -40,7 +40,7 @@ except:
             return self._build_ircode()
 
 
-STARFRAME = [ 3100, 9850 ]
+STARTFRAME = [ 3100, 9850 ]
 ENDFRAME = [520, 12000 ]
 MARK = 520
 SPACE0 = 520
@@ -398,7 +398,7 @@ class LG(HVAC):
 
     def get_timing(self):
         #Well LG is different
-        return {"start frame": STARFRAME,
+        return {"start frame": STARTFRAME,
                   "end frame": ENDFRAME,
                   "mark": MARK,
                   "space 0": SPACE0,
@@ -490,7 +490,7 @@ if __name__ == '__main__':
         """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""
         lircframe =  []
         for frame in frames:
-            lircframe += STARFRAME
+            lircframe += STARTFRAME
             for x in frame:
                 idx = 0x80
                 while idx:

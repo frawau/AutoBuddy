@@ -22,1326 +22,816 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 
-import argparse
 import sys
-import traceback
-import json
 import logging
 import colorsys
-import math
-import os
-import ssl
+import random
+import datetime as dt
 
-# import colorsys
 import buddylib as bl
 import asyncio as aio
-from functools import partial
-from hbmqtt.client import MQTTClient, ClientException
+from functools import reduce
 
 SUBTYPE = "shelly"
 CERTFILE = "autobuddy.crt"
-__version__ = "0.10"
+BUILDNAME = "ShellyFake"
+__version__ = "1.0"
 
 
-DEVLIST = ["shellybulb", "ShellyVintage"]
-CAPAlist = {"shellybulb": ["buf-colour", "buf-white"], "ShellyVintage": ["buf-whiteb"]}
-MQTTcmd = {"shellybulb": "color", "ShellyVintage": "light"}
-HASMEAS = ["ShellyVintage"]
+DEVLIST = ["shellybulb", "ShellyVintage", "shellyrgbw2", "shellycolorbulb"]
+MQTTXTRA = {
+    "shellybulb": "/color/0",
+    "shellycolorbulb": "/color/0",
+    "ShellyVintage": "/light/0",
+    "shellyrgbw2": "/color/0",
+}
+TIMEOUT = 40
+
+bridge_default = {
+    "type": "light",
+    "subtype": SUBTYPE,
+    "update": False,
+}
+_log = logging.getLogger(__name__)
 
 
-def intround(x):
-    return int(round(x))
-
-
-# <controlgroup modal="1" name="colour" label="Colour" widget="colourpicker">
-
-shelly_commands = """
-<buddyui version="0.1">
-    <command name="shelly">
-        <controlgroup type="list" name="power" label="Power" rteffect="1">
-            <control type="switch" name="power" label="Power" rteffect="1">
-                <value label="On">on</value>
-                <value label="Off">off</value>
-            </control>
-            <control type="spinner" name="duration" label="Duration"  >
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup type="list" name="colour" label="Colour" rteffect="1" onlyif="buf-colour::yes">
-            <controlgroup type="list" name="colour" label="Colour" widget="colourpicker" rteffect="1">
-                <control type="slider" name="hue" label="Hue" rteffect="1">
-                    <start>0</start>
-                    <end>360</end>
-                    <increment>1</increment>
-                </control>
-                <control type="slider" name="saturation" label="Saturation" rteffect="1">
-                    <start>0</start>
-                    <end>100</end>
-                    <increment>1</increment>
-                </control>
-                <control type="slider" name="value" label="Brightness" rteffect="1">
-                    <start>0</start>
-                    <end>100</end>
-                    <increment>1</increment>
-                </control>
-            </controlgroup>
-            <control type="spinner" name="duration" label="Duration"  >
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="buf-white::yes">
-            <control type="slider" name="value" label="Brightness" rteffect="1">
-                <start>0</start>
-                <end>100</end>
-                <increment>1</increment>
-            </control>
-            <control type="slider" name="temperature" label="Kelvin" rteffect="1">
-                <start>3000</start>
-                <end>6500</end>
-                <increment>100</increment>
-            </control>
-            <control  type="spinner" name="duration" label="Duration">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-        <controlgroup  type="list" name="white" label="White" rteffect="1" onlyif="buf-whiteb::yes">
-            <control type="slider" name="value" label="Brightness" rteffect="1">
-                <start>0</start>
-                <end>100</end>
-                <increment>1</increment>
-            </control>
-            <control  type="spinner" name="duration" label="Duration">
-                <start>0</start>
-                <end>600</end>
-                <increment>1</increment>
-                <postfix>secs</postfix>
-                <default>0</default>
-            </control>
-        </controlgroup>
-    </command>
-</buddyui>
-"""
-
-shelly_config = """
-<buddyui version="0.1">
-    <configuration  name="shelly">
-        <controlgroup type="list"  name="credential" label="Credentials">
-            <control name="user" label="User" type="text" length="32" />
-            <control name="password" label="Password" type="text" length="32" />
-        </controlgroup>
-    </configuration>
-</buddyui>
-"""
-shelly_config_default = {"credential": {"user": "", "password": ""}, "bulb type": {}}
-shelly_module_commands = {}
-
-
-def convert_K_to_RGB(colour_temperature):
+class ShellyV(bl.light, bl.BuddyDeviceMQTT):
     """
-    Converts from K to RGB, algorithm courtesy of
-    http://www.tannerhelland.com/4435/convert-temperature-rgb-algorithm-code/
-    Taken from petrklus on github
+    Shelly Vintage
     """
-    # range check
-    if colour_temperature < 1000:
-        colour_temperature = 1000
-    elif colour_temperature > 40000:
-        colour_temperature = 40000
 
-    tmp_internal = colour_temperature / 100.0
+    def __init__(self, name, nickname, did=None):
+        super().__init__(name, nickname, SUBTYPE, did)
+        self.busy = aio.Lock()
+        self.interrupt_busy = False
+        self.rt_duration = "no"
+        self._brightness_range = [0, 100, 1]
+        self._colour_range = False
+        self._temperature = 2700
+        self._temperature_range = [2700, 2700, 0]
+        self.responses = {"power": None, "white": None}
+        self.mqttcmd = "/light/0/"
+        self.infos = {"model": "Shelly Vintage"}
+        self.measurement_power = None
+        self.measurement_energy = None
+        self._last_status = None
+        self.hbtask = aio.create_task(self.heartbeat())
 
-    # red
-    if tmp_internal <= 66:
-        red = 255
-    else:
-        tmp_red = 329.698727446 * math.pow(tmp_internal - 60, -0.1332047592)
-        if tmp_red < 0:
-            red = 0
-        elif tmp_red > 255:
-            red = 255
-        else:
-            red = int(tmp_red + 0.5)
+    async def heartbeat(self):
+        """
+        Check last status message
+        """
+        try:
+            while True:
+                await aio.sleep(TIMEOUT)
+                if self._last_status:
+                    if (
+                        dt.datetime.now() - dt.timedelta(seconds=TIMEOUT + 10)
+                    ) > self._last_status:
+                        if self.present:
+                            self.present = False
+        except aio.CancelledError:
+            return
+        except Exception as e:
+            _log.warning(f"Shelly's bulb heartbeat dies unexpectedly: {e}")
 
-    # green
-    if tmp_internal <= 66:
-        tmp_green = 99.4708025861 * math.log(tmp_internal) - 161.1195681661
-        if tmp_green < 0:
-            green = 0
-        elif tmp_green > 255:
-            green = 255
-        else:
-            green = int(tmp_green + 0.5)
-    else:
-        tmp_green = 288.1221695283 * math.pow(tmp_internal - 60, -0.0755148492)
-        if tmp_green < 0:
-            green = 0
-        elif tmp_green > 255:
-            green = 255
-        else:
-            green = int(tmp_green + 0.5)
+    async def _timed(self, target):
+        """Perform the changes gradually
 
-    # blue
-    if tmp_internal >= 66:
-        blue = 255
-    elif tmp_internal <= 19:
-        blue = 0
-    else:
-        tmp_blue = 138.5177312231 * math.log(tmp_internal - 10) - 305.0447927307
-        if tmp_blue < 0:
-            blue = 0
-        elif tmp_blue > 255:
-            blue = 255
-        else:
-            blue = int(tmp_blue + 0.5)
-    return (red, green, blue)
-
-
-def cssColour(self, col=None):
-    try:
-        if self.power:
-            if self.mode == "color":
-                alpha = int(round(15 + self.gain * 0.85))
-                iconsts = "rgba(%d,%d,%d,%d)" % (self.red, self.green, self.blue, alpha)
-            else:
-                alpha = int(round(15 + self.brightness * 0.85))
-                iconsts = "rgba(%d,%d,%d," % convert_K_to_RGB(self.temp)
-                iconsts += "%d)" % alpha
-        else:
-            iconsts = "transparent"
-        return iconsts
-    except Exception as e:
-        print("Exception: {}".format(e))
-        return "transparent"
-
-
-async def shelly_timed(self, target):
-    """Perform the changes gradually
-
-    Target id a dictionary with keys:
-        mode
-        duration
-    and, for mode "white"
-        temperature
-        brightness
-    and for mode "color"
-        red
-        green
-        blue
-        gain
-    """
-    async with self.busy:
-        steps = int(round(target["duration"] * 5))
-        if target["mode"] == "white":
-            tdelta = int(round((target["temperature"] - self.temp) / steps))
-            bdelta = int(round((target["brightness"] - self.brightness) / steps))
-            tvals = [
-                target["temperature"] - (i - 1) * tdelta for i in range(steps, 0, -1)
-            ]
-            bvals = [
-                target["brightness"] - (i - 1) * bdelta for i in range(steps, 0, -1)
-            ]
-            allvals = [
-                {"mode": "white", "brightness": x, "temp": y}
-                for x, y in zip(bvals, tvals)
-            ]
-        else:
-            rdelta = int(round((target["red"] - self.red) / steps))
-            gdelta = int(round((target["green"] - self.green) / steps))
-            bdelta = int(round((target["blue"] - self.blue) / steps))
-            zdelta = int(round((target["gain"] - self.gain) / steps))
-            rvals = [target["red"] - (i - 1) * rdelta for i in range(steps, 0, -1)]
-            gvals = [target["green"] - (i - 1) * gdelta for i in range(steps, 0, -1)]
-            bvals = [target["blue"] - (i - 1) * bdelta for i in range(steps, 0, -1)]
-            zvals = [target["gain"] - (i - 1) * zdelta for i in range(steps, 0, -1)]
-            allvals = [
-                {
-                    "mode": "color",
-                    "white": 0,
-                    "red": x,
-                    "green": y,
-                    "blue": z,
-                    "gain": t,
-                }
-                for x, y, z, t in zip(rvals, gvals, bvals, zvals)
-            ]
-
-        for aval in allvals:
-            if self.interrupt_busy:
-                self.interrupt_busy = False
-                return
-            await bridgectl.mqtt_client.publish(
-                bridgectl.config["mqttprefix"] + self.name + "/color/0/set",
-                json.dumps(aval).encode(),
-            )
-            await aio.sleep(0.2)
-
-
-def shelly_process(self, msg, type="autobuddy"):
-    bridgectl = self.controller
-    # bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
-    if type == "autobuddy":
-        if msg["content"]["command"] == "nickname":
-            # print msg
-            self.nickname = msg["content"]["value"]
-            bridgectl.sending(
-                {
-                    "subject": "control" + "." + bridgectl.type,
-                    "content_type": "request",
-                    "content": {
-                        "request": "nickname",
-                        "target": bridgectl.type + "." + self.name,
-                        # "token": bridgectl.target,
-                        "value": {
-                            "name": self.name,
-                            "nickname": msg["content"]["value"],
-                        },
-                    },
-                }
-            )
-        elif msg["content"]["command"] == "status":
-            # Not gone the way of the dodo
-            # try:
-            thissts = {"power": {"power": self.power and "on" or "off"}}
-            thissts.update(self.status)
-            bridgectl.sending(
-                {
-                    "subject": bridgectl.type,
-                    "content_type": "event",
-                    "content": {
-                        "event": "status",
-                        "target": bridgectl.type + "." + self.name,
-                        "icon status": {
-                            "bu-fill": {"fill": self.cssColour()},
-                            "bu-not-present": {"opacity": 0},
-                        },
-                        "value": thissts,
-                    },
-                }
-            )
-            # except: #Most probably is known but we lost pairing
-            # pass
-        elif msg["content"]["command"] == "deletion":
-            try:
-                bridgectl.sending(
-                    {
-                        "subject": "control" + "." + bridgectl.type,
-                        "content_type": "request",
-                        "content": {
-                            "request": "deletion",
-                            "target": bridgectl.type,
-                            "value": self.name,
-                        },
-                    }
-                )
-            except:
-                # Deleting non active devices
-                bridgectl.sending(
-                    {
-                        "subject": "control" + "." + bridgectl.type,
-                        "content_type": "request",
-                        "content": {
-                            "request": "deletion",
-                            "target": bridgectl.type,
-                            "value": self.name,
-                        },
-                    }
-                )
-
-        elif msg["content"]["command"] == "power":
-            self.power = msg["content"]["value"]["power"].lower() == "on"
-            aio.ensure_future(
-                (
-                    bridgectl.mqtt_client.publish(
-                        bridgectl.config["mqttprefix"]
-                        + self.name
-                        + "/"
-                        + self.mqttcmd
-                        + "/0/command",
-                        self.power and b"on" or b"off",
+        Target id a dictionary with keys:
+            mode
+            duration
+        and, for mode "white"
+            temperature
+            brightness
+        and for mode "color"
+            red
+            green
+            blue
+            gain
+        """
+        async with self.busy:
+            steps = int(round(target["duration"] * 5))
+            if target["mode"] == "white":
+                if "temperature" in target:
+                    tdelta = int(
+                        round((target["temperature"] - self._temperature) / steps)
                     )
-                )
-            )
-            bridgectl.sending(
-                {
-                    "subject": msg["subject"],
-                    "content_type": "event",
-                    "content": {
-                        "event": "power",
-                        "target": msg["subject"],
-                        "value": msg["content"]["value"],
+                    tvals = [
+                        target["temperature"] - (i - 1) * tdelta
+                        for i in range(steps, 0, -1)
+                    ]
+                bdelta = int(round((target["brightness"] - self._brightness) / steps))
+                bvals = [
+                    target["brightness"] - (i - 1) * bdelta for i in range(steps, 0, -1)
+                ]
+                if "temperature" in target:
+                    allvals = [
+                        {"mode": "white", "brightness": x, "temp": y}
+                        for x, y in zip(bvals, tvals)
+                    ]
+                else:
+                    allvals = [{"mode": "white", "brightness": x} for x in bvals]
+            else:
+                rdelta = int(round((target["red"] - self.red) / steps))
+                gdelta = int(round((target["green"] - self.green) / steps))
+                bdelta = int(round((target["blue"] - self.blue) / steps))
+                zdelta = int(round((target["gain"] - self.gain) / steps))
+                rvals = [target["red"] - (i - 1) * rdelta for i in range(steps, 0, -1)]
+                gvals = [
+                    target["green"] - (i - 1) * gdelta for i in range(steps, 0, -1)
+                ]
+                bvals = [target["blue"] - (i - 1) * bdelta for i in range(steps, 0, -1)]
+                zvals = [target["gain"] - (i - 1) * zdelta for i in range(steps, 0, -1)]
+                allvals = [
+                    {
+                        "mode": "color",
+                        "white": 0,
+                        "red": x,
+                        "green": y,
+                        "blue": z,
+                        "gain": t,
+                    }
+                    for x, y, z, t in zip(rvals, gvals, bvals, zvals)
+                ]
+
+            topic = self.name + self.mqttcmd + "set"
+            for aval in allvals:
+                if self.interrupt_busy:
+                    self.interrupt_busy = False
+                    return
+
+                await self.controller.mqtt_wqueue.put((topic, aval))
+                await aio.sleep(0.2)
+
+    async def handle_mqtt_onoff(self, payload):
+        if payload != self.power:
+            self.power = payload
+            if self.responses["power"]:
+                await self.controller.enqueue(self.responses["power"])
+                self.responses["power"] = None
+            else:
+                await self.send_status_delayed()
+        else:
+            await aio.sleep(0)
+
+    async def handle_mqtt_status(self, payload):
+        changed = False
+        wason = self.power
+        self._last_status = dt.datetime.now()
+        self.power = payload["ison"]
+        if wason != self.power:
+            changed = True
+        cur_colour = self.colour
+        self.colour = {"brightness": payload["brightness"]}
+        if self.colour != cur_colour:
+            changed = True
+        if self.responses["white"]:
+            await self.controller.enqueue(self.responses["white"])
+            self.responses["white"] = None
+        elif changed:
+            await self.send_status()
+            await self.send_info()
+        else:
+            if random.randrange(20) == 17:
+                await self.send_info()
+            else:
+                await aio.sleep(0)
+
+    async def handle_mqtt_power(self, payload):
+        if self.measurement_power != payload:
+            self.measurement_power = payload
+            msg = {
+                "subject": self.controller.type,
+                "content_type": "event",
+                "content": {
+                    "event": "measurement",
+                    "target": self.controller.type + "." + self.name,
+                    "icon status": {
+                        "bu-fill": self.icon_colour(),
+                        "bu-not-present": {"opacity": 0},
                     },
-                }
+                    "value": {"power": payload},
+                },
+            }
+            await self.controller.enqueue(msg)
+        else:
+            await aio.sleep(0)
+
+    async def handle_mqtt_energy(self, payload):
+        if self.measurement_energy != payload:
+            self.measurement_energy = payload
+            msg = {
+                "subject": self.controller.type,
+                "content_type": "event",
+                "content": {
+                    "event": "measurement",
+                    "target": self.controller.type + "." + self.name,
+                    "icon status": {
+                        "bu-fill": self.icon_colour(),
+                        "bu-not-present": {"opacity": 0},
+                    },
+                    "value": {"energy": payload},
+                },
+            }
+            await self.controller.enqueue(msg)
+        else:
+            await aio.sleep(0)
+
+    async def handle_mqtt_online(self, payload):
+        self.present = payload
+        await aio.sleep(0)
+
+    async def handle_mqtt_info(self, payload):
+        try:
+            self.infos["ssid"] = payload["wifi_sta"]["ssid"]
+            self.infos["ip"] = payload["wifi_sta"]["ip"]
+            self.infos["mac"] = ":".join(
+                [
+                    payload["mac"][i : i + 2].lower()
+                    for i in range(0, len(payload["mac"]), 2)
+                ]
             )
+            self.infos["new_fw"] = payload["has_update"]
+            self.infos["fw_ver"] = payload["update"]["old_version"]
+            if payload["cloud"]["enabled"] and payload["cloud"]["connected"]:
+                self.infos["cloud"] = "connected"
+            else:
+                self.infos["cloud"] = "not connected"
+            self.infos["last boot"] = (
+                dt.datetime.now() - dt.timedelta(seconds=payload["uptime"])
+            ).strftime("%d %B %Y at %H:%M")
+        except Exception as e:
+            _log.debug(f"Problem handling mqtt ingo {e}")
 
-            self.sendInfo()
-        elif msg["content"]["command"] == "white":
+    async def handle_mqtt_announce(self, payload):
+        for k, v in payload.items():
+            self.infos[k] = v
+        self.infos["mac"] = ":".join(
+            [
+                payload["mac"][i : i + 2].lower()
+                for i in range(0, len(payload["mac"]), 2)
+            ]
+        )
+        await aio.sleep(0)
 
-            if (
-                "duration" in msg["content"]["value"]
-                and msg["content"]["value"]["duration"]
-            ):
-                if self.busy.locked():
-                    self.interrupt_busy = True
-                aio.ensure_future(
+    async def local_command_power(self, value, rt, msg=None):
+        _log.debug(f"Handling local power with {value},  {rt} and {msg}")
+        if msg:
+            self.responses["power"] = msg
+        if "duration" in value and value["duration"]:
+            duration = int(value["duration"])
+            # TODO use _timed ...  but how to recover brighness?
+            # await aio.sleep(0)
+        topic = self.name + self.mqttcmd + "command"
+        await self.controller.mqtt_wqueue.put((topic, value["power"]))
+
+    async def local_command_white(self, value, rt, msg=None):
+        if msg:
+            self.responses["white"] = msg
+
+        if "duration" in value and value["duration"]:
+            if self.busy.locked():
+                self.interrupt_busy = True
+            if "temperature" in value:
+                aio.create_task(
                     self._timed(
                         {
                             "mode": "white",
-                            "duration": msg["content"]["value"]["duration"],
-                            "brightness": msg["content"]["value"]["value"],
-                            "temperature": msg["content"]["value"]["temperature"],
+                            "duration": value["duration"],
+                            "brightness": value["brightness"],
+                            "temperature": value["temperature"],
                         }
                     )
                 )
             else:
-                if "temperature" in msg["content"]["value"]:
-                    aio.ensure_future(
-                        bridgectl.mqtt_client.publish(
-                            bridgectl.config["mqttprefix"] + self.name + "/color/0/set",
-                            json.dumps(
-                                {
-                                    "mode": "white",
-                                    "temp": msg["content"]["value"]["temperature"],
-                                    "brightness": msg["content"]["value"]["value"],
-                                }
-                            ).encode(),
-                        )
-                    )
-                else:
-                    aio.ensure_future(
-                        bridgectl.mqtt_client.publish(
-                            bridgectl.config["mqttprefix"] + self.name + "/light/0/set",
-                            json.dumps(
-                                {"brightness": msg["content"]["value"]["value"]}
-                            ).encode(),
-                        )
-                    )
-                bridgectl.sending(
-                    {
-                        "subject": msg["subject"],
-                        "content_type": "event",
-                        "content": {
-                            "event": "white",
-                            "target": msg["subject"],
-                            "value": msg["content"]["value"],
-                        },
-                    }
-                )
-        elif msg["content"]["command"] == "colour":
-            colour = [
-                x
-                for x in map(
-                    lambda x: int(round(x * 255.0)),
-                    colorsys.hsv_to_rgb(
-                        msg["content"]["value"]["hue"] / 360.0,
-                        msg["content"]["value"]["saturation"] / 100.0,
-                        msg["content"]["value"]["value"] / 100.0,
-                    ),
-                )
-            ]
-
-            mqttmsg = {"mode": "color", "white": 0}
-            mqttmsg["red"] = colour[0]
-            mqttmsg["green"] = colour[1]
-            mqttmsg["blue"] = colour[2]
-            mqttmsg["gain"] = msg["content"]["value"]["value"]
-            if (
-                "duration" in msg["content"]["value"]
-                and msg["content"]["value"]["duration"]
-            ):
-                if self.busy.locked():
-                    self.interrupt_busy = True
-                mqttmsg["duration"] = msg["content"]["value"]["duration"]
-                aio.ensure_future(self._timed(mqttmsg))
-            else:
-                aio.ensure_future(
-                    bridgectl.mqtt_client.publish(
-                        bridgectl.config["mqttprefix"] + self.name + "/color/0/set",
-                        json.dumps(mqttmsg).encode(),
+                aio.create_task(
+                    self._timed(
+                        {
+                            "mode": "white",
+                            "duration": value["duration"],
+                            "brightness": value["brightness"],
+                        }
                     )
                 )
-                bridgectl.sending(
-                    {
-                        "subject": msg["subject"],
-                        "content_type": "event",
-                        "content": {
-                            "event": "colour",
-                            "target": msg["subject"],
-                            "value": msg["content"]["value"],
-                        },
-                    }
-                )
-        return None
-    else:
-        # bridgectl.log.debug("\n\n\n --- {} processing for {} {}: {}".format(type,self.name,self.present,msg))
-        # try:
-        if not self.present:
-            self.present = True
-            bridgectl.sending(
-                {
-                    "subject": bridgectl.type,
-                    "content_type": "event",
-                    "content": {
-                        "event": "presence",
-                        "target": bridgectl.type + "." + self.name,
-                        "value": "online",
-                        "icon status": {"bu-not-present": {"opacity": 0}},
-                    },
-                }
-            )
-
-        if msg["subject"] == "color":
-            if msg["value"] in ["on", "off"]:
-                # We don't really care about the relay. It is manage by the hardware
-                self.power = msg["value"] == "on"
-
-            elif isinstance(msg["value"], dict) and "ison" in msg["value"]:
-                self.power = msg["value"]["ison"]
-                self.mode = msg["value"]["mode"]
-                self.red = msg["value"]["red"]
-                self.green = msg["value"]["green"]
-                self.blue = msg["value"]["blue"]
-                self.gain = msg["value"]["gain"]
-                self.temp = msg["value"]["temp"]
-                self.brightness = msg["value"]["brightness"]
-
-            try:
-                hue, sat, val = colorsys.rgb_to_hsv(
-                    self.red / 255.0, self.green / 255.0, self.blue / 255.0
-                )
-                hue = int(round(hue * 360))
-                sat = int(round(sat * 100))
-                val = self.gain
-            except:
-                hue = 0
-                sat = 30
-                val == 20
-            bridgectl.sending(
-                {
-                    "subject": bridgectl.type,
-                    "content_type": "event",
-                    "content": {
-                        "event": "status",
-                        "target": bridgectl.type + "." + self.name,
-                        "icon status": {
-                            "bu-fill": {"fill": self.cssColour()},
-                            "bu-not-present": {"opacity": 0},
-                        },
-                        "value": {
-                            "power": {"power": self.power and "on" or "off"},
-                            "colour": {"hue": hue, "saturation": sat, "value": val},
-                            "white": {
-                                "temperature": self.temp,
-                                "value": self.brightness,
-                            },
-                        },
-                    },
-                }
-            )
-            self.sendInfo()
-        elif msg["subject"] == "light":
-            sendstatus = False
-            sendinfo = False
-            if msg["value"] in ["on", "off"]:
-                # We don't really care about the relay. It is manage by the hardware
-                self.power = msg["value"] == "on"
-                sendstatus = True
-                sendinfo = True
-
-            elif isinstance(msg["value"], dict) and "ison" in msg["value"]:
-                self.power = msg["value"]["ison"]
-                self.brightness = msg["value"]["brightness"]
-                sendstatus = True
-            elif isinstance(msg["value"], dict) and "power" in msg["value"]:
-                sendinfo = True
-                self.power_meas = msg["value"]["power"]
-                bridgectl.sending(
-                    {
-                        "subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {
-                            "event": "measurement",
-                            "target": bridgectl.type + "." + self.name,
-                            "icon status": {"bu-not-present": {"opacity": 0}},
-                            "value": msg["value"],
-                        },
-                    }
-                )
-            elif isinstance(msg["value"], dict) and "energy" in msg["value"]:
-                sendinfo = True
-                self.energy = msg["value"]["energy"]
-                bridgectl.sending(
-                    {
-                        "subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {
-                            "event": "measurement",
-                            "target": bridgectl.type + "." + self.name,
-                            "icon status": {"bu-not-present": {"opacity": 0}},
-                            "value": msg["value"],
-                        },
-                    }
-                )
-
-            if sendstatus:
-                bridgectl.sending(
-                    {
-                        "subject": bridgectl.type,
-                        "content_type": "event",
-                        "content": {
-                            "event": "status",
-                            "target": bridgectl.type + "." + self.name,
-                            "icon status": {
-                                "bu-fill": {"fill": self.cssColour()},
-                                "bu-not-present": {"opacity": 0},
-                            },
-                            "value": {
-                                "power": {"power": self.power and "on" or "off"},
-                                "white": {"value": self.brightness},
-                            },
-                        },
-                    }
-                )
-            if sendinfo:
-                self.sendInfo()
-        # except Exception as e:
-        # try:
-        # bridgectl.log.warning(
-        # "Bloody process problem",
-        # exc_info=(type(e),
-        # e,
-        # e.__traceback__))
-        # except:
-        # print("Oops")
-
-        return True
-
-
-def sendInfo(self):
-    # Can be used in callback
-    try:
-        msg = '<div><dl class="dl-horizontal">'
-        msg += "<dt>Model:</dt><dd>" + self.name.split("-")[0] + "</dd>"
-        if self.name.split("-")[0] in HASMEAS:
-            loinfo = [
-                ("power", "Light On"),
-                ("power_meas", "Instant Power"),
-                ("energy", "Energy Consumption"),
-            ]
         else:
-            loinfo = [("power", "Light On")]
-        for x, lbl in loinfo:
-            if getattr(self, x) is not None:
-                msg += (
-                    "<dt>"
-                    + lbl.replace("_", " ").title()
-                    + ":</dt><dd>"
-                    + str(getattr(self, x))
-                    + "</dd>"
+            topic = self.name + self.mqttcmd + "set"
+            if "temperature" in value:
+                payload = {
+                    "mode": "white",
+                    "temp": value["temperature"],
+                    "brightness": value["brightness"],
+                }
+            else:
+                payload = {
+                    "brightness": value["brightness"],
+                }
+            await self.controller.mqtt_wqueue.put((topic, payload))
+
+    async def send_info(self):
+        # Can be used in callback
+        try:
+            msg = '<div><dl class="dl-horizontal">'
+            msg += "<dt>Model:</dt><dd>" + self.name.split("-")[0] + "</dd>"
+            loinfo = [
+                ("power", "Light"),
+                ("measurement_power", "Instant Power"),
+                ("measurement_energy", "Energy Consumption"),
+                ("_switch", "Switch Position"),
+                ("_overpower", "Overpower condition"),
+            ]
+            for x, lbl in loinfo:
+                if getattr(self, x, None) is not None:
+                    msg += (
+                        "<dt>"
+                        + lbl.replace("_", " ").title()
+                        + ":</dt><dd>"
+                        + str(getattr(self, x))
+                        + "</dd>"
+                    )
+            for x, lbl in [
+                ("ssid", "WiFi Network"),
+                ("mac", "mac address"),
+                ("ip", "ip address"),
+                ("fw_ver", "firmware"),
+                ("new_fw", "firmware upgradable"),
+                ("cloud", "cloud"),
+                ("last reboot", "last reboot"),
+            ]:
+                try:
+                    msg += (
+                        "<dt>"
+                        + lbl.replace("_", " ").title()
+                        + ":</dt><dd>"
+                        + str(self.infos[x])
+                        + "</dd>"
+                    )
+                except:
+                    pass
+            if msg:
+                msg += "</dl></div>"
+                await self.controller.enqueue(
+                    {
+                        "subject": self.controller.type,
+                        "content_type": "event",
+                        "content": {
+                            "event": "info",
+                            "target": self.controller.type + "." + self.name,
+                            "value": msg,
+                        },
+                    }
                 )
-        devid = self.name
-        for x, lbl in [
-            ("mac", "mac address"),
-            ("ip", "ip address"),
-            ("fw_ver", "firmware"),
-            ("new_fw", "firmware upgradable"),
-        ]:
-            try:
-                msg += (
-                    "<dt>"
-                    + lbl.replace("_", " ").title()
-                    + ":</dt><dd>"
-                    + str(self.controller.infos[devid][x])
-                    + "</dd>"
-                )
-            except:
-                pass
+            else:
+                await aio.sleep(0)
+        except Exception as e:
+            _log.debug(f"Ooops could not send info {e}")
+            await aio.sleep(0)
+
+
+class ShellyB(ShellyV):
+    """
+    Shelly Bulb
+    """
+
+    def __init__(self, name, nickname, did=None):
+        super().__init__(name, nickname, did=did)
+        self.mqttcmd = "/color/0/"
+        self._colour_range = True
+        self._temperature_range = [3000, 6500, 100]
+        self.responses["colour"] = None
+        self.infos["model"] = "Shelly Bulb"
+
+    async def handle_mqtt_status(self, payload):
+        changed = False
+        wason = self.power
+        self.power = payload["ison"]
+        if wason != self.power:
+            changed = True
+        cur_colour = self.colour
+        msg = None
+        if payload["mode"] == "white":
+            self.colour = {
+                "brightness": payload["brightness"],
+                "temperature": payload["temp"],
+            }
+            if self.responses["white"]:
+                msg = self.responses["white"]
+                self.responses["white"] = None
+        elif payload["mode"] == "color":
+            self.colour = {
+                x: y for x, y in payload.items() if x in ["red", "green", "blue"]
+            }
+            if self.responses["colour"]:
+                msg = self.responses["colour"]
+                self.responses["colour"] = None
+
+        if self.colour != cur_colour:
+            changed = True
         if msg:
-            msg += "</dl></div>"
-            self.controller.sending(
+            await self.controller.enqueue(msg)
+        elif changed:
+            await self.send_status()
+            await self.send_info()
+        else:
+            if random.randrange(20) == 17:
+                await self.send_info()
+            else:
+                await aio.sleep(0)
+
+    async def local_command_colour(self, value, rt, msg=None):
+        if msg:
+            self.responses["colour"] = msg
+
+        colour = [
+            x
+            for x in map(
+                lambda x: int(round(x * 255.0)),
+                colorsys.hsv_to_rgb(
+                    value["hue"] / 360.0,
+                    value["saturation"] / 100.0,
+                    1.0,  # value["value"] / 100.0,
+                ),
+            )
+        ]
+        mqttmsg = {"mode": "color", "white": 0}
+        mqttmsg["red"] = colour[0]
+        mqttmsg["green"] = colour[1]
+        mqttmsg["blue"] = colour[2]
+        mqttmsg["gain"] = value["value"]
+        if "duration" in value and value["duration"]:
+            if self.busy.locked():
+                self.interrupt_busy = True
+            mqttmsg["duration"] = value["duration"]
+            aio.create_task(self._timed(mqttmsg))
+            await aio.sleep(0)
+        else:
+            topic = self.name + self.mqttcmd + "set"
+            await self.controller.mqtt_wqueue.put((topic, mqttmsg))
+
+
+class ShellyCB(ShellyB):
+    """
+    Shelly Bulb
+    """
+
+    def __init__(self, name, nickname, did=None):
+        super().__init__(name, nickname, did=did)
+        self.infos["model"] = "Shelly Colour Duo"
+
+
+class ShellyRGB(ShellyV):
+    """
+    Shelly Bulb
+    """
+
+    def __init__(self, name, nickname, did=None):
+        super().__init__(name, nickname, did=did)
+        self.mqttcmd = "/color/0/"
+        self._colour_range = True
+        self._temperature = 4500
+        self._temperature_range = [4500, 4500, 0]
+        self._switch = "unknown"
+        self._overpower = False
+        self.responses["colour"] = None
+        self.infos["model"] = "Shelly RGBW2"
+
+    async def local_command_white(self, value, rt, msg=None):
+        if msg:
+            self.responses["white"] = msg
+
+        if "duration" in value and value["duration"]:
+            if self.busy.locked():
+                self.interrupt_busy = True
+
+            aio.create_task(
+                self._timed(
+                    {
+                        "mode": "white",
+                        "duration": value["duration"],
+                        "white": value["brightness"],
+                    }
+                )
+            )
+        else:
+            topic = self.name + self.mqttcmd + "set"
+            payload = {
+                "mode": "color",
+                "gain": value["brightness"],
+                "red": 0,
+                "green": 0,
+                "blue": 0,
+                "white": 100,
+            }
+            await self.controller.mqtt_wqueue.put((topic, payload))
+
+    async def local_command_colour(self, value, rt, msg=None):
+        if msg:
+            self.responses["colour"] = msg
+
+        colour = [
+            x
+            for x in map(
+                lambda x: int(round(x * 255.0)),
+                colorsys.hsv_to_rgb(
+                    value["hue"] / 360.0,
+                    value["saturation"] / 100.0,
+                    1.0,  # value["value"] / 100.0,
+                ),
+            )
+        ]
+        mqttmsg = {"mode": "color", "white": 0}
+        mqttmsg["red"] = colour[0]
+        mqttmsg["green"] = colour[1]
+        mqttmsg["blue"] = colour[2]
+        mqttmsg["gain"] = value["value"]
+        mqttmsg["white"] = 0
+        if "duration" in value and value["duration"]:
+            if self.busy.locked():
+                self.interrupt_busy = True
+            mqttmsg["duration"] = value["duration"]
+            aio.create_task(self._timed(mqttmsg))
+            await aio.sleep(0)
+        else:
+            topic = self.name + self.mqttcmd + "set"
+            await self.controller.mqtt_wqueue.put((topic, mqttmsg))
+
+    async def handle_mqtt_input(self, payload):
+        curr = self._switch
+        self._switch = (payload in [1, "1", "on", "ON", "On", True] and "on") or "off"
+        if self._switch != curr:
+            await self.controller.enqueue(
                 {
                     "subject": self.controller.type,
                     "content_type": "event",
                     "content": {
-                        "event": "info",
+                        "event": "switch",
                         "target": self.controller.type + "." + self.name,
-                        "value": msg,
+                        "value": self._switch,
                     },
                 }
             )
-    except Exception as e:
-        self.controller.log.debug(
-            "Ooops could not send info", exc_info=(type(e), e, e.__traceback__)
+        await aio.sleep(0)
+
+    async def handle_mqtt_status(self, payload):
+        changed = False
+        wason = self.power
+        self.power = payload["ison"]
+        if wason != self.power:
+            changed = True
+        cur_colour = self.colour
+        msg = None
+        if payload["white"] == 100:
+            self.colour = {"brightness": payload["gain"]}
+            if self.responses["white"]:
+                msg = self.responses["white"]
+                self.responses["white"] = None
+        else:
+            self.colour = {
+                x: y for x, y in payload.items() if x in ["red", "green", "blue"]
+            }
+            if self.responses["colour"]:
+                msg = self.responses["colour"]
+                self.responses["colour"] = None
+
+        if self.colour != cur_colour:
+            changed = True
+        if msg:
+            await self.controller.enqueue(msg)
+        elif changed:
+            await self.send_status()
+            await self.send_info()
+        else:
+            if random.randrange(20) == 17:
+                await self.send_info()
+            else:
+                await aio.sleep(0)
+
+    async def handle_mqtt_longpush(self, payload):
+        await self.controller.enqueue(
+            {
+                "subject": self.controller.type,
+                "content_type": "event",
+                "content": {
+                    "event": "click",
+                    "target": self.controller.type + "." + self.name,
+                    "value": (payload and "long") or "single",
+                },
+            }
         )
 
+    async def handle_mqtt_overpower(self, payload):
+        self._overpower = payload
+        if self._overpower:
+            await self.controller.enqueue(
+                {
+                    "subject": self.controller.type,
+                    "content_type": "event",
+                    "content": {
+                        "event": "alert",
+                        "target": self.controller.type + "." + self.name,
+                        "value": "overpower",
+                    },
+                }
+            )
+        await aio.sleep(0)
 
-# Hop we go....
-bl.light._process = shelly_process
-bl.light._timed = shelly_timed
-bl.light.cssColour = cssColour
-bl.light.sendInfo = sendInfo
+    async def handle_mqtt_input_event(self, payload):
+        await aio.sleep(0)
 
 
-class ShellyBridge(bl.BuddyBridge):
+SHELLYCLASS = {
+    "shellybulb": ShellyB,
+    "shellycolorbulb": ShellyCB,
+    "ShellyVintage": ShellyV,
+    "shellyrgbw2": ShellyRGB,
+}
+
+
+class ShellyBridge(bl.BuddyMQTT):
 
     """
     This is the bridge application. It will check for the current list  of shelly
     It will report any new bulb
     """
 
-    def __init__(self, loop, future, config, log):
-        super(ShellyBridge, self).__init__(loop, future, config, log)
+    def __init__(self, defaults={}, descr="Shelly Bulbs Bridge"):
+        super().__init__(ShellyB, defaults, descr)
+        self.mqtt_topics = ["#"]
         self.mqtt_client = None
-        self.mqtt_future = None
-        self.shelly_config = shelly_config_default
-        self.shuttingdown = False
+        self.config_name = "shelly-bulbs"
+        self.noevent = True
         self.infos = {}
 
-    def process_command(self, msg):
-        if msg["content"]["command"] == "update config":
-            if msg["content"]["target"] == self.target:
-                for k, v in msg["content"]["value"].items():
-                    shelly_config_default[k] = v
-                self.sending(
-                    {
-                        "subject": "control" + "." + self.subtype,
-                        "content_type": "request",
-                        "content": {
-                            "request": "save configuration",
-                            "target": self.type,
-                            "config name": config["subtype"] + "-light",
-                            "value": bl.encrypt(
-                                shelly_config_default, self.config["buddykey"]
-                            ),
-                        },
-                    }
-                )
+    def build_devices_commands(self):
 
-        elif msg["content"]["command"] == "update_fw":
-            aio.ensure_future(
-                self.mqtt_client.publish(
-                    self.config["mqttprefix"] + "command", b"update_fw"
-                )
-            )
-
-        else:
-            for ashelly in self.devices:
-                ashelly.process(msg)
-
-    def process_response(self, msg):
-        # if msg["content"]["token"] != self.target:
-        # if self.log:
-        # self.log.warning("Token not matching {} vs {}".format(msg["content"]["token"],self.target))
-        # else:
-        # print ("Token not matching {} vs
-        # {}".format(msg["content"]["token"],self.target))
-        if (
-            self.state == "init"
-            and msg["content"]["response"] == "configuration"
-            and msg["subject"] == self.target
-        ):
-            # Getting the config
-            if msg["content"]["configuration"]:
-                try:
-                    storedconfig = bl.decrypt(
-                        msg["content"]["configuration"], self.config["buddykey"]
-                    )
-                    if self.config["debug"]:
-                        self.log.debug("The config stored is {}".format(storedconfig))
-                except:
-                    storedconfig = {}
-                    savenew = True
-                    # log
-                    if self.log:
-                        self.log.warning("Config is mangled")
+        seencmds = set()
+        result = f"""
+        <buddyui version="0.1">
+            <command  name="{self.subtype}">
+         """
+        for c in SHELLYCLASS.values():
+            light = c(BUILDNAME, BUILDNAME)
+            loc = light.xml_names(gen_xml=True)
+            for cn, cd in loc.items():
+                if cd[0] not in seencmds and cn not in seencmds:
+                    result += cd[1] + "\n"
+                    if cd[0]:  # Don't add none
+                        seencmds.add(cd[0])
                     else:
-                        print("Config is mangled")
+                        seencmds.add(cn)
 
-                for x in storedconfig:
-                    self.shelly_config[x] = storedconfig[x]
+        result += """
+            </command>
+        </buddyui>
+        """
+        return result
 
-            self.config["database"] = msg["content"]["database"]
-            if "configonly" in self.config and self.config["configonly"]:
-                self.state = "wait config save"
-            else:
-                self.state = "active"
-                self.build()
-            # if savenew or ("configonly" in self.config and self.config["configonly"]):
-            # self.sending({"subject":"control" + "." + self.subtype,
-            # "content_type": "request",
-            # "content": {"request":"save configuration",
-            # "target":self.target,
-            # "value":bl.encrypt(shelly_config_default,self.config["buddykey"])}})
+    def lp_prepare(self, desc, parser=None, default={}):
+        """
 
-        elif (
-            msg["content"]["response"] == "save configuration"
-            and msg["subject"] == self.target
-        ):
-            if self.state == "active" and msg["content"]["status"] != "done":
-                # log
-                if self.log:
-                    self.log.warning("Warning: Configuration was not saved.")
-                else:
-                    print("Warning: Configuration was not saved.")
-            else:
-                self.sending(
-                    {
-                        "subject": "control" + "." + self.target,
-                        "content_type": "request",
-                        "content": {
-                            "request": "functions",
-                            "target": self.type,
-                            "subtype": self.subtype,
-                            # "token": self.target,
-                            "value": {
-                                "configs": [shelly_config, shelly_config_default]
-                            },
-                        },
-                    }
-                )
-                self.sending(
-                    {
-                        "subject": self.config["restricted"],
-                        "content_type": "restricted event",
-                        "content": {
-                            "event": "config updated",
-                            "target": self.target,
-                            "value": shelly_config_default,
-                        },
-                    }
-                )
-                # Now update all the shelly present
-                for shelly in self.devices:
-                    if shelly.present:
-                        self.sending(
-                            {
-                                "subject": self.type,
-                                "content_type": "event",
-                                "content": {
-                                    "event": "presence",
-                                    "target": self.type + "." + shelly.name,
-                                    "value": "online",
-                                    "icon status": {
-                                        "bu-fill": {"fill": light.cssColour()},
-                                        "bu-not-present": {"opacity": 0},
-                                    },
-                                },
-                            }
-                        )
+        Whenever overloading this,  set your own dftls for those elements
+        that need to be set and saved
 
-        elif (
-            msg["content"]["response"] == "configuration"
-            and msg["subject"] == self.target
-        ):
-            if msg["content"]["configuration"]:
-                try:
-                    storedprop = bl.decrypt(
-                        msg["content"]["configuration"], self.config["buddykey"]
-                    )
-                    if self.config["debug"]:
-                        self.log.debug("The property stored is {}".format(storedprop))
-                except:
-                    storedprop = {}
-                    if self.config["debug"]:
-                        self.log.debug("The property stored cannot be decrypted.")
-                for k, v in storedprop.items():
-                    shelly_config_default[k] = v
+        Set things in default to your own defaults (e.g. type and subtype
 
-            if not (msg["content"]["configuration"] and storedprop):
-                # First time around... was never saved that property.. let's do
-                # it
-                self.sending(
-                    {
-                        "subject": "control" + "." + self.type,
-                        "content_type": "request",
-                        "content": {
-                            "request": "save configuration",
-                            "target": self.subtype,
-                            "config name": config["subtype"] + "-light",
-                            # "token": self.target,
-                            "value": bl.encrypt(
-                                shelly_config_default, self.config["buddykey"]
-                            ),
-                        },
-                    }
-                )
-        elif self.state == "active":
-            if (
-                msg["content"]["response"] == "creation"
-                and msg["content"]["status"] == "done"
+        """
+        parser = super().lp_prepare(desc, parser, default)
+        # Now we add ipv6prefix
+        parser.add_argument(
+            "-u",
+            "--update",
+            action="store_true",
+            default=False,
+            help="This shall be the bridge module issueing firmware upgrade commands.",
+        )
+        return parser
+
+    def local_response_save_configuration(self, msg):
+        """
+        Here we eflect the changes to the discovery mechanisms
+        """
+        if self.mqtt_client:
+            aio.create_task(self.mqtt_client.disconnect())
+            self.mqtt_client = None
+            self.mqtt_task["mqtt read"].cancel()
+            self.mqtt_task["mqtt read"] = aio.create_task(self.mqtt_reader())
+
+    async def handle_command_update_fw(self, msg):
+        if self.bridge_config["update"]:
+            await self.mqtt_wqueue.put(("command", b"update_fw"))
+        else:
+            await aio.sleep(0)
+
+    def build(self, devices):
+        for adevid in DEVLIST:
+            self.devices += SHELLYCLASS[adevid].from_list(
+                [x for x in devices if x["name"].startswith(adevid)]
+            )
+        if self.bridge_config["update"]:
+            self.command_buddy["update_fw"] = {
+                "module": self.bridge_config["type"],
+                "value": self.bridge_config["subtype"],
+                "label": "Update Shellies Firmware",
+            }
+        for dev in self.devices:
+            dev.controller = self
+            dev.present = False
+
+    async def global_process_mqtt(self, topic, payload):
+        """
+        Treat mqtt messages that should not be passed on to devices
+        Return True if the message was processed False if it is for devices
+        """
+        ret = False
+        if len(topic.split("/")) == 2 and topic.split("/")[-1] == "announce":
+            ret = True
+            if reduce(
+                lambda x, y: x or y,
+                [payload["id"].startswith(z) for z in DEVLIST],
+                False,
             ):
-                sess = bl.getSession(self.config["database"])
-                light = (
-                    sess.query(bl.light)
-                    .filter_by(name=msg["subject"].split(".")[-1])
-                    .one()
-                )
-
-                self.sending(
-                    {
-                        "subject": self.type,
-                        "content_type": "event",
-                        "content": {
-                            "event": "new device",
-                            "target": self.type + "." + light.name,
-                            "value": {
-                                "type": self.type,
-                                "subtype": self.subtype,
-                                "name": light.name,
-                                "nickname": light.nickname,
-                            },
-                        },
-                    }
-                )
-                notseen = True
-                for b in [x for x in self.pending]:
-                    if b == light.name:
-                        light.present = True
-                        light.conn = b
-                        light.controller = self
-                        light.info = {}
-                        light.power = False
-                        light.mode = "white"
-                        light.temp = 3500
-                        light.brightness = 20
-                        light.red = 10
-                        light.green = 10
-                        light.blue = 10
-                        light.gain = 20
-                        light.power_meas = 0
-                        light.energy = 0
-                        light.busy = aio.Lock()
-                        light.interrupt_busy = False
-                        light.status = {}
-                        ltype = light.name.split("-")[0]
-                        for x in CAPAlist[ltype]:
-                            light.status[x] = "yes"
-                        light.mqttcmd = MQTTcmd[ltype]
-                        self.devices.append(light)
-                        self.pending.remove(b)
-                        self.sending(
-                            {
-                                "subject": self.type,
-                                "content_type": "event",
-                                "content": {
-                                    "event": "presence",
-                                    "target": self.type + "." + light.name,
-                                    "value": "online",
-                                    "icon status": {
-                                        "bu-fill": {"fill": light.cssColour()},
-                                        "bu-not-present": {"opacity": 0},
-                                    },
-                                },
-                            }
-                        )
-
-                        aio.ensure_future(
-                            (
-                                self.mqtt_client.publish(
-                                    self.config["mqttprefix"]
-                                    + light.name
-                                    + "/"
-                                    + light.mqttcmd
-                                    + "/0/status/"
-                                )
-                            )
-                        )
-                        notseen = False
+                found = False
+                _log.debug(f"Announce with {topic} and {payload}")
+                for dev in self.devices:
+                    if dev.name == payload["id"]:
+                        found = True
                         break
-                if notseen:
-                    self.sending(
-                        {
-                            "subject": self.type,
-                            "content_type": "event",
-                            "content": {
-                                "event": "presence",
-                                "target": self.type + "." + light.name,
-                                "value": "offline",
-                                "icon status": {
-                                    "bu-fill": {"fill": light.cssColour()},
-                                    "bu-not-present": {"opacity": 1},
-                                },
-                            },
-                        }
+                if not found:
+                    _log.debug(
+                        f"Creating {payload['id']} with {SHELLYCLASS[payload['id'].split('-')[0]]}"
                     )
-                sess.close()
-            elif msg["content"]["response"] == "nickname":
-                if msg["content"]["status"] == "done":
-                    if self.log:
-                        self.log.debug(msg)
-                    for light in self.devices:
-                        if light.name == msg["subject"].split(".")[-1]:
-                            light.nickname = msg["content"]["value"]
-                            self.sending(
-                                {
-                                    "subject": self.type,
-                                    "content_type": "event",
-                                    "content": {
-                                        "event": "nickname",
-                                        "target": self.type + "." + light.name,
-                                        "value": light.nickname,
-                                    },
-                                }
-                            )
-                            break
-
-            elif msg["content"]["response"] == "deletion":
-                if msg["content"]["status"] == "done":
-                    if self.log:
-                        self.log.debug(msg)
-                    sidx = 0
-                    doremove = False
-                    for light in self.devices:
-                        if light.name == msg["subject"].split(".")[-1]:
-                            self.sending(
-                                {
-                                    "subject": self.type,
-                                    "content_type": "event",
-                                    "content": {
-                                        "event": "deletion",
-                                        "target": self.type + "." + light.name,
-                                        "value": light.name,
-                                    },
-                                }
-                            )
-                            doremove = True
-                            break
-                        sidx += 1
-
-                    if doremove:
-                        del self.devices[sidx]
-        else:
-            if self.log:
-                self.log.warning(
-                    "Unknown response {} {} {}".format(
-                        msg["subject"], msg["content_type"], msg["content"]
+                    ndev = SHELLYCLASS[payload["id"].split("-")[0]](
+                        payload["id"], payload["id"]
                     )
-                )
-            else:
-                print(
-                    "Unknown response {} {} {}".format(
-                        msg["subject"], msg["content_type"], msg["content"]
-                    )
-                )
-
-    def build(self):
-        self.sending(
-            {
-                "subject": "control" + "." + self.target,
-                "content_type": "request",
-                "content": {
-                    "request": "functions",
-                    "target": self.type,
-                    "subtype": self.subtype,
-                    # "token": self.target,
-                    "value": {
-                        "functions": shelly_commands,
-                        "module commands": shelly_module_commands,
-                        "configs": [shelly_config, shelly_config_default],
-                    },
-                },
-            }
-        )
-
-        self.sending(
-            {
-                "subject": self.config["restricted"],
-                "content_type": "restricted event",
-                "content": {
-                    "event": "config updated",
-                    "target": self.target,
-                    "value": shelly_config_default,
-                },
-            }
-        )
-        sess = bl.getSession(self.config["database"])
-        self.devices = sess.query(bl.light).filter_by(subtype=self.subtype).all()
-        for light in self.devices:
-            light.present = False
-            light.controller = self
-            light.info = {}
-            light.power = True
-            light.mode = "white"
-            light.temp = 3500
-            light.brightness = 20
-            light.red = 10
-            light.green = 10
-            light.blue = 10
-            light.gain = 20
-            light.power_meas = 0
-            light.energy = 0
-            light.busy = aio.Lock()
-            light.interrupt_busy = False
-            light.status = {}
-            ltype = light.name.split("-")[0]
-            for x in CAPAlist[ltype]:
-                light.status[x] = "yes"
-            light.mqttcmd = MQTTcmd[ltype]
-
-            self.sending(
-                {
-                    "subject": self.type,
-                    "content_type": "event",
-                    "content": {
-                        "event": "presence",
-                        "target": self.type + "." + light.name,
-                        "value": "offline",
-                        "icon status": {
-                            "bu-fill": {
-                                "fill": (light.power and light.cssColour())
-                                or "transparent"
-                            },
-                            "bu-not-present": {"opacity": 1},
-                        },
-                    },
-                }
-            )
-
-        # No shelly is present yet
-        self.mqtt_future = aio.ensure_future(self.mqtt_reader())
-
-    async def mqtt_reader(self):
-        mqttconfig = {
-            "keep_alive": 10,
-            "ping_delay": 5,
-            "default_qos": 0,
-            "default_retain": False,
-            "auto_reconnect": False,
-            "reconnect_max_interval": 5,
-            "reconnect_retries": 10,
-            "topics": {self.config["mqttprefix"] + "#": {"qos": 1}},
-        }
-        self.mqtt_client = MQTTClient(config=mqttconfig)
-        connected = False
-        while not connected:
-            try:
-                self.log.debug("DEBUG MQTT connection.")
-                if (
-                    "credential" in self.shelly_config
-                    and "user" in self.shelly_config["credential"]
-                    and self.shelly_config["credential"]["user"]
-                ):
-                    await self.mqtt_client.connect(
-                        "mqtt://{}:{}@{}:{}/".format(
-                            self.shelly_config["credential"]["user"],
-                            self.shelly_config["credential"]["password"],
-                            self.config["mqtthost"],
-                            self.config["mqttport"],
-                        )
-                    )
-                else:
-                    await self.mqtt_client.connect(
-                        "mqtt://{}:{}/".format(
-                            self.config["mqtthost"], self.config["mqttport"]
-                        )
-                    )
-                await self.mqtt_client.subscribe([(self.config["mqttprefix"] + "#", 1)])
-                connected = True
-            except:
-                self.log.debug("DEBUG MQTT could not connect to broker.")
-                await aio.sleep(5)
-                connected = False
-                continue
-            # Whe have a connection. Let's ask ffor announces
-            try:
-                await self.mqtt_client.publish(
-                    self.config["mqttprefix"] + "command", b"announce"
-                )
-                await self.mqtt_client.publish(
-                    self.config["mqttprefix"] + "command", b"update"
-                )
-                while True:
-                    try:
-                        message = await self.mqtt_client.deliver_message()
-                    except aio.TimeoutError:
-                        continue
-                    self.handle_mqtt(message.publish_packet)
-            except ClientException as ce:
-                self.log.debug("\n\n\nClient exception: %s\n\n" % ce)
-                try:
-                    await self.mqtt_client.disconnect()
-                except:
-                    pass
-                connected = False
-            except Exception as ce:
-                self.log.debug(
-                    "\n\n\nOther exception: %s\n\n" % ce,
-                    exc_info=(type(ce), ce, ce.__traceback__),
-                )
-                if self.shuttingdown:
-                    return
-                connected = False
-
-    def handle_mqtt(self, packet):
-        # Check if it is a new one
-        # try:
-        mtopic = packet.variable_header.topic_name.split("/")
-        prefix, dev = mtopic[:2]
-        try:
-            payload = json.loads("".join([chr(z) for z in packet.payload.data]))
-        except:
-            payload = "".join([chr(z) for z in packet.payload.data])
-        self.log.debug("DEBUG MQTT:  {} => {}".format(mtopic, str(payload)))
-        if dev == "command":
-            return
-
-        if dev == "announce":
-            # Possibly1, 2 or 4 new devices
-            dtype = payload["id"].split("-")[0]
-            if dtype not in DEVLIST:
-                self.log.debug("We do not handle {}".format(dtype))
-                return
-            self.infos[payload["id"]] = payload
-            self.infos[payload["id"]]["mac"] = ":".join(
-                [
-                    payload["mac"][i : i + 2].lower()
-                    for i in range(0, len(payload["mac"]), 2)
-                ]
-            )
-            # self.log.debug("\n\n\n{}\n\n\n".format(self.infos))
-            self.register([payload["id"]])
-            return
-
-        obj = mtopic[2]
-        dtype = dev.split("-")[0]
-
-        if dtype not in DEVLIST:
-            self.log.debug("We do not handle {}".format(dtype))
-            return
-
-        # Deal with LWT messages:
-        unseen = True
-        if obj == "online":
-            ispresent = payload
-            for shelly in self.devices:
-                if shelly.name == dev:
-                    unseen = False
-                    shelly.controller = self
-                    if ispresent != shelly.present:
-                        shelly.present = ispresent
-                        self.sending(
-                            {
-                                "subject": self.type,
-                                "content_type": "event",
-                                "content": {
-                                    "event": "presence",
-                                    "target": self.type + "." + shelly.name,
-                                    "value": ispresent and "online" or "offline",
-                                    "icon status": {
-                                        "bu-not-present": {
-                                            "opacity": (not ispresent and 1) or 0
-                                        }
-                                    },
-                                },
-                            }
-                        )
-
-        else:
-            for light in self.devices:
-                # self.log.debug("Comparing {} to {}".format(dev,light.name))
-                if dev == light.name:
-                    if (
-                        obj == "light"
-                        and len(mtopic) > 4
-                        and mtopic[4] in ["power", "energy"]
-                    ):
-                        thispayload = {mtopic[4]: payload}
-                    else:
-                        thispayload = payload
-                    light._process({"subject": obj, "value": thispayload}, "shelly")
-                    unseen = False
-                    break
-        if unseen:
-            self.register([dev])
-        # except:
-        # pass
-
-    def register(self, loshelly):
-        seen = False
-        ashelly = loshelly[0]  # All the lights are created in tandem with the device
-
-        for shelly in self.devices:
-            if shelly.name == ashelly:
-                seen = True
-                break
-        if seen:
-            sname = ashelly
-            for shelly in self.devices:
-                if shelly.name.startswith(sname):
-                    shelly.controller = self
-                    if not shelly.present:
-                        shelly.present = True
-                        self.sending(
-                            {
-                                "subject": self.type,
-                                "content_type": "event",
-                                "content": {
-                                    "event": "presence",
-                                    "target": self.type + "." + shelly.name,
-                                    "value": "online",
-                                    "icon status": {"bu-not-present": {"opacity": 0}},
-                                },
-                            }
-                        )
-
-        else:
-            for ashelly in loshelly:
-                if ashelly not in self.pending:
-                    self.pending.append(ashelly)
-                    self.sending(
+                    ndev.info = payload
+                    ndev.controller = self
+                    self.pending.append(ndev)
+                    await self.enqueue(
                         {
                             "subject": "control" + "." + self.type,
                             "content_type": "request",
                             "content": {
                                 "request": "creation",
                                 "target": self.type,
-                                # Here we need the type
-                                # "token": self.target,
                                 "value": {
-                                    "name": ashelly,
-                                    "nickname": ashelly,
+                                    "name": payload["id"],
+                                    "nickname": payload["id"],
                                     "subtype": self.subtype,
                                 },
                             },
                         }
                     )
-
-    def unregister(self, ashelly):
-        if ashelly in self.pending:
-            self.pending.remove(ashelly)
+        elif topic.split("/")[-1] in [
+            "command",
+            "set",
+        ]:  # Just a command sent to a device.... ignore
+            ret = True
+        elif not reduce(lambda x, y: x or y, [z in topic for z in DEVLIST], False):
+            ret = True
         else:
-            for light in self.devices:
-                try:  # HAve to protect, in some rare cases, swirxg does not have a name attribute yet
-                    if light.name == ashelly:
-                        light.present = False
-                        self.sending(
-                            {
-                                "subject": self.type,
-                                "content_type": "event",
-                                "content": {
-                                    "event": "presence",
-                                    "target": self.type + "." + light.name,
-                                    "value": "offline",
-                                    "icon status": {"bu-not-present": {"opacity": 1}},
-                                },
-                            }
-                        )
-                except:
-                    pass
+            pass
+            # _log.debug(f"Global with {topic} and {payload}... with {[z in topic for z in DEVLIST]}")
+        await aio.sleep(0)
+        return ret
 
-    async def http_settings(self, relay, options):
-        pass
+    def topic_to_devices(self, topic):
+        """
+        Given a topic, returns a 2-uple
+            - list of names of devices targeted
+            - event
+        """
+        try:
+            prefix = topic.split("/")[0].split("-")[0]
+            topic = topic.replace(MQTTXTRA[prefix], "")
+            lot = topic.split("/")
+            lodev = [lot[0]]
+            if len(lot) == 1:
+                #                _log.debug(f"t to d returns {lodev} for onoff")
+                return lodev, "onoff"
+            elif lot[-1] == "0":  # Input and longpush for RGBW2
+                return lodev, lot[-2]
+            #            _log.debug(f"t to d returns {lodev} for {lot[-1]}")
+            return lodev, lot[-1]
+        except Exception as e:
+            _log.debug(f"t to d from {topic} error:{e}")
+            return [], "noop"
+
+    async def mqtt_connection(self):
+        """
+        Overload to do things once the MQTT ibus is connected
+        """
+        await self.mqtt_wqueue.put(("command", b"announce"))
+
+    #        await self.mqtt_wqueue.put(("command", b'update'))
+
+    def last_rites(self):
+        try:
+            # Stop the heartbeat
+            for dev in self.devices:
+                dev.hbtask.cancel()
+            super().last_rites()
+        except:
+            pass
 
 
 aboutstr = """<p>ShellyBulbBuddy is a bridge talking to WiFi bulbs made by <a href="https://shelly.cloud">Shelly</a> configured
@@ -1370,257 +860,28 @@ iconstr = """
    </svg>
 """
 
-cfgdefault = {
-    "type": "light",
-    "subtype": SUBTYPE,
-    "host": "localhost",
-    "port": 8745,
-    "credential": "",
-    "ssl": "",
-    "restricted": "guibridge",
-    "mqtthost": "localhost",
-    "mqttport": 1883,
-    "mqttprefix": "shellies/",
-    "update": False,
-}
-
-
-def configure():
-    parser = argparse.ArgumentParser(description="Track shelly lightes..")
-    # version="%prog " + __version__ + "/" + bl.__version__)
-    parser.add_argument(
-        "-t",
-        "--type",
-        default=cfgdefault["type"],
-        help='The type of devices we handle. (default "%s").' % cfgdefault["type"],
-    )
-    parser.add_argument(
-        "-s",
-        "--subtype",
-        default=cfgdefault["subtype"],
-        help='The specific subtype we manage. (default "%s").' % cfgdefault["subtype"],
-    )
-    parser.add_argument(
-        "-a",
-        "--host",
-        default=cfgdefault["host"],
-        help='The host address of the server (default "%s").' % cfgdefault["host"],
-    )
-    parser.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        default=cfgdefault["port"],
-        help='The port used by the server (default "%s").' % cfgdefault["port"],
-    )
-    parser.add_argument(
-        "-P",
-        "--mqttport",
-        type=int,
-        default=cfgdefault["mqttport"],
-        help='The port used by the mqtt broker (default "%s").'
-        % cfgdefault["mqttport"],
-    )
-    parser.add_argument(
-        "-n",
-        "--mqtthost",
-        default=cfgdefault["mqtthost"],
-        help='The host of the mqttbroker (default "%s"). ' % cfgdefault["mqtthost"],
-    )
-    parser.add_argument(
-        "-f",
-        "--mqttprefix",
-        default=cfgdefault["mqttprefix"],
-        help='The MQTT topic prefix (default "%s"). ' % cfgdefault["mqttprefix"],
-    )
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="/etc/autobuddy/shelly.cfg",
-        type=argparse.FileType("r"),
-        help='Config file to use (default "/etc/autobuddy/shelly.cfg")',
-    )
-    parser.add_argument(
-        "-V",
-        "--credential",
-        default=cfgdefault["credential"],
-        help='The credential used to verify authorization (default "%s").'
-        % cfgdefault["credential"],
-    )
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action="count",
-        default=0,
-        help="Log debug information (default False)",
-    )
-    parser.add_argument(
-        "-S",
-        "--ssl",
-        default="",
-        help="The directory where the file %s can be found." % (CERTFILE),
-    )
-    parser.add_argument(
-        "-U",
-        "--update",
-        action="store_true",
-        default=cfgdefault["update"],
-        help="Handles Shellies updates (Default: {}".format(cfgdefault["update"]),
-    )
-    parser.add_argument(
-        "-r",
-        "--restricted",
-        default=cfgdefault["restricted"],
-        help='Where to send "restricted events" (default "%s").'
-        % cfgdefault["restricted"],
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        default=False,
-        help="Log warning messages",
-    )
-    parser.add_argument(
-        "-C",
-        "--configonly",
-        default="",
-        help="Exit after the the configuration has been saved",
-    )
-
-    try:
-        opts = parser.parse_args()
-    except Exception as e:
-        parser.error("Error: " + str(e))
-
-    if opts.debug:
-        logging.basicConfig(
-            level=logging.DEBUG, format="%(levelname)7s: %(message)s", stream=sys.stderr
-        )
-    elif opts.verbose:
-        logging.basicConfig(
-            level=logging.WARNING,
-            format="%(levelname)7s: %(message)s",
-            stream=sys.stderr,
-        )
-    else:
-        logging.basicConfig(
-            level=logging.CRITICAL,
-            format="%(levelname)7s: %(message)s",
-            stream=sys.stderr,
-        )
-    shellylog = logging.getLogger("")
-    shellycfg = {"debug": opts.debug}
-    try:
-        # if True:
-        try:
-            cfgdata = json.load(opts.config)
-            opts.config.close()
-        except:
-            cfgdata = {}
-            shellylog.warning("Config file could not be opened.")
-
-        # Definition
-        for attr in cfgdefault:
-            if opts.__getattribute__(attr) != cfgdefault[attr]:
-                shellycfg[attr] = opts.__getattribute__(attr)
-            elif attr in cfgdata:
-                shellycfg[attr] = cfgdata[attr]
-            else:
-                shellycfg[attr] = opts.__getattribute__(attr)
-            if opts.debug:
-                shellylog.debug("The %s is %s." % (attr, shellycfg[attr]))
-
-        if shellycfg["ssl"] and not (os.path.isfile(shellycfg["ssl"] + "/" + CERTFILE)):
-            shellylog.critical(
-                "Encryption: Could not find {} .".format(
-                    shellycfg["ssl"] + "/" + CERTFILE
-                )
-            )
-            sys.exit()
-        if opts.debug:
-            if shellycfg["ssl"]:
-                shellylog.debug(
-                    "The ssl certificates can be found in %s" % shellycfg["ssl"]
-                )
-            else:
-                shellylog.debug("The connection is not encrypted")
-
-        if "buddykey" in cfgdata:
-            shellycfg["buddykey"] = cfgdata["buddykey"]
-
-        if opts.configonly:
-
-            if "buddykey" not in shellycfg:
-                if opts.debug:
-                    shellylog.debug("Generating random key")
-                shellycfg["buddykey"] = bl.keygen()
-            try:
-                del shellycfg["debug"]
-            except:
-                pass
-            with open(opts.configonly, "w") as cfile:
-                json.dump(shellycfg, cfile)
-            os.chmod(opts.configonly, 384)  # 0600
-            sys.exit()
-
-    except Exception as e:
-        shellylog.error("Error: %r" % e)
-        sys.exit(-2)
-
-    return (shellylog, shellycfg)
-
 
 if __name__ == "__main__":
-    log, config = configure()
-    log.info("Configured")
-
-    if config["update"]:
-        log.info("Handling Firmware Updates")
-        shelly_module_commands["update_fw"] = {
-            "module": config["type"],
-            "value": config["subtype"],
-            "label": "Update Shellies Firmware",
-        }
-
-    loop = aio.get_event_loop()
-    # if config["debug"]:
-    # loop.set_debug(True)
-
-    if config["ssl"]:
-        sslcontext = ssl.create_default_context(
-            ssl.Purpose.SERVER_AUTH, cafile=config["ssl"] + "/" + CERTFILE
-        )
-
-        sslcontext.check_hostname = False
-    else:
-        sslcontext = None
-    connFuture = aio.Future()
-    fac = loop.create_connection(
-        partial(ShellyBridge, loop, connFuture, config, log),
-        config["host"],
-        config["port"],
-        ssl=sslcontext,
-    )
-    conn, bridgectl = loop.run_until_complete(fac)
-    loop.call_soon(
-        bridgectl.configrequest,
-        {
-            "about": {"ShellyBulbBuddy": aboutstr},
-            "display": {config["type"]: {config["subtype"]: iconstr}},
-            "config name": config["subtype"] + "-light",
-        },
-    )
+    try:
+        bridgectl = ShellyBridge(bridge_default)
+    except bl.BuddyConfigOnly:
+        sys.exit(-1)
 
     try:
-        loop.run_until_complete(connFuture)
+        loop = aio.get_event_loop()
+        loop.run_until_complete(
+            bridgectl.start(
+                {
+                    "about": {"ShellyBulbBuddy": aboutstr},
+                    "display": {"light": {SUBTYPE: iconstr}},
+                    #            "config name": SUBTYPE+ "-light",
+                }
+            )
+        )
+        loop.run_until_complete(bridgectl.future)
     except KeyboardInterrupt:
         print("\n", "Exiting at user's request")
     finally:
-        loop.run_until_complete(bridgectl.mqtt_client.unsubscribe(["shellies/#"]))
-        loop.run_until_complete(bridgectl.mqtt_client.disconnect())
-        bridgectl.shuttingdown = True
-        bridgectl.mqtt_future.cancel()
+        bridgectl.last_rites()
         loop.run_until_complete(aio.sleep(3))
-        conn.close()
         loop.close()

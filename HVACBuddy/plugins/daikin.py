@@ -40,7 +40,7 @@ except:
         def build_ircode(self):
             return self._build_ircode()
 
-STARFRAME = [ 3500, 1750 ]
+STARTFRAME = [ 3500, 1750 ]
 ENDFRAME = [435, 10000 ]
 MARK = 435
 SPACE0 = 435
@@ -304,7 +304,7 @@ if __name__ == '__main__':
         """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""
         lircframe =  []
         for frame in frames:
-            lircframe += STARFRAME
+            lircframe += STARTFRAME
             for x in frame:
                 idx = 0x80
                 while idx:

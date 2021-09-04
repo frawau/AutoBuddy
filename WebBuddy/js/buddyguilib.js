@@ -169,10 +169,9 @@ var buddyPanel = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -444,10 +443,9 @@ var listCG = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -483,7 +481,7 @@ var grouplistCG = Class.extend({
         this.pname = pname;
         this.part = part;
         this.realtime=realtime || false
-        this.list= new listCG(ctxname,pname,part, false)
+        this.list= new listCG(ctxname,pname,part, realtime)
         this.jsid = this.ctxname.replace(/\s+/g, "_-_");
         if ( this.pname ) {
             this.jsid += "__"+this.pname.replace(/\s+/g, "_-_");
@@ -548,10 +546,9 @@ var grouplistCG = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -958,10 +955,9 @@ var listmakerCG = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1229,10 +1225,9 @@ var choiceCG = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1348,10 +1343,9 @@ var sliderControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1472,10 +1466,9 @@ var switchControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1587,10 +1580,9 @@ var spinnerControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1707,10 +1699,9 @@ var textControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -1813,6 +1804,7 @@ var dateControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
             if (part.attr("rteffect") == undefined) {
                     return false;
@@ -1921,10 +1913,9 @@ var timeControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+           if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
@@ -2065,10 +2056,9 @@ var timerangeControl = Class.extend({
                     return false;
                 }
             }
+            return true;
         } else {
-            if (part.attr("rteffect") == undefined) {
-                    return false;
-            } else if (part.attr("rteffect") == 0 ) {
+            if (part.attr("rteffect") == 0 ) {
                     return false;
             }
         }
